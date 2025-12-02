@@ -70,7 +70,7 @@ static NSString *gWalletBalanceReplacement = nil;
 }
 @end
 
-// 原有接口声明
+// 原有接口声明（保持不变）
 @interface TimeoutNumber : UIView
 - (void)updateNumber:(unsigned long long)arg1;
 - (void)defaultNumber:(unsigned long long)arg1;
@@ -203,7 +203,7 @@ static NSString *gWalletBalanceReplacement = nil;
 - (id)getService:(Class)cls;
 @end
 
-// 原有辅助函数
+// 原有辅助函数（保持不变）
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -298,7 +298,7 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-// 原有设置界面实现
+// 原有设置界面实现（保持不变）
 @implementation AvatarSettingsViewController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -729,7 +729,7 @@ static void loadFriendsAndWalletSettings() {
 }
 @end
 
-// ==================== 触摸轨迹设置界面 ====================
+// ==================== 简化版触摸轨迹设置界面 ====================
 @implementation CSTouchTrailViewController
 
 - (void)viewDidLoad {
@@ -755,7 +755,6 @@ static void loadFriendsAndWalletSettings() {
 - (void)screenCaptureDidChange {
     BOOL isRecording = UIScreen.mainScreen.isCaptured;
     
-    // 如果设置了仅在录屏时显示，则需要更新触摸轨迹的显示状态
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL onlyWhenRecording = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
     BOOL trailEnabled = [defaults boolForKey:kTouchTrailKey];
@@ -775,15 +774,16 @@ static void loadFriendsAndWalletSettings() {
 #pragma mark - Table view data source
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2; // 基础设置 + 说明
+    return 1; // 只有一个设置区域
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) {
-        return 3; // 总开关 + 仅在录屏时显示 + 拖尾效果
-    } else {
-        return 1; // 说明
-    }
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL isTrailEnabled = [defaults boolForKey:kTouchTrailKey];
+    
+    // 如果总开关开启，显示3个开关（总开关 + 两个子开关）
+    // 如果总开关关闭，只显示1个开关（总开关）
+    return isTrailEnabled ? 3 : 1;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -795,62 +795,30 @@ static void loadFriendsAndWalletSettings() {
     
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    if (indexPath.section == 0) {
-        if (indexPath.row == 0) {
-            // 启用触摸轨迹开关
-            cell.textLabel.text = @"启用触摸轨迹";
-            UISwitch *switchView = [[UISwitch alloc] init];
-            switchView.on = [defaults boolForKey:kTouchTrailKey];
-            [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-            cell.accessoryView = switchView;
-        } else if (indexPath.row == 1) {
-            // 仅在录屏时显示开关
-            cell.textLabel.text = @"仅在录屏时显示";
-            UISwitch *switchView = [[UISwitch alloc] init];
-            switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
-            [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
-            cell.accessoryView = switchView;
-        } else if (indexPath.row == 2) {
-            // 拖尾效果开关
-            cell.textLabel.text = @"拖尾效果";
-            UISwitch *switchView = [[UISwitch alloc] init];
-            switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
-            [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-            cell.accessoryView = switchView;
-        }
-    } else {
-        // 说明
-        cell.textLabel.text = @"功能说明";
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    if (indexPath.row == 0) {
+        // 启用触摸轨迹开关（总开关）
+        cell.textLabel.text = @"启用触摸轨迹";
+        UISwitch *switchView = [[UISwitch alloc] init];
+        switchView.on = [defaults boolForKey:kTouchTrailKey];
+        [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+    } else if (indexPath.row == 1) {
+        // 仅在录屏时显示开关（子开关）
+        cell.textLabel.text = @"仅在录屏时显示";
+        UISwitch *switchView = [[UISwitch alloc] init];
+        switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
+        [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+    } else if (indexPath.row == 2) {
+        // 拖尾效果开关（子开关）
+        cell.textLabel.text = @"拖尾效果";
+        UISwitch *switchView = [[UISwitch alloc] init];
+        switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
+        [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
     }
     
     return cell;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 0) {
-        return @"基础设置";
-    } else {
-        return @"说明";
-    }
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == 0) {
-        return @"触摸轨迹功能可以在触摸屏幕时显示轨迹效果，方便演示操作流程";
-    } else {
-        return @"开启拖尾效果可显示完整触摸路径";
-    }
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    
-    if (indexPath.section == 1) {
-        // 显示功能说明
-        [self showInfoAlert];
-    }
 }
 
 #pragma mark - 开关事件处理
@@ -869,6 +837,9 @@ static void loadFriendsAndWalletSettings() {
     }
     
     [defaults synchronize];
+    
+    // 刷新表格以显示/隐藏子开关
+    [self.tableView reloadData];
 }
 
 - (void)onlyWhenRecordingChanged:(UISwitch *)sender {
@@ -892,20 +863,6 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kTouchTrailTailEnabledKey];
     [defaults synchronize];
-}
-
-// 显示功能说明弹窗
-- (void)showInfoAlert {
-    UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@"触摸轨迹说明"
-                                                                            message:@"触摸轨迹功能可以在您触摸屏幕时显示轨迹效果，方便演示操作流程或录制教程视频。\n\n轨迹大小固定为20点，颜色为红色。\n\n拖尾效果可显示完整触摸路径。"
-                                                                     preferredStyle:UIAlertControllerStyleAlert];
-    
-    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"了解了"
-                                                      style:UIAlertActionStyleDefault
-                                                    handler:nil];
-    [alertController addAction:okAction];
-    
-    [self presentViewController:alertController animated:YES completion:nil];
 }
 
 @end
@@ -1028,7 +985,7 @@ static void loadFriendsAndWalletSettings() {
         self.backgroundColor = [UIColor clearColor];
         self.userInteractionEnabled = NO;
         self.trailColor = [UIColor redColor]; // 默认红色
-        self.trailSize = 20.0; // 默认20.0点大小
+        self.trailSize = 25.0; // 修改为25.0点大小
         self.isMoving = NO;
         
         // 设置圆形
@@ -1716,7 +1673,7 @@ static BOOL isTrailEnabled = NO;
                 // 触摸开始，创建新的轨迹视图
                 if (!trailView) {
                     trailView = [[WBTouchTrailView alloc] init];
-                    trailView.trailSize = 20.0; // 固定大小20
+                    trailView.trailSize = 25.0; // 修改为25.0点大小
                     trailView.trailColor = [UIColor redColor]; // 固定红色
                     
                     [touch.window addSubview:trailView];
@@ -1746,10 +1703,10 @@ static BOOL isTrailEnabled = NO;
                         
                         // 固定时间间隔0.05秒（中等密度）
                         if (timeDiff >= 0.05) {
-                            // 创建并添加拖尾点
+                            // 创建并添加拖尾点，拖尾点大小为17.5（主点25的70%）
                             WBTouchTrailDotView *dotView = [[WBTouchTrailDotView alloc] initWithPoint:location 
                                                                                             dotColor:[UIColor redColor] 
-                                                                                            dotSize:14.0 // 主点的70%
+                                                                                            dotSize:17.5 // 主点的70%
                                                                                            duration:0.8]; // 固定0.8秒
                             
                             [touch.window addSubview:dotView];
