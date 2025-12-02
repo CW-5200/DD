@@ -30,6 +30,7 @@ static BOOL gFriendsCountEnabled = NO;
 static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
+static BOOL g_hasPluginsMgr = NO;  // 添加这一行修复变量声明问题
 
 @interface AvatarSettingsViewController : UITableViewController {
     NSArray *_settings;
@@ -241,7 +242,7 @@ static BOOL isFriendsCountEnabled() {
 }
 
 static BOOL isWalletBalanceEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey;
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];  // 修复：添加右括号
 }
 
 static NSString* parseParam(NSString *content, NSString *begin, NSString *end) {
@@ -895,7 +896,7 @@ static void loadFriendsAndWalletSettings() {
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
-    if (g_hasPluginsMgr) {
+    if (g_hasPluginsMgr) {  // 现在这个变量已经正确声明了
         return;
     }
     static char kDDAssistantAddedKey;
