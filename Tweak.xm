@@ -656,13 +656,13 @@ static void loadFriendsAndWalletSettings() {
         [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
     } else if (indexPath.row == 1) {
-        cell.textLabel.text = @"仅在录屏时显示";
+        cell.textLabel.text = @"仅在录屏显示";
         UISwitch *switchView = [[UISwitch alloc] init];
         switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
         [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
     } else if (indexPath.row == 2) {
-        cell.textLabel.text = @"拖尾效果";
+        cell.textLabel.text = @"拖尾效果显示";
         UISwitch *switchView = [[UISwitch alloc] init];
         switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
         [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
