@@ -32,6 +32,32 @@ static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 
+@interface AvatarSettingsViewController : UITableViewController {
+    NSArray *_settings;
+}
+@end
+
+@interface MessageSettingsViewController : UITableViewController {
+    NSArray *_mainSettings;
+    NSArray *_timeSettings;
+    BOOL _messageTimeEnabled;
+}
+@end
+
+@interface GameSettingsViewController : UITableViewController <UITextFieldDelegate> {
+    NSArray *_settings;
+    UITextField *_friendsCountField;
+    UITextField *_walletBalanceField;
+    UIButton *_friendsCountConfirmButton;
+    UIButton *_walletBalanceConfirmButton;
+}
+@end
+
+@interface DDAssistantSettingsViewController : UITableViewController {
+    NSArray *_sections;
+}
+@end
+
 @interface TimeoutNumber : UIView
 - (void)updateNumber:(unsigned long long)arg1;
 - (void)defaultNumber:(unsigned long long)arg1;
