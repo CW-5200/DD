@@ -5,6 +5,7 @@
 #define PLUGIN_NAME @"DD助手"
 #define PLUGIN_VERSION @"1.0.0"
 
+// 原有设置键
 static NSString * const kHideOtherAvatarKey = @"com.dd.assistant.hide.other.avatar";
 static NSString * const kHideSelfAvatarKey = @"com.dd.assistant.hide.self.avatar";
 static NSString * const kPreventRevokeEnabledKey = @"com.dd.assistant.prevent.revoke.enabled";
@@ -21,6 +22,12 @@ static NSString * const kWalletBalanceEnabledKey = @"com.dd.assistant.wallet.bal
 static NSString * const kWalletBalanceValueKey = @"com.dd.assistant.wallet.balance.value";
 static NSString * const kWCWalletBalanceReplacementKey = @"com.wechat.tweak.wallet_balance_replacement";
 
+// 新增触摸轨迹设置键
+static NSString * const kTouchTrailKey = @"com.wechat.tweak.touch.trail.enabled";
+static NSString * const kTouchTrailOnlyWhenRecordingKey = @"com.wechat.tweak.touch.trail.only.when.recording";
+static NSString * const kTouchTrailDisplayStateKey = @"com.wechat.tweak.touch.trail.display.state";
+static NSString * const kTouchTrailTailEnabledKey = @"com.wechat.tweak.touch.trail.tail.enabled";
+
 static CGFloat const kDefaultFontSize = 7.0f;
 static CGFloat const kMaxLabelWidth = 90.0f;
 static BOOL g_hasPluginsMgr = NO;
@@ -32,6 +39,7 @@ static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 
+// 原有接口声明
 @interface AvatarSettingsViewController : UITableViewController {
     NSArray *_settings;
 }
@@ -53,11 +61,16 @@ static NSString *gWalletBalanceReplacement = nil;
 }
 @end
 
+// 新增触摸轨迹设置界面
+@interface CSTouchTrailViewController : UITableViewController
+@end
+
 @interface DDAssistantSettingsViewController : UITableViewController {
     NSArray *_sections;
 }
 @end
 
+// 原有接口声明
 @interface TimeoutNumber : UIView
 - (void)updateNumber:(unsigned long long)arg1;
 - (void)defaultNumber:(unsigned long long)arg1;
@@ -190,12 +203,7 @@ static NSString *gWalletBalanceReplacement = nil;
 - (id)getService:(Class)cls;
 @end
 
-// 添加语音消息相关接口
-@interface VoiceMessageCellView : UIView
-@property(retain, nonatomic) UIButton *m_quickTransTipButton;
-@property(retain, nonatomic) UIView *m_unreadImageView;
-@end
-
+// 原有辅助函数
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -290,6 +298,7 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
+// 原有设置界面实现
 @implementation AvatarSettingsViewController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -720,6 +729,188 @@ static void loadFriendsAndWalletSettings() {
 }
 @end
 
+// ==================== 触摸轨迹设置界面 ====================
+@implementation CSTouchTrailViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    // 设置标题
+    self.title = @"触摸轨迹";
+    self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    
+    // 注册屏幕录制状态变化通知
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(screenCaptureDidChange)
+                                               name:UIScreenCapturedDidChangeNotification
+                                             object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+// 处理屏幕录制状态变化
+- (void)screenCaptureDidChange {
+    BOOL isRecording = UIScreen.mainScreen.isCaptured;
+    
+    // 如果设置了仅在录屏时显示，则需要更新触摸轨迹的显示状态
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL onlyWhenRecording = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
+    BOOL trailEnabled = [defaults boolForKey:kTouchTrailKey];
+    
+    if (onlyWhenRecording) {
+        // 更新实际显示状态
+        BOOL shouldDisplay = isRecording && trailEnabled;
+        [defaults setBool:shouldDisplay forKey:kTouchTrailDisplayStateKey];
+        [defaults synchronize];
+    } else if (trailEnabled) {
+        // 如果不是仅在录屏时显示，且触摸轨迹开启，则始终显示
+        [defaults setBool:YES forKey:kTouchTrailDisplayStateKey];
+        [defaults synchronize];
+    }
+}
+
+#pragma mark - Table view data source
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 2; // 基础设置 + 说明
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == 0) {
+        return 3; // 总开关 + 仅在录屏时显示 + 拖尾效果
+    } else {
+        return 1; // 说明
+    }
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"Cell"];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    }
+    
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    if (indexPath.section == 0) {
+        if (indexPath.row == 0) {
+            // 启用触摸轨迹开关
+            cell.textLabel.text = @"启用触摸轨迹";
+            UISwitch *switchView = [[UISwitch alloc] init];
+            switchView.on = [defaults boolForKey:kTouchTrailKey];
+            [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = switchView;
+        } else if (indexPath.row == 1) {
+            // 仅在录屏时显示开关
+            cell.textLabel.text = @"仅在录屏时显示";
+            UISwitch *switchView = [[UISwitch alloc] init];
+            switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
+            [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = switchView;
+        } else if (indexPath.row == 2) {
+            // 拖尾效果开关
+            cell.textLabel.text = @"拖尾效果";
+            UISwitch *switchView = [[UISwitch alloc] init];
+            switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
+            [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = switchView;
+        }
+    } else {
+        // 说明
+        cell.textLabel.text = @"功能说明";
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    }
+    
+    return cell;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 0) {
+        return @"基础设置";
+    } else {
+        return @"说明";
+    }
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 0) {
+        return @"触摸轨迹功能可以在触摸屏幕时显示轨迹效果，方便演示操作流程";
+    } else {
+        return @"开启拖尾效果可显示完整触摸路径";
+    }
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    if (indexPath.section == 1) {
+        // 显示功能说明
+        [self showInfoAlert];
+    }
+}
+
+#pragma mark - 开关事件处理
+
+- (void)trailEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kTouchTrailKey];
+    
+    // 根据"仅在录屏时显示"设置来决定实际显示状态
+    BOOL onlyWhenRecording = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
+    if (onlyWhenRecording) {
+        BOOL isRecording = UIScreen.mainScreen.isCaptured;
+        [defaults setBool:(sender.isOn && isRecording) forKey:kTouchTrailDisplayStateKey];
+    } else {
+        [defaults setBool:sender.isOn forKey:kTouchTrailDisplayStateKey];
+    }
+    
+    [defaults synchronize];
+}
+
+- (void)onlyWhenRecordingChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kTouchTrailOnlyWhenRecordingKey];
+    
+    // 如果开启了仅在录屏时显示，则检查当前是否在录屏来决定实际显示状态
+    BOOL trailEnabled = [defaults boolForKey:kTouchTrailKey];
+    if (sender.isOn) {
+        BOOL isRecording = UIScreen.mainScreen.isCaptured;
+        [defaults setBool:(trailEnabled && isRecording) forKey:kTouchTrailDisplayStateKey];
+    } else {
+        // 如果关闭了仅在录屏时显示，则实际显示状态跟随触摸轨迹开关
+        [defaults setBool:trailEnabled forKey:kTouchTrailDisplayStateKey];
+    }
+    
+    [defaults synchronize];
+}
+
+- (void)tailEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kTouchTrailTailEnabledKey];
+    [defaults synchronize];
+}
+
+// 显示功能说明弹窗
+- (void)showInfoAlert {
+    UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@"触摸轨迹说明"
+                                                                            message:@"触摸轨迹功能可以在您触摸屏幕时显示轨迹效果，方便演示操作流程或录制教程视频。\n\n轨迹大小固定为20点，颜色为红色。\n\n拖尾效果可显示完整触摸路径。"
+                                                                     preferredStyle:UIAlertControllerStyleAlert];
+    
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"了解了"
+                                                      style:UIAlertActionStyleDefault
+                                                    handler:nil];
+    [alertController addAction:okAction];
+    
+    [self presentViewController:alertController animated:YES completion:nil];
+}
+
+@end
+
+// ==================== 主设置界面 ====================
 @implementation DDAssistantSettingsViewController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -729,7 +920,8 @@ static void loadFriendsAndWalletSettings() {
     _sections = @[
         @[@"头像设置"],
         @[@"消息设置"],
-        @[@"娱乐功能"]
+        @[@"娱乐功能"],
+        @[@"触摸轨迹"]  // 新增触摸轨迹
     ];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -768,12 +960,136 @@ static void loadFriendsAndWalletSettings() {
         targetVC = [[MessageSettingsViewController alloc] init];
     } else if (indexPath.section == 2) {
         targetVC = [[GameSettingsViewController alloc] init];
+    } else if (indexPath.section == 3) {
+        targetVC = [[CSTouchTrailViewController alloc] init]; // 触摸轨迹
     }
     if (targetVC) {
         [self.navigationController pushViewController:targetVC animated:YES];
     }
 }
 @end
+
+// ==================== 触摸轨迹核心实现 ====================
+
+// 触摸轨迹视图类
+@interface WBTouchTrailView : UIView
+@property (nonatomic, strong) UIColor *trailColor;
+@property (nonatomic, assign) CGFloat trailSize;
+@property (nonatomic, assign) BOOL isMoving;
+- (void)updateWithPoint:(CGPoint)point;
+- (void)updateWithPoint:(CGPoint)point isMoving:(BOOL)isMoving;
+@end
+
+// 触摸轨迹拖尾点视图类
+@interface WBTouchTrailDotView : UIView
+@property (nonatomic, strong) UIColor *dotColor;
+@property (nonatomic, assign) CGFloat dotSize;
+- (instancetype)initWithPoint:(CGPoint)point 
+                     dotColor:(UIColor *)dotColor 
+                     dotSize:(CGFloat)dotSize 
+                    duration:(CGFloat)duration;
+@end
+
+@implementation WBTouchTrailDotView
+
+- (instancetype)initWithPoint:(CGPoint)point 
+                     dotColor:(UIColor *)dotColor 
+                     dotSize:(CGFloat)dotSize 
+                    duration:(CGFloat)duration {
+    CGRect frame = CGRectMake(point.x - dotSize/2, point.y - dotSize/2, dotSize, dotSize);
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.dotColor = dotColor;
+        self.dotSize = dotSize;
+        self.userInteractionEnabled = NO;
+        
+        // 使用默认圆形
+        self.backgroundColor = dotColor;
+        self.layer.cornerRadius = dotSize / 2;
+        
+        // 随时间淡出效果
+        self.alpha = 0.7;
+        [UIView animateWithDuration:duration animations:^{
+            self.alpha = 0;
+        } completion:^(BOOL finished) {
+            [self removeFromSuperview];
+        }];
+    }
+    return self;
+}
+
+@end
+
+@implementation WBTouchTrailView
+
+- (instancetype)init {
+    self = [super initWithFrame:CGRectZero];
+    if (self) {
+        self.backgroundColor = [UIColor clearColor];
+        self.userInteractionEnabled = NO;
+        self.trailColor = [UIColor redColor]; // 默认红色
+        self.trailSize = 20.0; // 默认20.0点大小
+        self.isMoving = NO;
+        
+        // 设置圆形
+        self.layer.masksToBounds = NO;
+    }
+    return self;
+}
+
+- (void)updateWithPoint:(CGPoint)point {
+    [self updateWithPoint:point isMoving:NO];
+}
+
+- (void)updateWithPoint:(CGPoint)point isMoving:(BOOL)isMoving {
+    self.isMoving = isMoving;
+    
+    // 取消所有正在进行的动画
+    [self.layer removeAllAnimations];
+    
+    // 设置视图位置
+    CGRect frame = CGRectMake(point.x - self.trailSize/2, point.y - self.trailSize/2, self.trailSize, self.trailSize);
+    self.frame = frame;
+    
+    // 确保是圆形
+    self.layer.cornerRadius = self.trailSize / 2;
+    
+    // 设置颜色
+    self.backgroundColor = self.trailColor;
+    
+    // 重置transform
+    self.transform = CGAffineTransformIdentity;
+    
+    if (!isMoving) {
+        // 触摸开始或结束时的动画效果
+        self.alpha = 1.0;
+        
+        // 添加发光效果
+        self.layer.shadowColor = self.trailColor.CGColor;
+        self.layer.shadowOffset = CGSizeZero;
+        self.layer.shadowOpacity = 0.5;
+        self.layer.shadowRadius = 5.0;
+        
+        // 点击动画
+        [UIView animateWithDuration:0.2 animations:^{
+            self.alpha = 0.8;
+            self.transform = CGAffineTransformMakeScale(0.9, 0.9);
+        }];
+    } else {
+        // 滑动时简单显示
+        self.alpha = 0.7;
+        
+        // 滑动时轻微发光效果
+        self.layer.shadowColor = self.trailColor.CGColor;
+        self.layer.shadowOffset = CGSizeZero;
+        self.layer.shadowOpacity = 0.3;
+        self.layer.shadowRadius = 3.0;
+    }
+}
+
+@end
+
+// ==================== Hook实现 ====================
 
 %hook NewSettingViewController
 - (void)reloadTableData {
@@ -934,11 +1250,6 @@ static void loadFriendsAndWalletSettings() {
         timeLabel.textAlignment = NSTextAlignmentCenter;
         timeLabel.clipsToBounds = YES;
         timeLabel.frame = CGRectMake(0, 0, 50, 20);
-        // 移除之前可能存在的标签（修复多次出现问题）
-        UIView *oldTimeView = getTimeView(self);
-        if (oldTimeView && [oldTimeView isDescendantOfView:self]) {
-            [oldTimeView removeFromSuperview];
-        }
         setTimeView(self, timeLabel);
     }
     return view;
@@ -947,9 +1258,7 @@ static void loadFriendsAndWalletSettings() {
     %orig;
     if (!isMessageTimeEnabled()) {
         UIView *timeView = getTimeView(self);
-        if (timeView) {
-            timeView.hidden = YES;
-        }
+        if (timeView) timeView.hidden = YES;
         return;
     }
     CommonMessageViewModel *viewModel = [self viewModel];
@@ -983,23 +1292,6 @@ static void loadFriendsAndWalletSettings() {
         CGFloat centerX = 0, centerY = 0;
         BOOL isSender = [viewModel isSender];
         BOOL showBelowAvatar = [[NSUserDefaults standardUserDefaults] boolForKey:kMessageTimeShowBelowAvatarKey];
-        
-        // 检查是否为语音消息并检查转文字按钮
-        BOOL isVoiceMessage = NO;
-        BOOL hasTranscribeButton = NO;
-        
-        // 判断是否是语音消息
-        if ([viewModel respondsToSelector:@selector(messageWrap)]) {
-            CMessageWrap *messageWrap = [viewModel messageWrap];
-            if (messageWrap && [messageWrap respondsToSelector:@selector(m_uiMessageType)]) {
-                unsigned int messageType = [messageWrap m_uiMessageType];
-                // 语音消息类型通常是34
-                if (messageType == 34) {
-                    isVoiceMessage = YES;
-                }
-            }
-        }
-        
         if (showBelowAvatar) {
             UIView *headImageView = nil;
             for (UIView *subview in self.subviews) {
@@ -1026,29 +1318,10 @@ static void loadFriendsAndWalletSettings() {
         } else {
             UIView *contentView = [self valueForKey:@"m_contentView"];
             if (contentView) {
-                // 检查是否是语音消息且有转文字按钮
-                if (isVoiceMessage) {
-                    // 尝试查找转文字按钮
-                    UIButton *transcribeButton = [self valueForKey:@"m_quickTransTipButton"];
-                    if (transcribeButton && !transcribeButton.hidden) {
-                        hasTranscribeButton = YES;
-                    }
-                }
-                
                 if (isSender) {
-                    if (hasTranscribeButton) {
-                        // 如果有转文字按钮，将时间标签放在更左边避免重叠
-                        centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2 - 40;
-                    } else {
-                        centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
-                    }
+                    centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
                 } else {
-                    if (hasTranscribeButton) {
-                        // 如果有转文字按钮，将时间标签放在更右边避免重叠
-                        centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2 + 40;
-                    } else {
-                        centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2;
-                    }
+                    centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2;
                 }
                 centerY = CGRectGetMaxY(contentView.frame) - timeLabel.bounds.size.height / 2;
             } else {
@@ -1069,10 +1342,7 @@ static void loadFriendsAndWalletSettings() {
         }
         [self bringSubviewToFront:timeLabel];
     } else {
-        UIView *timeView = getTimeView(self);
-        if (timeView) {
-            timeView.hidden = YES;
-        }
+        getTimeView(self).hidden = YES;
     }
 }
 %end
@@ -1093,16 +1363,15 @@ static void loadFriendsAndWalletSettings() {
                 CMessageWrap *messageWrap = [viewModel messageWrap];
                 if (messageWrap && [messageWrap respondsToSelector:@selector(m_uiCreateTime)]) {
                     unsigned int createTime = [messageWrap m_uiCreateTime];
-                    // 检查是否已经设置过时间（修复多次出现问题）
                     if (getMessageTime(viewModel) == nil) {
                         NSString *timeStr = getTimeStringFromTimestamp(createTime);
                         setMessageTime(viewModel, timeStr);
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
-                                [cellView updateNodeStatus];
-                            }
-                        });
                     }
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
+                            [cellView updateNodeStatus];
+                        }
+                    });
                 }
             }
         });
@@ -1383,6 +1652,141 @@ static void loadFriendsAndWalletSettings() {
 }
 %end
 
+// ==================== 触摸轨迹Hook实现 ====================
+%hook UIApplication
+
+static NSMutableDictionary *touchViews = nil;
+static NSMutableDictionary *touchTailViews = nil;
+static NSMutableDictionary *touchLastPointTimes = nil;
+static BOOL isTrailEnabled = NO;
+
++ (void)load {
+    %orig;
+    touchViews = [NSMutableDictionary dictionary];
+    touchTailViews = [NSMutableDictionary dictionary];
+    touchLastPointTimes = [NSMutableDictionary dictionary];
+    
+    // 从UserDefaults读取触摸轨迹设置
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    isTrailEnabled = [defaults boolForKey:kTouchTrailDisplayStateKey];
+}
+
+- (void)sendEvent:(UIEvent *)event {
+    %orig;
+    
+    // 检查是否启用触摸轨迹
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL shouldShowTrail = [defaults boolForKey:kTouchTrailDisplayStateKey];
+    
+    // 如果设置变更，更新状态
+    if (shouldShowTrail != isTrailEnabled) {
+        isTrailEnabled = shouldShowTrail;
+        
+        // 如果关闭了触摸轨迹，移除所有轨迹视图
+        if (!isTrailEnabled) {
+            [touchViews.allValues makeObjectsPerformSelector:@selector(removeFromSuperview)];
+            [touchViews removeAllObjects];
+            
+            // 清理所有拖尾视图
+            for (NSMutableArray *dotViews in touchTailViews.allValues) {
+                [dotViews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+            }
+            [touchTailViews removeAllObjects];
+            [touchLastPointTimes removeAllObjects];
+        }
+    }
+    
+    // 如果未启用触摸轨迹，直接返回
+    if (!isTrailEnabled) {
+        return;
+    }
+    
+    // 获取设置
+    BOOL showTail = [defaults boolForKey:kTouchTrailTailEnabledKey];
+    
+    // 处理所有触摸事件
+    NSSet *allTouches = event.allTouches;
+    for (UITouch *touch in allTouches) {
+        CGPoint location = [touch locationInView:nil];
+        NSValue *key = [NSValue valueWithPointer:(__bridge const void *)(touch)];
+        WBTouchTrailView *trailView = touchViews[key];
+        
+        switch (touch.phase) {
+            case UITouchPhaseBegan: {
+                // 触摸开始，创建新的轨迹视图
+                if (!trailView) {
+                    trailView = [[WBTouchTrailView alloc] init];
+                    trailView.trailSize = 20.0; // 固定大小20
+                    trailView.trailColor = [UIColor redColor]; // 固定红色
+                    
+                    [touch.window addSubview:trailView];
+                    touchViews[key] = trailView;
+                }
+                [trailView updateWithPoint:location isMoving:NO];
+                
+                // 如果启用了拖尾效果，初始化该触摸点的拖尾数组
+                if (showTail) {
+                    touchTailViews[key] = [NSMutableArray array];
+                    touchLastPointTimes[key] = @(CACurrentMediaTime());
+                }
+                break;
+            }
+            case UITouchPhaseMoved: {
+                // 触摸移动，更新轨迹视图位置
+                [trailView updateWithPoint:location isMoving:YES];
+                
+                // 如果启用了拖尾效果，添加拖尾点
+                if (showTail) {
+                    NSMutableArray *tailDots = touchTailViews[key];
+                    if (tailDots) {
+                        // 根据固定密度（中等）决定是否创建新的拖尾点
+                        NSTimeInterval now = CACurrentMediaTime();
+                        NSTimeInterval lastTime = [touchLastPointTimes[key] doubleValue];
+                        CGFloat timeDiff = now - lastTime;
+                        
+                        // 固定时间间隔0.05秒（中等密度）
+                        if (timeDiff >= 0.05) {
+                            // 创建并添加拖尾点
+                            WBTouchTrailDotView *dotView = [[WBTouchTrailDotView alloc] initWithPoint:location 
+                                                                                            dotColor:[UIColor redColor] 
+                                                                                            dotSize:14.0 // 主点的70%
+                                                                                           duration:0.8]; // 固定0.8秒
+                            
+                            [touch.window addSubview:dotView];
+                            [tailDots addObject:dotView];
+                            
+                            // 更新最后一次记录时间
+                            touchLastPointTimes[key] = @(now);
+                        }
+                    }
+                }
+                break;
+            }
+            case UITouchPhaseEnded:
+            case UITouchPhaseCancelled: {
+                // 触摸结束，淡出并移除轨迹视图
+                if (trailView) {
+                    [UIView animateWithDuration:0.3 animations:^{
+                        trailView.alpha = 0;
+                    } completion:^(BOOL finished) {
+                        [trailView removeFromSuperview];
+                        [touchViews removeObjectForKey:key];
+                    }];
+                }
+                
+                // 移除拖尾数组和时间记录
+                [touchTailViews removeObjectForKey:key];
+                [touchLastPointTimes removeObjectForKey:key];
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
+%end
+
 %ctor {
     @autoreleasepool {
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -1397,8 +1801,14 @@ static void loadFriendsAndWalletSettings() {
             kMessageTimeBoldFontKey: @YES,
             kMessageTimeShowBelowAvatarKey: @YES,
             kFriendsCountEnabledKey: @NO,
-            kWalletBalanceEnabledKey: @NO
+            kWalletBalanceEnabledKey: @NO,
+            // 触摸轨迹默认设置
+            kTouchTrailKey: @NO,
+            kTouchTrailOnlyWhenRecordingKey: @NO,
+            kTouchTrailDisplayStateKey: @NO,
+            kTouchTrailTailEnabledKey: @NO
         };
+        
         for (NSString *key in defaultValues) {
             if (![defaults objectForKey:key]) {
                 id value = defaultValues[key];
