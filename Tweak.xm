@@ -537,7 +537,7 @@ static void loadFriendsAndWalletSettings() {
     self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     
-    _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"钱包余额自定义"];
+    _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"好友数量输入框", @"钱包余额自定义", @"钱包余额输入框"];
     
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
@@ -548,32 +548,52 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return _settings.count;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
+    BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    
+    int rowCount = 1; // 骰子猜拳控制
+    
+    // 好友数量自定义（总是显示开关）
+    rowCount += 1; // 开关单元格
+    
+    // 好友数量输入框（根据开关状态显示/隐藏）
+    if (friendsCountEnabled) {
+        rowCount += 1;
+    }
+    
+    // 钱包余额自定义（总是显示开关）
+    rowCount += 1; // 开关单元格
+    
+    // 钱包余额输入框（根据开关状态显示/隐藏）
+    if (walletBalanceEnabled) {
+        rowCount += 1;
+    }
+    
+    return rowCount;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row == 1) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        BOOL enabled = [defaults boolForKey:kFriendsCountEnabledKey];
-        return enabled ? 80.0 : 44.0;
-    } else if (indexPath.row == 2) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        BOOL enabled = [defaults boolForKey:kWalletBalanceEnabledKey];
-        return enabled ? 80.0 : 44.0;
-    }
     return 44.0;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row == 0) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
+    BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    
+    // 计算实际的行索引
+    int rowIndex = indexPath.row;
+    
+    // 第0行：骰子猜拳控制
+    if (rowIndex == 0) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"GameCell"];
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"GameCell"];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
         }
         
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        NSString *cellTitle = _settings[indexPath.row];
+        NSString *cellTitle = _settings[0];
         cell.textLabel.text = cellTitle;
         
         UISwitch *switchView = [[UISwitch alloc] init];
@@ -583,48 +603,56 @@ static void loadFriendsAndWalletSettings() {
         cell.accessoryView = switchView;
         
         return cell;
-    } 
-    else if (indexPath.row == 1) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FriendsCountCell"];
+    }
+    
+    // 调整行索引（去掉骰子猜拳控制行）
+    rowIndex -= 1;
+    
+    // 好友数量自定义开关（第1行）
+    if (rowIndex == 0) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FriendsCountSwitchCell"];
         if (!cell) {
-            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"FriendsCountCell"];
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"FriendsCountSwitchCell"];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        }
+        
+        cell.textLabel.text = @"好友数量自定义";
+        
+        UISwitch *switchView = [[UISwitch alloc] init];
+        switchView.on = friendsCountEnabled;
+        [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        
+        cell.accessoryView = switchView;
+        
+        return cell;
+    }
+    
+    // 调整行索引（去掉好友数量自定义开关行）
+    rowIndex -= 1;
+    
+    // 好友数量输入框
+    if (friendsCountEnabled && rowIndex == 0) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FriendsCountInputCell"];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"FriendsCountInputCell"];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             cell.backgroundColor = [UIColor clearColor];
             
-            UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, 200, 20)];
-            titleLabel.text = @"好友数量自定义";
-            titleLabel.font = [UIFont systemFontOfSize:14];
-            titleLabel.textColor = [UIColor labelColor];
-            [cell.contentView addSubview:titleLabel];
-            
-            UISwitch *switchView = [[UISwitch alloc] initWithFrame:CGRectMake(self.view.frame.size.width - 70, 10, 50, 30)];
-            switchView.tag = 1001;
-            [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-            [cell.contentView addSubview:switchView];
-            
-            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 140, 30)];
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 7, self.view.frame.size.width - 140, 30)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入好友数量（如：999）";
             textField.keyboardType = UIKeyboardTypeNumberPad;
-            textField.tag = 1002;
             textField.delegate = self;
             textField.clearButtonMode = UITextFieldViewModeWhileEditing;
             [cell.contentView addSubview:textField];
             _friendsCountField = textField;
             
             UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
-            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 40, 80, 30);
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 7, 80, 30);
             [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
-            confirmButton.tag = 1003;
             [confirmButton addTarget:self action:@selector(friendsCountConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
             [cell.contentView addSubview:confirmButton];
             _friendsCountConfirmButton = confirmButton;
-            
-            NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-            BOOL enabled = [defaults boolForKey:kFriendsCountEnabledKey];
-            switchView.on = enabled;
-            textField.hidden = !enabled;
-            confirmButton.hidden = !enabled;
             
             NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey];
             if (friendsCountValue && [friendsCountValue length] > 0) {
@@ -634,47 +662,57 @@ static void loadFriendsAndWalletSettings() {
         
         return cell;
     }
-    else if (indexPath.row == 2) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"WalletBalanceCell"];
+    
+    // 调整行索引（如果显示了好友数量输入框）
+    if (friendsCountEnabled) {
+        rowIndex -= 1;
+    }
+    
+    // 钱包余额自定义开关
+    if (rowIndex == 0) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"WalletBalanceSwitchCell"];
         if (!cell) {
-            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"WalletBalanceCell"];
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"WalletBalanceSwitchCell"];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        }
+        
+        cell.textLabel.text = @"钱包余额自定义";
+        
+        UISwitch *switchView = [[UISwitch alloc] init];
+        switchView.on = walletBalanceEnabled;
+        [switchView addTarget:self action:@selector(walletBalanceEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        
+        cell.accessoryView = switchView;
+        
+        return cell;
+    }
+    
+    // 调整行索引（去掉钱包余额自定义开关行）
+    rowIndex -= 1;
+    
+    // 钱包余额输入框
+    if (walletBalanceEnabled && rowIndex == 0) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"WalletBalanceInputCell"];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"WalletBalanceInputCell"];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             cell.backgroundColor = [UIColor clearColor];
             
-            UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, 200, 20)];
-            titleLabel.text = @"钱包余额自定义";
-            titleLabel.font = [UIFont systemFontOfSize:14];
-            titleLabel.textColor = [UIColor labelColor];
-            [cell.contentView addSubview:titleLabel];
-            
-            UISwitch *switchView = [[UISwitch alloc] initWithFrame:CGRectMake(self.view.frame.size.width - 70, 10, 50, 30)];
-            switchView.tag = 2001;
-            [switchView addTarget:self action:@selector(walletBalanceEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-            [cell.contentView addSubview:switchView];
-            
-            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 140, 30)];
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 7, self.view.frame.size.width - 140, 30)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入余额（如：9999.99）";
             textField.keyboardType = UIKeyboardTypeDecimalPad;
-            textField.tag = 2002;
             textField.delegate = self;
             textField.clearButtonMode = UITextFieldViewModeWhileEditing;
             [cell.contentView addSubview:textField];
             _walletBalanceField = textField;
             
             UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
-            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 40, 80, 30);
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 7, 80, 30);
             [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
-            confirmButton.tag = 2003;
             [confirmButton addTarget:self action:@selector(walletBalanceConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
             [cell.contentView addSubview:confirmButton];
             _walletBalanceConfirmButton = confirmButton;
-            
-            NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-            BOOL enabled = [defaults boolForKey:kWalletBalanceEnabledKey];
-            switchView.on = enabled;
-            textField.hidden = !enabled;
-            confirmButton.hidden = !enabled;
             
             NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
             if (walletBalanceValue && [walletBalanceValue length] > 0) {
@@ -695,11 +733,9 @@ static void loadFriendsAndWalletSettings() {
 - (void)friendsCountEnabledChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kFriendsCountEnabledKey];
+    [defaults synchronize];
     
-    [self.tableView beginUpdates];
-    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:1 inSection:0];
-    [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
-    [self.tableView endUpdates];
+    [self.tableView reloadData];
     
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
@@ -711,11 +747,9 @@ static void loadFriendsAndWalletSettings() {
 - (void)walletBalanceEnabledChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kWalletBalanceEnabledKey];
+    [defaults synchronize];
     
-    [self.tableView beginUpdates];
-    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:2 inSection:0];
-    [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
-    [self.tableView endUpdates];
+    [self.tableView reloadData];
     
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
@@ -784,10 +818,10 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (void)textFieldDidEndEditing:(UITextField *)textField {
-    if (textField.tag == 1002) {
+    if (textField == _friendsCountField) {
         [self saveFriendsCountValue];
     } 
-    else if (textField.tag == 2002) {
+    else if (textField == _walletBalanceField) {
         [self saveWalletBalanceValue];
     }
 }
