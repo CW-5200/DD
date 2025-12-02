@@ -325,7 +325,7 @@ static void loadFriendsAndWalletSettings() {
     self.title = @"消息设置";
     self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    _settings = @[@"消息防撤提示", @"隐藏自带时间", @"头像显示时间"];
+    _settings = @[@"消息防撤提示", @"隐藏自带时间", @"头像下方时间"];
 }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return _settings.count;
@@ -656,13 +656,13 @@ static void loadFriendsAndWalletSettings() {
         [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
     } else if (indexPath.row == 1) {
-        cell.textLabel.text = @"仅在录屏显示";
+        cell.textLabel.text = @"仅在录屏时显示";
         UISwitch *switchView = [[UISwitch alloc] init];
         switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
         [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
     } else if (indexPath.row == 2) {
-        cell.textLabel.text = @"拖尾效果显示";
+        cell.textLabel.text = @"拖尾效果";
         UISwitch *switchView = [[UISwitch alloc] init];
         switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
         [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
@@ -1398,7 +1398,6 @@ static void loadFriendsAndWalletSettings() {
 
 + (void)load {
     %orig;
-    
     touchViews = [NSMutableDictionary dictionary];
     touchTailViews = [NSMutableDictionary dictionary];
     touchLastPointTimes = [NSMutableDictionary dictionary];
