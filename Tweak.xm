@@ -1019,7 +1019,6 @@ static void loadFriendsAndWalletSettings() {
             // 头像下方显示模式 - 使用MessageTimeHooks.xm中的定位方法
             UIView *headImageView = nil;
             UIView *contentView = [self valueForKey:@"m_contentView"];
-            UIView *bgView = nil;
             
             // 尝试找到头像视图
             for (UIView *subview in self.subviews) {
@@ -1130,26 +1129,6 @@ static void loadFriendsAndWalletSettings() {
                         }
                     });
                 }
-            }
-            // 如果没有messageWrap但有createTime属性
-            else if ([viewModel respondsToSelector:@selector(createTime)] && 
-                    getMessageTime(viewModel) == nil) {
-                
-                unsigned int createTime = [viewModel createTime];
-                NSString *timeStr = nil;
-                if (isMessageTimeAboveBubbleEnabled()) {
-                    timeStr = getSingleLineTimeString(createTime);
-                } else if (isMessageTimeBelowAvatarEnabled()) {
-                    timeStr = getDoubleLineTimeString(createTime);
-                }
-                setMessageTime(viewModel, timeStr);
-                
-                // 在主线程更新视图
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
-                        [cellView updateNodeStatus];
-                    }
-                });
             }
         });
     }
