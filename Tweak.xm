@@ -524,6 +524,8 @@ static void loadFriendsAndWalletSettings() {
     NSArray *_settings;
     UITextField *_friendsCountField;
     UITextField *_walletBalanceField;
+    UIButton *_friendsCountConfirmButton;
+    UIButton *_walletBalanceConfirmButton;
 }
 @end
 
@@ -550,8 +552,14 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row == 1 || indexPath.row == 2) {
-        return 80.0;
+    if (indexPath.row == 1) {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        BOOL enabled = [defaults boolForKey:kFriendsCountEnabledKey];
+        return enabled ? 80.0 : 44.0;
+    } else if (indexPath.row == 2) {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        BOOL enabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+        return enabled ? 80.0 : 44.0;
     }
     return 44.0;
 }
@@ -594,7 +602,7 @@ static void loadFriendsAndWalletSettings() {
             [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
             [cell.contentView addSubview:switchView];
             
-            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 100, 30)];
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 140, 30)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入好友数量（如：999）";
             textField.keyboardType = UIKeyboardTypeNumberPad;
@@ -604,11 +612,19 @@ static void loadFriendsAndWalletSettings() {
             [cell.contentView addSubview:textField];
             _friendsCountField = textField;
             
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 40, 80, 30);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            confirmButton.tag = 1003;
+            [confirmButton addTarget:self action:@selector(friendsCountConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _friendsCountConfirmButton = confirmButton;
+            
             NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
             BOOL enabled = [defaults boolForKey:kFriendsCountEnabledKey];
             switchView.on = enabled;
-            textField.enabled = enabled;
-            textField.textColor = enabled ? [UIColor labelColor] : [UIColor lightGrayColor];
+            textField.hidden = !enabled;
+            confirmButton.hidden = !enabled;
             
             NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey];
             if (friendsCountValue && [friendsCountValue length] > 0) {
@@ -636,7 +652,7 @@ static void loadFriendsAndWalletSettings() {
             [switchView addTarget:self action:@selector(walletBalanceEnabledChanged:) forControlEvents:UIControlEventValueChanged];
             [cell.contentView addSubview:switchView];
             
-            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 100, 30)];
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 140, 30)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入余额（如：9999.99）";
             textField.keyboardType = UIKeyboardTypeDecimalPad;
@@ -646,11 +662,19 @@ static void loadFriendsAndWalletSettings() {
             [cell.contentView addSubview:textField];
             _walletBalanceField = textField;
             
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 40, 80, 30);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            confirmButton.tag = 2003;
+            [confirmButton addTarget:self action:@selector(walletBalanceConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _walletBalanceConfirmButton = confirmButton;
+            
             NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
             BOOL enabled = [defaults boolForKey:kWalletBalanceEnabledKey];
             switchView.on = enabled;
-            textField.enabled = enabled;
-            textField.textColor = enabled ? [UIColor labelColor] : [UIColor lightGrayColor];
+            textField.hidden = !enabled;
+            confirmButton.hidden = !enabled;
             
             NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
             if (walletBalanceValue && [walletBalanceValue length] > 0) {
@@ -672,8 +696,10 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kFriendsCountEnabledKey];
     
+    [self.tableView beginUpdates];
     NSIndexPath *indexPath = [NSIndexPath indexPathForRow:1 inSection:0];
-    [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
+    [self.tableView endUpdates];
     
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
@@ -686,8 +712,64 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kWalletBalanceEnabledKey];
     
+    [self.tableView beginUpdates];
     NSIndexPath *indexPath = [NSIndexPath indexPathForRow:2 inSection:0];
-    [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
+    [self.tableView endUpdates];
+    
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)friendsCountConfirmTapped:(UIButton *)sender {
+    if (_friendsCountField) {
+        [_friendsCountField resignFirstResponder];
+        [self saveFriendsCountValue];
+    }
+}
+
+- (void)walletBalanceConfirmTapped:(UIButton *)sender {
+    if (_walletBalanceField) {
+        [_walletBalanceField resignFirstResponder];
+        [self saveWalletBalanceValue];
+    }
+}
+
+- (void)saveFriendsCountValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _friendsCountField.text;
+    if (text && [text length] > 0) {
+        [defaults setObject:text forKey:kFriendsCountValueKey];
+        [defaults setObject:text forKey:kWCFriendsCountReplacementKey];
+    } else {
+        [defaults removeObjectForKey:kFriendsCountValueKey];
+        [defaults removeObjectForKey:kWCFriendsCountReplacementKey];
+    }
+    
+    [defaults synchronize];
+    
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)saveWalletBalanceValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _walletBalanceField.text;
+    if (text && [text length] > 0) {
+        [defaults setObject:text forKey:kWalletBalanceValueKey];
+        [defaults setObject:text forKey:kWCWalletBalanceReplacementKey];
+    } else {
+        [defaults removeObjectForKey:kWalletBalanceValueKey];
+        [defaults removeObjectForKey:kWCWalletBalanceReplacementKey];
+    }
+    
+    [defaults synchronize];
     
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
@@ -702,36 +784,12 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (void)textFieldDidEndEditing:(UITextField *)textField {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    
     if (textField.tag == 1002) {
-        NSString *text = textField.text;
-        if (text && [text length] > 0) {
-            [defaults setObject:text forKey:kFriendsCountValueKey];
-            [defaults setObject:text forKey:kWCFriendsCountReplacementKey];
-        } else {
-            [defaults removeObjectForKey:kFriendsCountValueKey];
-            [defaults removeObjectForKey:kWCFriendsCountReplacementKey];
-        }
+        [self saveFriendsCountValue];
     } 
     else if (textField.tag == 2002) {
-        NSString *text = textField.text;
-        if (text && [text length] > 0) {
-            [defaults setObject:text forKey:kWalletBalanceValueKey];
-            [defaults setObject:text forKey:kWCWalletBalanceReplacementKey];
-        } else {
-            [defaults removeObjectForKey:kWalletBalanceValueKey];
-            [defaults removeObjectForKey:kWCWalletBalanceReplacementKey];
-        }
+        [self saveWalletBalanceValue];
     }
-    
-    [defaults synchronize];
-    
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                        CFSTR("com.dd.assistant.settings_changed"),
-                                        NULL,
-                                        NULL,
-                                        YES);
 }
 
 - (void)keyboardWillShow:(NSNotification *)notification {
