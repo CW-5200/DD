@@ -1,5 +1,4 @@
-[file name]: Tweak.xm
-[file content begin]
+
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
@@ -23,7 +22,6 @@ static NSString * const kTouchTrailOnlyWhenRecordingKey = @"com.wechat.tweak.tou
 static NSString * const kTouchTrailDisplayStateKey = @"com.wechat.tweak.touch.trail.display.state";
 static NSString * const kTouchTrailTailEnabledKey = @"com.wechat.tweak.touch.trail.tail.enabled";
 
-// 添加触摸轨迹相关的全局变量声明
 static NSMutableDictionary *touchViews = nil;
 static NSMutableDictionary *touchTailViews = nil;
 static NSMutableDictionary *touchLastPointTimes = nil;
@@ -60,7 +58,6 @@ static BOOL g_hasPluginsMgr = NO;
 }
 @end
 
-// 添加触摸轨迹视图类声明
 @interface WBTouchTrailView : UIView
 @property (nonatomic, strong) UIColor *trailColor;
 @property (nonatomic, assign) CGFloat trailSize;
@@ -328,7 +325,7 @@ static void loadFriendsAndWalletSettings() {
     self.title = @"消息设置";
     self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    _settings = @[@"消息防撤提示", @"隐藏自带时间", @"头像下方时间"];
+    _settings = @[@"消息防撤提示", @"隐藏自带时间", @"头像显示时间"];
 }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return _settings.count;
@@ -766,7 +763,6 @@ static void loadFriendsAndWalletSettings() {
 }
 @end
 
-// ==================== 触摸轨迹视图实现 ====================
 @implementation WBTouchTrailDotView
 
 - (instancetype)initWithPoint:(CGPoint)point 
@@ -852,7 +848,6 @@ static void loadFriendsAndWalletSettings() {
 }
 
 @end
-// ==================== 触摸轨迹视图实现结束 ====================
 
 %hook NewSettingViewController
 - (void)reloadTableData {
@@ -1015,7 +1010,6 @@ static void loadFriendsAndWalletSettings() {
         timeLabel.hidden = NO;
         timeLabel.text = messageTime;
         
-        // 头像下方时间显示 - 粗体7号字，双行格式
         timeLabel.font = [UIFont boldSystemFontOfSize:7.0];
         timeLabel.textColor = [UIColor colorWithWhite:0.5 alpha:0.8];
         timeLabel.numberOfLines = 2;
@@ -1033,11 +1027,9 @@ static void loadFriendsAndWalletSettings() {
         CGFloat centerX = 0, centerY = 0;
         BOOL isSender = [viewModel isSender];
         
-        // 头像下方显示模式 - 使用MessageTimeHooks.xm中的定位方法
         UIView *headImageView = nil;
         UIView *contentView = [self valueForKey:@"m_contentView"];
         
-        // 尝试找到头像视图
         for (UIView *subview in self.subviews) {
             if ([NSStringFromClass([subview class]) isEqualToString:@"MMHeadImageView"]) {
                 headImageView = subview;
@@ -1046,12 +1038,10 @@ static void loadFriendsAndWalletSettings() {
         }
         
         if (headImageView) {
-            // 设置位置在头像下方居中
             centerX = CGRectGetMidX(headImageView.frame);
             CGFloat topY = CGRectGetMaxY(headImageView.frame);
             centerY = topY + (timeLabel.bounds.size.height / 2) - 7.0;
         } else {
-            // 如果找不到头像，使用默认位置
             if (contentView) {
                 if (isSender) {
                     centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
@@ -1098,16 +1088,13 @@ static void loadFriendsAndWalletSettings() {
                 if (messageWrap && [messageWrap respondsToSelector:@selector(m_uiCreateTime)]) {
                     unsigned int createTime = messageWrap.m_uiCreateTime;
                     
-                    // 检查是否是长文本消息的子视图模型
                     if ([viewModel isKindOfClass:objc_getClass("TextMessageSubViewModel")]) {
                         TextMessageSubViewModel *textSubModel = (TextMessageSubViewModel *)viewModel;
                         id parentModel = [textSubModel valueForKey:@"parentModel"];
                         
-                        // 获取子视图模型数组
                         NSArray *subViewModels = [parentModel valueForKey:@"subViewModels"];
                         
                         if (subViewModels.count > 0) {
-                            // 头像下方显示模式：只在第一个子消息上显示
                             if ([subViewModels indexOfObject:textSubModel] == 0) {
                                 NSString *timeStr = getDoubleLineTimeString(createTime);
                                 setMessageTime(viewModel, timeStr);
@@ -1116,13 +1103,11 @@ static void loadFriendsAndWalletSettings() {
                             }
                         }
                     } 
-                    // 处理其他类型的消息
                     else if (getMessageTime(viewModel) == nil) {
                         NSString *timeStr = getDoubleLineTimeString(createTime);
                         setMessageTime(viewModel, timeStr);
                     }
                     
-                    // 在主线程更新视图
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
                             [cellView updateNodeStatus];
@@ -1409,18 +1394,15 @@ static void loadFriendsAndWalletSettings() {
 }
 %end
 
-// ==================== 触摸轨迹核心实现 ====================
 %hook UIApplication
 
 + (void)load {
     %orig;
     
-    // 初始化触摸轨迹相关的变量
     touchViews = [NSMutableDictionary dictionary];
     touchTailViews = [NSMutableDictionary dictionary];
     touchLastPointTimes = [NSMutableDictionary dictionary];
     
-    // 读取当前设置
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     isTrailEnabled = [defaults boolForKey:kTouchTrailDisplayStateKey];
 }
@@ -1428,15 +1410,12 @@ static void loadFriendsAndWalletSettings() {
 - (void)sendEvent:(UIEvent *)event {
     %orig;
     
-    // 检查当前是否应该显示触摸轨迹
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL shouldShowTrail = [defaults boolForKey:kTouchTrailDisplayStateKey];
     
-    // 如果设置发生变化，更新状态
     if (shouldShowTrail != isTrailEnabled) {
         isTrailEnabled = shouldShowTrail;
         
-        // 如果禁用，清除所有现有视图
         if (!isTrailEnabled) {
             [touchViews.allValues makeObjectsPerformSelector:@selector(removeFromSuperview)];
             [touchViews removeAllObjects];
@@ -1449,15 +1428,12 @@ static void loadFriendsAndWalletSettings() {
         }
     }
     
-    // 如果未启用触摸轨迹，直接返回
     if (!isTrailEnabled) {
         return;
     }
     
-    // 检查是否启用拖尾效果
     BOOL showTail = [defaults boolForKey:kTouchTrailTailEnabledKey];
     
-    // 处理所有触摸事件
     NSSet *allTouches = event.allTouches;
     for (UITouch *touch in allTouches) {
         CGPoint location = [touch locationInView:nil];
@@ -1466,19 +1442,16 @@ static void loadFriendsAndWalletSettings() {
         
         switch (touch.phase) {
             case UITouchPhaseBegan: {
-                // 触摸开始，创建新的轨迹视图
                 if (!trailView) {
                     trailView = [[WBTouchTrailView alloc] init];
                     trailView.trailSize = 25.0;
                     trailView.trailColor = [UIColor redColor];
                     
-                    // 添加到窗口
                     [touch.window addSubview:trailView];
                     touchViews[key] = trailView;
                 }
                 [trailView updateWithPoint:location isMoving:NO];
                 
-                // 如果启用拖尾效果，初始化拖尾视图数组
                 if (showTail) {
                     touchTailViews[key] = [NSMutableArray array];
                     touchLastPointTimes[key] = @(CACurrentMediaTime());
@@ -1486,10 +1459,8 @@ static void loadFriendsAndWalletSettings() {
                 break;
             }
             case UITouchPhaseMoved: {
-                // 触摸移动，更新轨迹视图位置
                 [trailView updateWithPoint:location isMoving:YES];
                 
-                // 如果启用拖尾效果，添加拖尾点
                 if (showTail) {
                     NSMutableArray *tailDots = touchTailViews[key];
                     if (tailDots) {
@@ -1497,7 +1468,6 @@ static void loadFriendsAndWalletSettings() {
                         NSTimeInterval lastTime = [touchLastPointTimes[key] doubleValue];
                         CGFloat timeDiff = now - lastTime;
                         
-                        // 控制拖尾点的添加频率
                         if (timeDiff >= 0.05) {
                             WBTouchTrailDotView *dotView = [[WBTouchTrailDotView alloc] initWithPoint:location 
                                                                                             dotColor:[UIColor redColor] 
@@ -1515,7 +1485,6 @@ static void loadFriendsAndWalletSettings() {
             }
             case UITouchPhaseEnded:
             case UITouchPhaseCancelled: {
-                // 触摸结束，移除轨迹视图
                 if (trailView) {
                     [UIView animateWithDuration:0.3 animations:^{
                         trailView.alpha = 0;
@@ -1525,7 +1494,6 @@ static void loadFriendsAndWalletSettings() {
                     }];
                 }
                 
-                // 清理拖尾相关数据
                 [touchTailViews removeObjectForKey:key];
                 [touchLastPointTimes removeObjectForKey:key];
                 break;
@@ -1537,7 +1505,6 @@ static void loadFriendsAndWalletSettings() {
 }
 
 %end
-// ==================== 触摸轨迹核心实现结束 ====================
 
 %ctor {
     @autoreleasepool {
@@ -1585,4 +1552,3 @@ static void loadFriendsAndWalletSettings() {
         }
     }
 }
-[file content end]
