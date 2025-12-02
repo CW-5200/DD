@@ -8,7 +8,6 @@
 static NSString * const kHideOtherAvatarKey = @"com.dd.assistant.hide.other.avatar";
 static NSString * const kHideSelfAvatarKey = @"com.dd.assistant.hide.self.avatar";
 static NSString * const kPreventRevokeEnabledKey = @"com.dd.assistant.prevent.revoke.enabled";
-static NSString * const kHideChatTimeLabelKey = @"com.dd.assistant.hide.chat.time.label";
 static NSString * const kMessageTimeEnabledKey = @"com.dd.assistant.message.time.enabled";
 static NSString * const kGameCheatEnabledKey = @"com.dd.assistant.game.cheat.enabled";
 static NSString * const kMessageTimeFontSizeKey = @"com.dd.assistant.messageTime.fontSize";
@@ -217,7 +216,7 @@ static UIView *getTimeView(id self) {
 static NSString* getTimeStringFromTimestamp(unsigned int timestamp) {
     NSDate *date = [NSDate dateWithTimeIntervalSince1970:timestamp];
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    [formatter setDateFormat:@"yyyy-MM-dd\nHH:mm:ss"];
+    [formatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
     return [formatter stringFromDate:date];
 }
 
@@ -239,6 +238,10 @@ static BOOL isFriendsCountEnabled() {
 
 static BOOL isWalletBalanceEnabled() {
     return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];
+}
+
+static BOOL isShowTimeBelowAvatar() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kMessageTimeShowBelowAvatarKey];
 }
 
 static NSString* parseParam(NSString *content, NSString *begin, NSString *end) {
@@ -337,7 +340,7 @@ static void loadFriendsAndWalletSettings() {
     self.title = @"消息设置";
     self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    _mainSettings = @[@"消息防撤提示", @"隐藏自带时间", @"显示精确时间"];
+    _mainSettings = @[@"消息防撤提示", @"显示精确时间"];
     _timeSettings = @[@"头像下方", @"使用粗体", @"字体大小"];
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     _messageTimeEnabled = [defaults boolForKey:kMessageTimeEnabledKey];
@@ -372,9 +375,6 @@ static void loadFriendsAndWalletSettings() {
         if (indexPath.row == 0) {
             switchView.on = [defaults boolForKey:kPreventRevokeEnabledKey];
             [switchView addTarget:self action:@selector(preventRevokeChanged:) forControlEvents:UIControlEventValueChanged];
-        } else if (indexPath.row == 1) {
-            switchView.on = [defaults boolForKey:kHideChatTimeLabelKey];
-            [switchView addTarget:self action:@selector(hideChatTimeLabelChanged:) forControlEvents:UIControlEventValueChanged];
         } else {
             switchView.on = [defaults boolForKey:kMessageTimeEnabledKey];
             [switchView addTarget:self action:@selector(messageTimeEnabledChanged:) forControlEvents:UIControlEventValueChanged];
@@ -418,7 +418,7 @@ static void loadFriendsAndWalletSettings() {
                 [slider addTarget:self action:@selector(fontSizeChanged:) forControlEvents:UIControlEventValueChanged];
                 [cell.contentView addSubview:slider];
                 UILabel *previewLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 80, cell.contentView.frame.size.width - 40, 30)];
-                previewLabel.text = @"预览文本 12:34:56";
+                previewLabel.text = @"2024-01-01 12:34:56";
                 previewLabel.textAlignment = NSTextAlignmentCenter;
                 previewLabel.textColor = [UIColor colorWithWhite:0.5 alpha:0.8];
                 previewLabel.tag = 102;
@@ -454,9 +454,6 @@ static void loadFriendsAndWalletSettings() {
 }
 - (void)preventRevokeChanged:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kPreventRevokeEnabledKey];
-}
-- (void)hideChatTimeLabelChanged:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kHideChatTimeLabelKey];
 }
 - (void)belowAvatarChanged:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kMessageTimeShowBelowAvatarKey];
@@ -1056,8 +1053,8 @@ static void loadFriendsAndWalletSettings() {
 - (id)initWithViewModel:(id)arg1 {
     id view = %orig;
     if (view) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        if ([defaults boolForKey:kHideChatTimeLabelKey]) {
+        // 如果开启了精确时间并且开启了"头像下方"选项，则隐藏系统时间标签
+        if (isMessageTimeEnabled() && isShowTimeBelowAvatar()) {
             [(UIView *)view setHidden:YES];
         }
     }
@@ -1067,8 +1064,8 @@ static void loadFriendsAndWalletSettings() {
 
 %hook ChatTimeViewModel
 - (CGSize)measure:(CGSize)arg1 {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    if ([defaults boolForKey:kHideChatTimeLabelKey]) {
+    // 如果开启了精确时间并且开启了"头像下方"选项，则系统时间标签高度为0
+    if (isMessageTimeEnabled() && isShowTimeBelowAvatar()) {
         return CGSizeMake(arg1.width, 0);
     }
     return %orig(arg1);
@@ -1157,10 +1154,10 @@ static void loadFriendsAndWalletSettings() {
         }
         timeLabel.textColor = [UIColor colorWithWhite:0.5 alpha:0.8];
         timeLabel.backgroundColor = [UIColor clearColor];
-        timeLabel.numberOfLines = 0;
+        timeLabel.numberOfLines = 1;
         timeLabel.textAlignment = NSTextAlignmentCenter;
         timeLabel.clipsToBounds = YES;
-        timeLabel.frame = CGRectMake(0, 0, 50, 20);
+        timeLabel.frame = CGRectMake(0, 0, 200, 20);
         setTimeView(self, timeLabel);
     }
     return view;
@@ -1189,21 +1186,18 @@ static void loadFriendsAndWalletSettings() {
         }
         timeLabel.hidden = NO;
         timeLabel.text = messageTime;
-        CGFloat padding = 10.0;
-        CGSize constraintSize = CGSizeMake(kMaxLabelWidth - padding, CGFLOAT_MAX);
-        CGSize textSize = [messageTime boundingRectWithSize:constraintSize
-                                                   options:NSStringDrawingUsesLineFragmentOrigin
-                                                attributes:@{NSFontAttributeName: timeLabel.font}
-                                                   context:nil].size;
-        CGFloat labelWidth = textSize.width + padding;
-        if (labelWidth > kMaxLabelWidth) labelWidth = kMaxLabelWidth;
-        if (labelWidth < 30) labelWidth = 30;
-        CGFloat labelHeight = textSize.height + 8.0;
-        timeLabel.frame = CGRectMake(0, 0, labelWidth, labelHeight);
-        CGFloat centerX = 0, centerY = 0;
-        BOOL isSender = [viewModel isSender];
-        BOOL showBelowAvatar = [[NSUserDefaults standardUserDefaults] boolForKey:kMessageTimeShowBelowAvatarKey];
+        
+        // 计算时间标签大小
+        CGSize textSize = [messageTime sizeWithAttributes:@{NSFontAttributeName: timeLabel.font}];
+        CGFloat labelWidth = textSize.width + 10;
+        CGFloat labelHeight = textSize.height + 4;
+        
+        // 设置位置
+        CGRect cellBounds = self.bounds;
+        BOOL showBelowAvatar = isShowTimeBelowAvatar();
+        
         if (showBelowAvatar) {
+            // 在头像下方显示
             UIView *headImageView = nil;
             for (UIView *subview in self.subviews) {
                 if ([NSStringFromClass([subview class]) isEqualToString:@"MMHeadImageView"]) {
@@ -1212,42 +1206,19 @@ static void loadFriendsAndWalletSettings() {
                 }
             }
             if (headImageView) {
-                centerX = CGRectGetMidX(headImageView.frame);
+                CGFloat centerX = CGRectGetMidX(headImageView.frame);
                 CGFloat topY = CGRectGetMaxY(headImageView.frame);
-                centerY = topY + (timeLabel.bounds.size.height / 2) - 7.0;
+                timeLabel.frame = CGRectMake(centerX - labelWidth/2, topY + 2, labelWidth, labelHeight);
             } else {
-                UIView *contentView = [self valueForKey:@"m_contentView"];
-                if (contentView) {
-                    if (isSender) {
-                        centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
-                    } else {
-                        centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2;
-                    }
-                    centerY = CGRectGetMaxY(contentView.frame) - timeLabel.bounds.size.height / 2;
-                }
+                timeLabel.frame = CGRectMake(0, 0, labelWidth, labelHeight);
+                timeLabel.center = CGPointMake(cellBounds.size.width/2, cellBounds.size.height/2);
             }
         } else {
-            UIView *contentView = [self valueForKey:@"m_contentView"];
-            if (contentView) {
-                if (isSender) {
-                    centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
-                } else {
-                    centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2;
-                }
-                centerY = CGRectGetMaxY(contentView.frame) - timeLabel.bounds.size.height / 2;
-            } else {
-                UIView *bgView = [self getBgImageView];
-                if (bgView) {
-                    if (isSender) {
-                        centerX = CGRectGetMinX(bgView.frame) - 1 - timeLabel.bounds.size.width / 2;
-                    } else {
-                        centerX = CGRectGetMaxX(bgView.frame) + 1 + timeLabel.bounds.size.width / 2;
-                    }
-                    centerY = CGRectGetMaxY(bgView.frame) - timeLabel.bounds.size.height / 2;
-                }
-            }
+            // 在系统时间标签位置显示（居中）
+            timeLabel.frame = CGRectMake(0, 0, labelWidth, labelHeight);
+            timeLabel.center = CGPointMake(cellBounds.size.width/2, timeLabel.bounds.size.height/2 + 5);
         }
-        timeLabel.center = CGPointMake(centerX, centerY);
+        
         if (![timeLabel isDescendantOfView:self]) {
             [self addSubview:timeLabel];
         }
@@ -1274,10 +1245,10 @@ static void loadFriendsAndWalletSettings() {
                 CMessageWrap *messageWrap = [viewModel messageWrap];
                 if (messageWrap && [messageWrap respondsToSelector:@selector(m_uiCreateTime)]) {
                     unsigned int createTime = [messageWrap m_uiCreateTime];
-                    if (getMessageTime(viewModel) == nil) {
-                        NSString *timeStr = getTimeStringFromTimestamp(createTime);
-                        setMessageTime(viewModel, timeStr);
-                    }
+                    // 为每条消息设置时间，不进行时间间隔判断
+                    NSString *timeStr = getTimeStringFromTimestamp(createTime);
+                    setMessageTime(viewModel, timeStr);
+                    
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
                             [cellView updateNodeStatus];
@@ -1685,7 +1656,6 @@ static BOOL isTrailEnabled = NO;
         NSDictionary *defaultValues = @{
             kHideOtherAvatarKey: @NO,
             kHideSelfAvatarKey: @NO,
-            kHideChatTimeLabelKey: @NO,
             kGameCheatEnabledKey: @NO,
             kMessageTimeEnabledKey: @NO,
             kPreventRevokeEnabledKey: @NO,
