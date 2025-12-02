@@ -1,0 +1,16 @@
+Package: com.dd.assistant
+Name: DD助手
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: 微信功能增强插件，仅供学习交流使用，禁止商用！
+Maintainer: DD
+Author: DD
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 13.0)
+Conflicts: 
+Replaces: 
+Icon: file:///Library/Application Support/DDAssistant/icon.png
+Homepage: 
+Depiction: 
+SileoDepiction: 
+Tag: purpose::extension, compatible_min::ios13.0
