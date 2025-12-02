@@ -190,6 +190,12 @@ static NSString *gWalletBalanceReplacement = nil;
 - (id)getService:(Class)cls;
 @end
 
+// 添加语音消息相关接口
+@interface VoiceMessageCellView : UIView
+@property(retain, nonatomic) UIButton *m_quickTransTipButton;
+@property(retain, nonatomic) UIView *m_unreadImageView;
+@end
+
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -928,6 +934,11 @@ static void loadFriendsAndWalletSettings() {
         timeLabel.textAlignment = NSTextAlignmentCenter;
         timeLabel.clipsToBounds = YES;
         timeLabel.frame = CGRectMake(0, 0, 50, 20);
+        // 移除之前可能存在的标签（修复多次出现问题）
+        UIView *oldTimeView = getTimeView(self);
+        if (oldTimeView && [oldTimeView isDescendantOfView:self]) {
+            [oldTimeView removeFromSuperview];
+        }
         setTimeView(self, timeLabel);
     }
     return view;
@@ -936,7 +947,9 @@ static void loadFriendsAndWalletSettings() {
     %orig;
     if (!isMessageTimeEnabled()) {
         UIView *timeView = getTimeView(self);
-        if (timeView) timeView.hidden = YES;
+        if (timeView) {
+            timeView.hidden = YES;
+        }
         return;
     }
     CommonMessageViewModel *viewModel = [self viewModel];
@@ -970,6 +983,23 @@ static void loadFriendsAndWalletSettings() {
         CGFloat centerX = 0, centerY = 0;
         BOOL isSender = [viewModel isSender];
         BOOL showBelowAvatar = [[NSUserDefaults standardUserDefaults] boolForKey:kMessageTimeShowBelowAvatarKey];
+        
+        // 检查是否为语音消息并检查转文字按钮
+        BOOL isVoiceMessage = NO;
+        BOOL hasTranscribeButton = NO;
+        
+        // 判断是否是语音消息
+        if ([viewModel respondsToSelector:@selector(messageWrap)]) {
+            CMessageWrap *messageWrap = [viewModel messageWrap];
+            if (messageWrap && [messageWrap respondsToSelector:@selector(m_uiMessageType)]) {
+                unsigned int messageType = [messageWrap m_uiMessageType];
+                // 语音消息类型通常是34
+                if (messageType == 34) {
+                    isVoiceMessage = YES;
+                }
+            }
+        }
+        
         if (showBelowAvatar) {
             UIView *headImageView = nil;
             for (UIView *subview in self.subviews) {
@@ -996,10 +1026,29 @@ static void loadFriendsAndWalletSettings() {
         } else {
             UIView *contentView = [self valueForKey:@"m_contentView"];
             if (contentView) {
+                // 检查是否是语音消息且有转文字按钮
+                if (isVoiceMessage) {
+                    // 尝试查找转文字按钮
+                    UIButton *transcribeButton = [self valueForKey:@"m_quickTransTipButton"];
+                    if (transcribeButton && !transcribeButton.hidden) {
+                        hasTranscribeButton = YES;
+                    }
+                }
+                
                 if (isSender) {
-                    centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
+                    if (hasTranscribeButton) {
+                        // 如果有转文字按钮，将时间标签放在更左边避免重叠
+                        centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2 - 40;
+                    } else {
+                        centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
+                    }
                 } else {
-                    centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2;
+                    if (hasTranscribeButton) {
+                        // 如果有转文字按钮，将时间标签放在更右边避免重叠
+                        centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2 + 40;
+                    } else {
+                        centerX = CGRectGetMaxX(contentView.frame) + 1 + timeLabel.bounds.size.width / 2;
+                    }
                 }
                 centerY = CGRectGetMaxY(contentView.frame) - timeLabel.bounds.size.height / 2;
             } else {
@@ -1020,7 +1069,10 @@ static void loadFriendsAndWalletSettings() {
         }
         [self bringSubviewToFront:timeLabel];
     } else {
-        getTimeView(self).hidden = YES;
+        UIView *timeView = getTimeView(self);
+        if (timeView) {
+            timeView.hidden = YES;
+        }
     }
 }
 %end
@@ -1041,15 +1093,16 @@ static void loadFriendsAndWalletSettings() {
                 CMessageWrap *messageWrap = [viewModel messageWrap];
                 if (messageWrap && [messageWrap respondsToSelector:@selector(m_uiCreateTime)]) {
                     unsigned int createTime = [messageWrap m_uiCreateTime];
+                    // 检查是否已经设置过时间（修复多次出现问题）
                     if (getMessageTime(viewModel) == nil) {
                         NSString *timeStr = getTimeStringFromTimestamp(createTime);
                         setMessageTime(viewModel, timeStr);
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
+                                [cellView updateNodeStatus];
+                            }
+                        });
                     }
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
-                            [cellView updateNodeStatus];
-                        }
-                    });
                 }
             }
         });
