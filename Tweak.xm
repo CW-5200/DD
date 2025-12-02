@@ -30,7 +30,7 @@ static BOOL gFriendsCountEnabled = NO;
 static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
-static BOOL g_hasPluginsMgr = NO;  // 添加这一行修复变量声明问题
+static BOOL g_hasPluginsMgr = NO;
 
 @interface AvatarSettingsViewController : UITableViewController {
     NSArray *_settings;
@@ -130,6 +130,11 @@ static BOOL g_hasPluginsMgr = NO;  // 添加这一行修复变量声明问题
 @property(retain, nonatomic) id messageWrap;
 @end
 
+@interface TextMessageSubViewModel : CommonMessageViewModel
+@property(readonly, nonatomic) CommonMessageViewModel *parentModel;
+@property(readonly, nonatomic) NSArray *subViewModels;
+@end
+
 @interface CMessageWrap : NSObject
 @property(nonatomic) unsigned int m_uiCreateTime;
 @property(nonatomic) unsigned int m_uiMessageType;
@@ -140,6 +145,11 @@ static BOOL g_hasPluginsMgr = NO;  // 添加这一行修复变量声明问题
 @property(copy, nonatomic) NSString *m_nsFromUsr;
 @property(copy, nonatomic) NSString *m_nsToUsr;
 @property(nonatomic) unsigned int m_uiStatus;
+@property(readonly, nonatomic) BOOL IsImgMsg;
+@property(readonly, nonatomic) BOOL IsVideoMsg;
+@property(readonly, nonatomic) BOOL IsVoiceMsg;
+@property(readonly, nonatomic) BOOL IsTextMsg;
+@property(readonly, nonatomic) unsigned int m_uiMesLocalID;
 - (instancetype)initWithMsgType:(unsigned int)type;
 @end
 
@@ -158,6 +168,10 @@ static BOOL g_hasPluginsMgr = NO;  // 添加这一行修复变量声明问题
 @property(nonatomic, readonly) UIView *m_contentView;
 - (UIView *)getBgImageView;
 - (void)updateNodeStatus;
+@end
+
+@interface VoiceMessageCellView : CommonMessageCellView
+@property(nonatomic, readonly) UILabel *m_secLabel;
 @end
 
 @interface ChatTimeCellView : UIView
@@ -242,7 +256,7 @@ static BOOL isFriendsCountEnabled() {
 }
 
 static BOOL isWalletBalanceEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];  // 修复：添加右括号
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];
 }
 
 static NSString* parseParam(NSString *content, NSString *begin, NSString *end) {
@@ -790,113 +804,10 @@ static void loadFriendsAndWalletSettings() {
 }
 @end
 
-@interface WBTouchTrailView : UIView
-@property (nonatomic, strong) UIColor *trailColor;
-@property (nonatomic, assign) CGFloat trailSize;
-@property (nonatomic, assign) BOOL isMoving;
-- (void)updateWithPoint:(CGPoint)point;
-- (void)updateWithPoint:(CGPoint)point isMoving:(BOOL)isMoving;
-@end
-
-@interface WBTouchTrailDotView : UIView
-@property (nonatomic, strong) UIColor *dotColor;
-@property (nonatomic, assign) CGFloat dotSize;
-- (instancetype)initWithPoint:(CGPoint)point 
-                     dotColor:(UIColor *)dotColor 
-                     dotSize:(CGFloat)dotSize 
-                    duration:(CGFloat)duration;
-@end
-
-@implementation WBTouchTrailDotView
-
-- (instancetype)initWithPoint:(CGPoint)point 
-                     dotColor:(UIColor *)dotColor 
-                     dotSize:(CGFloat)dotSize 
-                    duration:(CGFloat)duration {
-    CGRect frame = CGRectMake(point.x - dotSize/2, point.y - dotSize/2, dotSize, dotSize);
-    self = [super initWithFrame:frame];
-    if (self) {
-        self.dotColor = dotColor;
-        self.dotSize = dotSize;
-        self.userInteractionEnabled = NO;
-        
-        self.backgroundColor = dotColor;
-        self.layer.cornerRadius = dotSize / 2;
-        
-        self.alpha = 0.7;
-        [UIView animateWithDuration:duration animations:^{
-            self.alpha = 0;
-        } completion:^(BOOL finished) {
-            [self removeFromSuperview];
-        }];
-    }
-    return self;
-}
-
-@end
-
-@implementation WBTouchTrailView
-
-- (instancetype)init {
-    self = [super initWithFrame:CGRectZero];
-    if (self) {
-        self.backgroundColor = [UIColor clearColor];
-        self.userInteractionEnabled = NO;
-        self.trailColor = [UIColor redColor];
-        self.trailSize = 25.0;
-        self.isMoving = NO;
-        
-        self.layer.masksToBounds = NO;
-    }
-    return self;
-}
-
-- (void)updateWithPoint:(CGPoint)point {
-    [self updateWithPoint:point isMoving:NO];
-}
-
-- (void)updateWithPoint:(CGPoint)point isMoving:(BOOL)isMoving {
-    self.isMoving = isMoving;
-    
-    [self.layer removeAllAnimations];
-    
-    CGRect frame = CGRectMake(point.x - self.trailSize/2, point.y - self.trailSize/2, self.trailSize, self.trailSize);
-    self.frame = frame;
-    
-    self.layer.cornerRadius = self.trailSize / 2;
-    
-    self.backgroundColor = self.trailColor;
-    
-    self.transform = CGAffineTransformIdentity;
-    
-    if (!isMoving) {
-        self.alpha = 1.0;
-        
-        self.layer.shadowColor = self.trailColor.CGColor;
-        self.layer.shadowOffset = CGSizeZero;
-        self.layer.shadowOpacity = 0.5;
-        self.layer.shadowRadius = 5.0;
-        
-        [UIView animateWithDuration:0.2 animations:^{
-            self.alpha = 0.8;
-            self.transform = CGAffineTransformMakeScale(0.9, 0.9);
-        }];
-    } else {
-        self.alpha = 0.7;
-        
-        self.layer.shadowColor = self.trailColor.CGColor;
-        self.layer.shadowOffset = CGSizeZero;
-        self.layer.shadowOpacity = 0.3;
-        self.layer.shadowRadius = 3.0;
-    }
-}
-
-@end
-
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
-    if (g_hasPluginsMgr) {  // 现在这个变量已经正确声明了
+    if (g_hasPluginsMgr) {
         return;
     }
     static char kDDAssistantAddedKey;
@@ -1048,17 +959,26 @@ static void loadFriendsAndWalletSettings() {
     }
     return view;
 }
+
 - (void)updateNodeStatus {
     %orig;
+    
     if (!isMessageTimeAboveBubbleEnabled() && !isMessageTimeBelowAvatarEnabled()) {
         UIView *timeView = getTimeView(self);
         if (timeView) timeView.hidden = YES;
         return;
     }
+    
     CommonMessageViewModel *viewModel = [self viewModel];
     if (!viewModel) return;
+    
     NSString *messageTime = getMessageTime(viewModel);
     if (messageTime.length > 0) {
+        if ([messageTime isEqualToString:@"-1"]) {
+            getTimeView(self).hidden = YES;
+            return;
+        }
+        
         UILabel *timeLabel = (UILabel *)getTimeView(self);
         if (!timeLabel) return;
         
@@ -1087,27 +1007,35 @@ static void loadFriendsAndWalletSettings() {
         CGFloat labelHeight = textSize.height + 4.0;
         timeLabel.frame = CGRectMake(0, 0, labelWidth, labelHeight);
         
+        CGFloat centerX = 0, centerY = 0;
+        BOOL isSender = [viewModel isSender];
+        
         if (isMessageTimeAboveBubbleEnabled()) {
+            // 消息上方显示模式
             CGFloat centerX = self.bounds.size.width / 2;
             CGFloat centerY = 15.0;
             timeLabel.center = CGPointMake(centerX, centerY);
         } else {
-            CommonMessageViewModel *viewModel = [self viewModel];
-            BOOL isSender = [viewModel isSender];
-            CGFloat centerX = 0, centerY = 0;
+            // 头像下方显示模式 - 使用MessageTimeHooks.xm中的定位方法
             UIView *headImageView = nil;
+            UIView *contentView = [self valueForKey:@"m_contentView"];
+            UIView *bgView = nil;
+            
+            // 尝试找到头像视图
             for (UIView *subview in self.subviews) {
                 if ([NSStringFromClass([subview class]) isEqualToString:@"MMHeadImageView"]) {
                     headImageView = subview;
                     break;
                 }
             }
+            
             if (headImageView) {
+                // 设置位置在头像下方居中
                 centerX = CGRectGetMidX(headImageView.frame);
                 CGFloat topY = CGRectGetMaxY(headImageView.frame);
-                centerY = topY + (timeLabel.bounds.size.height / 2);
+                centerY = topY + (timeLabel.bounds.size.height / 2) - 7.0;
             } else {
-                UIView *contentView = [self valueForKey:@"m_contentView"];
+                // 如果找不到头像，使用默认位置
                 if (contentView) {
                     if (isSender) {
                         centerX = CGRectGetMinX(contentView.frame) - 1 - timeLabel.bounds.size.width / 2;
@@ -1117,6 +1045,7 @@ static void loadFriendsAndWalletSettings() {
                     centerY = CGRectGetMaxY(contentView.frame) - timeLabel.bounds.size.height / 2;
                 }
             }
+            
             timeLabel.center = CGPointMake(centerX, centerY);
         }
         
@@ -1128,25 +1057,63 @@ static void loadFriendsAndWalletSettings() {
         getTimeView(self).hidden = YES;
     }
 }
+
 %end
 
 %hook BaseMsgContentViewController
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = %orig;
-    if (!isMessageTimeAboveBubbleEnabled() && !isMessageTimeBelowAvatarEnabled()) return cell;
+    
+    if (!isMessageTimeAboveBubbleEnabled() && !isMessageTimeBelowAvatarEnabled()) {
+        return cell;
+    }
+    
     Class ChatTableViewCellClass = objc_getClass("ChatTableViewCell");
     if (ChatTableViewCellClass && [cell isKindOfClass:ChatTableViewCellClass]) {
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             ChatTableViewCell *chatCell = (ChatTableViewCell *)cell;
             CommonMessageCellView *cellView = [chatCell cellView];
             if (!cellView) return;
-            CommonMessageViewModel *viewModel = [cellView viewModel];
+            
+            id viewModel = [cellView valueForKey:@"viewModel"];
             if (!viewModel) return;
+            
             if ([viewModel respondsToSelector:@selector(messageWrap)]) {
                 CMessageWrap *messageWrap = [viewModel messageWrap];
                 if (messageWrap && [messageWrap respondsToSelector:@selector(m_uiCreateTime)]) {
-                    unsigned int createTime = [messageWrap m_uiCreateTime];
-                    if (getMessageTime(viewModel) == nil) {
+                    unsigned int createTime = messageWrap.m_uiCreateTime;
+                    
+                    // 检查是否是长文本消息的子视图模型
+                    if ([viewModel isKindOfClass:objc_getClass("TextMessageSubViewModel")]) {
+                        TextMessageSubViewModel *textSubModel = (TextMessageSubViewModel *)viewModel;
+                        id parentModel = [textSubModel valueForKey:@"parentModel"];
+                        
+                        // 获取子视图模型数组
+                        NSArray *subViewModels = [parentModel valueForKey:@"subViewModels"];
+                        
+                        if (subViewModels.count > 0) {
+                            // 根据显示模式决定在哪个子消息上显示时间
+                            if (isMessageTimeBelowAvatarEnabled()) {
+                                // 头像下方显示模式：只在第一个子消息上显示
+                                if ([subViewModels indexOfObject:textSubModel] == 0) {
+                                    NSString *timeStr = getDoubleLineTimeString(createTime);
+                                    setMessageTime(viewModel, timeStr);
+                                } else {
+                                    setMessageTime(viewModel, @"-1");
+                                }
+                            } else if (isMessageTimeAboveBubbleEnabled()) {
+                                // 消息上方显示模式：只在最后一个子消息上显示
+                                if ([subViewModels indexOfObject:textSubModel] == subViewModels.count - 1) {
+                                    NSString *timeStr = getSingleLineTimeString(createTime);
+                                    setMessageTime(viewModel, timeStr);
+                                } else {
+                                    setMessageTime(viewModel, @"-1");
+                                }
+                            }
+                        }
+                    } 
+                    // 处理其他类型的消息
+                    else if (getMessageTime(viewModel) == nil) {
                         NSString *timeStr = nil;
                         if (isMessageTimeAboveBubbleEnabled()) {
                             timeStr = getSingleLineTimeString(createTime);
@@ -1155,6 +1122,8 @@ static void loadFriendsAndWalletSettings() {
                         }
                         setMessageTime(viewModel, timeStr);
                     }
+                    
+                    // 在主线程更新视图
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
                             [cellView updateNodeStatus];
@@ -1162,8 +1131,29 @@ static void loadFriendsAndWalletSettings() {
                     });
                 }
             }
+            // 如果没有messageWrap但有createTime属性
+            else if ([viewModel respondsToSelector:@selector(createTime)] && 
+                    getMessageTime(viewModel) == nil) {
+                
+                unsigned int createTime = [viewModel createTime];
+                NSString *timeStr = nil;
+                if (isMessageTimeAboveBubbleEnabled()) {
+                    timeStr = getSingleLineTimeString(createTime);
+                } else if (isMessageTimeBelowAvatarEnabled()) {
+                    timeStr = getDoubleLineTimeString(createTime);
+                }
+                setMessageTime(viewModel, timeStr);
+                
+                // 在主线程更新视图
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if ([cellView respondsToSelector:@selector(updateNodeStatus)]) {
+                        [cellView updateNodeStatus];
+                    }
+                });
+            }
         });
     }
+    
     return cell;
 }
 %end
@@ -1438,122 +1428,6 @@ static void loadFriendsAndWalletSettings() {
         }
     }
 }
-%end
-
-%hook UIApplication
-
-static NSMutableDictionary *touchViews = nil;
-static NSMutableDictionary *touchTailViews = nil;
-static NSMutableDictionary *touchLastPointTimes = nil;
-static BOOL isTrailEnabled = NO;
-
-+ (void)load {
-    %orig;
-    touchViews = [NSMutableDictionary dictionary];
-    touchTailViews = [NSMutableDictionary dictionary];
-    touchLastPointTimes = [NSMutableDictionary dictionary];
-    
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    isTrailEnabled = [defaults boolForKey:kTouchTrailDisplayStateKey];
-}
-
-- (void)sendEvent:(UIEvent *)event {
-    %orig;
-    
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL shouldShowTrail = [defaults boolForKey:kTouchTrailDisplayStateKey];
-    
-    if (shouldShowTrail != isTrailEnabled) {
-        isTrailEnabled = shouldShowTrail;
-        
-        if (!isTrailEnabled) {
-            [touchViews.allValues makeObjectsPerformSelector:@selector(removeFromSuperview)];
-            [touchViews removeAllObjects];
-            
-            for (NSMutableArray *dotViews in touchTailViews.allValues) {
-                [dotViews makeObjectsPerformSelector:@selector(removeFromSuperview)];
-            }
-            [touchTailViews removeAllObjects];
-            [touchLastPointTimes removeAllObjects];
-        }
-    }
-    
-    if (!isTrailEnabled) {
-        return;
-    }
-    
-    BOOL showTail = [defaults boolForKey:kTouchTrailTailEnabledKey];
-    
-    NSSet *allTouches = event.allTouches;
-    for (UITouch *touch in allTouches) {
-        CGPoint location = [touch locationInView:nil];
-        NSValue *key = [NSValue valueWithPointer:(__bridge const void *)(touch)];
-        WBTouchTrailView *trailView = touchViews[key];
-        
-        switch (touch.phase) {
-            case UITouchPhaseBegan: {
-                if (!trailView) {
-                    trailView = [[WBTouchTrailView alloc] init];
-                    trailView.trailSize = 25.0;
-                    trailView.trailColor = [UIColor redColor];
-                    
-                    [touch.window addSubview:trailView];
-                    touchViews[key] = trailView;
-                }
-                [trailView updateWithPoint:location isMoving:NO];
-                
-                if (showTail) {
-                    touchTailViews[key] = [NSMutableArray array];
-                    touchLastPointTimes[key] = @(CACurrentMediaTime());
-                }
-                break;
-            }
-            case UITouchPhaseMoved: {
-                [trailView updateWithPoint:location isMoving:YES];
-                
-                if (showTail) {
-                    NSMutableArray *tailDots = touchTailViews[key];
-                    if (tailDots) {
-                        NSTimeInterval now = CACurrentMediaTime();
-                        NSTimeInterval lastTime = [touchLastPointTimes[key] doubleValue];
-                        CGFloat timeDiff = now - lastTime;
-                        
-                        if (timeDiff >= 0.05) {
-                            WBTouchTrailDotView *dotView = [[WBTouchTrailDotView alloc] initWithPoint:location 
-                                                                                            dotColor:[UIColor redColor] 
-                                                                                            dotSize:17.5
-                                                                                           duration:0.8];
-                            
-                            [touch.window addSubview:dotView];
-                            [tailDots addObject:dotView];
-                            
-                            touchLastPointTimes[key] = @(now);
-                        }
-                    }
-                }
-                break;
-            }
-            case UITouchPhaseEnded:
-            case UITouchPhaseCancelled: {
-                if (trailView) {
-                    [UIView animateWithDuration:0.3 animations:^{
-                        trailView.alpha = 0;
-                    } completion:^(BOOL finished) {
-                        [trailView removeFromSuperview];
-                        [touchViews removeObjectForKey:key];
-                    }];
-                }
-                
-                [touchTailViews removeObjectForKey:key];
-                [touchLastPointTimes removeObjectForKey:key];
-                break;
-            }
-            default:
-                break;
-        }
-    }
-}
-
 %end
 
 %ctor {
