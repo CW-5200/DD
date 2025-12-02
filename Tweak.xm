@@ -1,3 +1,5 @@
+[file name]: Tweak.xm
+[file content begin]
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
@@ -20,6 +22,12 @@ static NSString * const kTouchTrailKey = @"com.wechat.tweak.touch.trail.enabled"
 static NSString * const kTouchTrailOnlyWhenRecordingKey = @"com.wechat.tweak.touch.trail.only.when.recording";
 static NSString * const kTouchTrailDisplayStateKey = @"com.wechat.tweak.touch.trail.display.state";
 static NSString * const kTouchTrailTailEnabledKey = @"com.wechat.tweak.touch.trail.tail.enabled";
+
+// 添加触摸轨迹相关的全局变量声明
+static NSMutableDictionary *touchViews = nil;
+static NSMutableDictionary *touchTailViews = nil;
+static NSMutableDictionary *touchLastPointTimes = nil;
+static BOOL isTrailEnabled = NO;
 
 static char kMessageTimeKey;
 static char kTimeViewKey;
@@ -50,6 +58,24 @@ static BOOL g_hasPluginsMgr = NO;
 @interface DDAssistantSettingsViewController : UITableViewController {
     NSArray *_sections;
 }
+@end
+
+// 添加触摸轨迹视图类声明
+@interface WBTouchTrailView : UIView
+@property (nonatomic, strong) UIColor *trailColor;
+@property (nonatomic, assign) CGFloat trailSize;
+@property (nonatomic, assign) BOOL isMoving;
+- (void)updateWithPoint:(CGPoint)point;
+- (void)updateWithPoint:(CGPoint)point isMoving:(BOOL)isMoving;
+@end
+
+@interface WBTouchTrailDotView : UIView
+@property (nonatomic, strong) UIColor *dotColor;
+@property (nonatomic, assign) CGFloat dotSize;
+- (instancetype)initWithPoint:(CGPoint)point 
+                     dotColor:(UIColor *)dotColor 
+                     dotSize:(CGFloat)dotSize 
+                    duration:(CGFloat)duration;
 @end
 
 @interface TimeoutNumber : UIView
@@ -740,6 +766,94 @@ static void loadFriendsAndWalletSettings() {
 }
 @end
 
+// ==================== 触摸轨迹视图实现 ====================
+@implementation WBTouchTrailDotView
+
+- (instancetype)initWithPoint:(CGPoint)point 
+                     dotColor:(UIColor *)dotColor 
+                     dotSize:(CGFloat)dotSize 
+                    duration:(CGFloat)duration {
+    CGRect frame = CGRectMake(point.x - dotSize/2, point.y - dotSize/2, dotSize, dotSize);
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.dotColor = dotColor;
+        self.dotSize = dotSize;
+        self.userInteractionEnabled = NO;
+        
+        self.backgroundColor = dotColor;
+        self.layer.cornerRadius = dotSize / 2;
+        
+        self.alpha = 0.7;
+        [UIView animateWithDuration:duration animations:^{
+            self.alpha = 0;
+        } completion:^(BOOL finished) {
+            [self removeFromSuperview];
+        }];
+    }
+    return self;
+}
+
+@end
+
+@implementation WBTouchTrailView
+
+- (instancetype)init {
+    self = [super initWithFrame:CGRectZero];
+    if (self) {
+        self.backgroundColor = [UIColor clearColor];
+        self.userInteractionEnabled = NO;
+        self.trailColor = [UIColor redColor];
+        self.trailSize = 25.0;
+        self.isMoving = NO;
+        
+        self.layer.masksToBounds = NO;
+    }
+    return self;
+}
+
+- (void)updateWithPoint:(CGPoint)point {
+    [self updateWithPoint:point isMoving:NO];
+}
+
+- (void)updateWithPoint:(CGPoint)point isMoving:(BOOL)isMoving {
+    self.isMoving = isMoving;
+    
+    [self.layer removeAllAnimations];
+    
+    CGRect frame = CGRectMake(point.x - self.trailSize/2, point.y - self.trailSize/2, self.trailSize, self.trailSize);
+    self.frame = frame;
+    
+    self.layer.cornerRadius = self.trailSize / 2;
+    
+    self.backgroundColor = self.trailColor;
+    
+    self.transform = CGAffineTransformIdentity;
+    
+    if (!isMoving) {
+        self.alpha = 1.0;
+        
+        self.layer.shadowColor = self.trailColor.CGColor;
+        self.layer.shadowOffset = CGSizeZero;
+        self.layer.shadowOpacity = 0.5;
+        self.layer.shadowRadius = 5.0;
+        
+        [UIView animateWithDuration:0.2 animations:^{
+            self.alpha = 0.8;
+            self.transform = CGAffineTransformMakeScale(0.9, 0.9);
+        }];
+    } else {
+        self.alpha = 0.7;
+        
+        self.layer.shadowColor = self.trailColor.CGColor;
+        self.layer.shadowOffset = CGSizeZero;
+        self.layer.shadowOpacity = 0.3;
+        self.layer.shadowRadius = 3.0;
+    }
+}
+
+@end
+// ==================== 触摸轨迹视图实现结束 ====================
+
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
@@ -1295,6 +1409,136 @@ static void loadFriendsAndWalletSettings() {
 }
 %end
 
+// ==================== 触摸轨迹核心实现 ====================
+%hook UIApplication
+
++ (void)load {
+    %orig;
+    
+    // 初始化触摸轨迹相关的变量
+    touchViews = [NSMutableDictionary dictionary];
+    touchTailViews = [NSMutableDictionary dictionary];
+    touchLastPointTimes = [NSMutableDictionary dictionary];
+    
+    // 读取当前设置
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    isTrailEnabled = [defaults boolForKey:kTouchTrailDisplayStateKey];
+}
+
+- (void)sendEvent:(UIEvent *)event {
+    %orig;
+    
+    // 检查当前是否应该显示触摸轨迹
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL shouldShowTrail = [defaults boolForKey:kTouchTrailDisplayStateKey];
+    
+    // 如果设置发生变化，更新状态
+    if (shouldShowTrail != isTrailEnabled) {
+        isTrailEnabled = shouldShowTrail;
+        
+        // 如果禁用，清除所有现有视图
+        if (!isTrailEnabled) {
+            [touchViews.allValues makeObjectsPerformSelector:@selector(removeFromSuperview)];
+            [touchViews removeAllObjects];
+            
+            for (NSMutableArray *dotViews in touchTailViews.allValues) {
+                [dotViews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+            }
+            [touchTailViews removeAllObjects];
+            [touchLastPointTimes removeAllObjects];
+        }
+    }
+    
+    // 如果未启用触摸轨迹，直接返回
+    if (!isTrailEnabled) {
+        return;
+    }
+    
+    // 检查是否启用拖尾效果
+    BOOL showTail = [defaults boolForKey:kTouchTrailTailEnabledKey];
+    
+    // 处理所有触摸事件
+    NSSet *allTouches = event.allTouches;
+    for (UITouch *touch in allTouches) {
+        CGPoint location = [touch locationInView:nil];
+        NSValue *key = [NSValue valueWithPointer:(__bridge const void *)(touch)];
+        WBTouchTrailView *trailView = touchViews[key];
+        
+        switch (touch.phase) {
+            case UITouchPhaseBegan: {
+                // 触摸开始，创建新的轨迹视图
+                if (!trailView) {
+                    trailView = [[WBTouchTrailView alloc] init];
+                    trailView.trailSize = 25.0;
+                    trailView.trailColor = [UIColor redColor];
+                    
+                    // 添加到窗口
+                    [touch.window addSubview:trailView];
+                    touchViews[key] = trailView;
+                }
+                [trailView updateWithPoint:location isMoving:NO];
+                
+                // 如果启用拖尾效果，初始化拖尾视图数组
+                if (showTail) {
+                    touchTailViews[key] = [NSMutableArray array];
+                    touchLastPointTimes[key] = @(CACurrentMediaTime());
+                }
+                break;
+            }
+            case UITouchPhaseMoved: {
+                // 触摸移动，更新轨迹视图位置
+                [trailView updateWithPoint:location isMoving:YES];
+                
+                // 如果启用拖尾效果，添加拖尾点
+                if (showTail) {
+                    NSMutableArray *tailDots = touchTailViews[key];
+                    if (tailDots) {
+                        NSTimeInterval now = CACurrentMediaTime();
+                        NSTimeInterval lastTime = [touchLastPointTimes[key] doubleValue];
+                        CGFloat timeDiff = now - lastTime;
+                        
+                        // 控制拖尾点的添加频率
+                        if (timeDiff >= 0.05) {
+                            WBTouchTrailDotView *dotView = [[WBTouchTrailDotView alloc] initWithPoint:location 
+                                                                                            dotColor:[UIColor redColor] 
+                                                                                            dotSize:17.5
+                                                                                           duration:0.8];
+                            
+                            [touch.window addSubview:dotView];
+                            [tailDots addObject:dotView];
+                            
+                            touchLastPointTimes[key] = @(now);
+                        }
+                    }
+                }
+                break;
+            }
+            case UITouchPhaseEnded:
+            case UITouchPhaseCancelled: {
+                // 触摸结束，移除轨迹视图
+                if (trailView) {
+                    [UIView animateWithDuration:0.3 animations:^{
+                        trailView.alpha = 0;
+                    } completion:^(BOOL finished) {
+                        [trailView removeFromSuperview];
+                        [touchViews removeObjectForKey:key];
+                    }];
+                }
+                
+                // 清理拖尾相关数据
+                [touchTailViews removeObjectForKey:key];
+                [touchLastPointTimes removeObjectForKey:key];
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
+%end
+// ==================== 触摸轨迹核心实现结束 ====================
+
 %ctor {
     @autoreleasepool {
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -1341,3 +1585,4 @@ static void loadFriendsAndWalletSettings() {
         }
     }
 }
+[file content end]
