@@ -5,7 +5,6 @@
 #define PLUGIN_NAME @"DD助手"
 #define PLUGIN_VERSION @"1.0.0"
 
-// 原始插件的设置键
 static NSString * const kHideOtherAvatarKey = @"com.dd.assistant.hide.other.avatar";
 static NSString * const kHideSelfAvatarKey = @"com.dd.assistant.hide.self.avatar";
 static NSString * const kPreventRevokeEnabledKey = @"com.dd.assistant.prevent.revoke.enabled";
@@ -16,10 +15,8 @@ static NSString * const kMessageTimeFontSizeKey = @"com.dd.assistant.messageTime
 static NSString * const kMessageTimeBoldFontKey = @"com.dd.assistant.messageTime.boldFont";
 static NSString * const kMessageTimeShowBelowAvatarKey = @"com.dd.assistant.messageTime.showBelowAvatar";
 
-// 新增的通讯录和钱包设置键（从WCCustomTextHooks.xm提取）
 static NSString * const kFriendsCountEnabledKey = @"com.dd.assistant.friends.count.enabled";
 static NSString * const kFriendsCountValueKey = @"com.dd.assistant.friends.count.value";
-static NSString * const kWCSimpleUIEnabledKey = @"com.wechat.tweak.simple_ui_enabled"; // 保留原键名
 static NSString * const kWCFriendsCountReplacementKey = @"com.wechat.tweak.friends_count_replacement";
 static NSString * const kWalletBalanceEnabledKey = @"com.dd.assistant.wallet.balance.enabled";
 static NSString * const kWalletBalanceValueKey = @"com.dd.assistant.wallet.balance.value";
@@ -30,7 +27,6 @@ static CGFloat const kMaxLabelWidth = 90.0f;
 
 static BOOL g_hasPluginsMgr = NO;
 
-// 新增的类声明（从WCCustomTextHooks.xm提取）
 @interface TimeoutNumber : UIView
 - (void)updateNumber:(unsigned long long)arg1;
 - (void)defaultNumber:(unsigned long long)arg1;
@@ -56,11 +52,9 @@ static BOOL g_hasPluginsMgr = NO;
 - (void)updateTitleView:(unsigned int)arg1 title:(NSString *)title;
 @end
 
-// 原插件的类声明
 @interface WCPluginsMgr : NSObject
 + (instancetype)sharedInstance;
 - (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
-- (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
 @end
 
 @interface WCTableViewCellManager : NSObject
@@ -168,11 +162,8 @@ static BOOL g_hasPluginsMgr = NO;
 static char kMessageTimeKey;
 static char kTimeViewKey;
 
-// 从WCCustomTextHooks.xm提取的常量
 static NSString * const kWCOriginalContacts = @"通讯录";
-static NSString * const kWCOriginalDiscover = @"发现";
 
-// 从WCCustomTextHooks.xm提取的静态变量
 static BOOL gFriendsCountEnabled = NO;
 static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
@@ -254,11 +245,9 @@ static NSString* formatTimeString(unsigned int timestamp) {
     return [formatter stringFromDate:date];
 }
 
-// 从WCCustomTextHooks.xm提取的设置加载函数
 static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    // 读取好友数量设置
     gFriendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
     NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey];
     if (friendsCountValue && [friendsCountValue length] > 0) {
@@ -267,7 +256,6 @@ static void loadFriendsAndWalletSettings() {
         gFriendsCountReplacement = nil;
     }
     
-    // 读取钱包余额设置
     gWalletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
     NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
     if (walletBalanceValue && [walletBalanceValue length] > 0) {
@@ -277,7 +265,6 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-// 修改后的设置界面
 @interface AvatarSettingsViewController : UITableViewController {
     NSArray *_settings;
 }
@@ -533,7 +520,7 @@ static void loadFriendsAndWalletSettings() {
 
 @end
 
-@interface GameSettingsViewController : UITableViewController {
+@interface GameSettingsViewController : UITableViewController <UITextFieldDelegate> {
     NSArray *_settings;
     UITextField *_friendsCountField;
     UITextField *_walletBalanceField;
@@ -550,7 +537,6 @@ static void loadFriendsAndWalletSettings() {
     
     _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"钱包余额自定义"];
     
-    // 注册键盘通知
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
 }
@@ -565,7 +551,7 @@ static void loadFriendsAndWalletSettings() {
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.row == 1 || indexPath.row == 2) {
-        return 80.0; // 为文本字段留出更多空间
+        return 80.0;
     }
     return 44.0;
 }
@@ -591,27 +577,23 @@ static void loadFriendsAndWalletSettings() {
         return cell;
     } 
     else if (indexPath.row == 1) {
-        // 好友数量自定义
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FriendsCountCell"];
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"FriendsCountCell"];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             cell.backgroundColor = [UIColor clearColor];
             
-            // 标题标签
             UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, 200, 20)];
             titleLabel.text = @"好友数量自定义";
             titleLabel.font = [UIFont systemFontOfSize:14];
             titleLabel.textColor = [UIColor labelColor];
             [cell.contentView addSubview:titleLabel];
             
-            // 开关
             UISwitch *switchView = [[UISwitch alloc] initWithFrame:CGRectMake(self.view.frame.size.width - 70, 10, 50, 30)];
             switchView.tag = 1001;
             [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
             [cell.contentView addSubview:switchView];
             
-            // 文本输入框
             UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 100, 30)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入好友数量（如：999）";
@@ -622,7 +604,6 @@ static void loadFriendsAndWalletSettings() {
             [cell.contentView addSubview:textField];
             _friendsCountField = textField;
             
-            // 设置开关状态和文本内容
             NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
             BOOL enabled = [defaults boolForKey:kFriendsCountEnabledKey];
             switchView.on = enabled;
@@ -638,27 +619,23 @@ static void loadFriendsAndWalletSettings() {
         return cell;
     }
     else if (indexPath.row == 2) {
-        // 钱包余额自定义
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"WalletBalanceCell"];
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"WalletBalanceCell"];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             cell.backgroundColor = [UIColor clearColor];
             
-            // 标题标签
             UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, 200, 20)];
             titleLabel.text = @"钱包余额自定义";
             titleLabel.font = [UIFont systemFontOfSize:14];
             titleLabel.textColor = [UIColor labelColor];
             [cell.contentView addSubview:titleLabel];
             
-            // 开关
             UISwitch *switchView = [[UISwitch alloc] initWithFrame:CGRectMake(self.view.frame.size.width - 70, 10, 50, 30)];
             switchView.tag = 2001;
             [switchView addTarget:self action:@selector(walletBalanceEnabledChanged:) forControlEvents:UIControlEventValueChanged];
             [cell.contentView addSubview:switchView];
             
-            // 文本输入框
             UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 40, self.view.frame.size.width - 100, 30)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入余额（如：9999.99）";
@@ -669,7 +646,6 @@ static void loadFriendsAndWalletSettings() {
             [cell.contentView addSubview:textField];
             _walletBalanceField = textField;
             
-            // 设置开关状态和文本内容
             NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
             BOOL enabled = [defaults boolForKey:kWalletBalanceEnabledKey];
             switchView.on = enabled;
@@ -696,11 +672,9 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kFriendsCountEnabledKey];
     
-    // 重新加载好友数量行
     NSIndexPath *indexPath = [NSIndexPath indexPathForRow:1 inSection:0];
     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
     
-    // 发送通知让相关hook重新加载设置
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
@@ -712,11 +686,9 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kWalletBalanceEnabledKey];
     
-    // 重新加载钱包余额行
     NSIndexPath *indexPath = [NSIndexPath indexPathForRow:2 inSection:0];
     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
     
-    // 发送通知让相关hook重新加载设置
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
@@ -732,21 +704,21 @@ static void loadFriendsAndWalletSettings() {
 - (void)textFieldDidEndEditing:(UITextField *)textField {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    if (textField.tag == 1002) { // 好友数量输入框
+    if (textField.tag == 1002) {
         NSString *text = textField.text;
         if (text && [text length] > 0) {
             [defaults setObject:text forKey:kFriendsCountValueKey];
-            [defaults setObject:text forKey:kWCFriendsCountReplacementKey]; // 兼容原键
+            [defaults setObject:text forKey:kWCFriendsCountReplacementKey];
         } else {
             [defaults removeObjectForKey:kFriendsCountValueKey];
             [defaults removeObjectForKey:kWCFriendsCountReplacementKey];
         }
     } 
-    else if (textField.tag == 2002) { // 钱包余额输入框
+    else if (textField.tag == 2002) {
         NSString *text = textField.text;
         if (text && [text length] > 0) {
             [defaults setObject:text forKey:kWalletBalanceValueKey];
-            [defaults setObject:text forKey:kWCWalletBalanceReplacementKey]; // 兼容原键
+            [defaults setObject:text forKey:kWCWalletBalanceReplacementKey];
         } else {
             [defaults removeObjectForKey:kWalletBalanceValueKey];
             [defaults removeObjectForKey:kWCWalletBalanceReplacementKey];
@@ -755,7 +727,6 @@ static void loadFriendsAndWalletSettings() {
     
     [defaults synchronize];
     
-    // 发送通知让相关hook重新加载设置
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
@@ -764,7 +735,6 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (void)keyboardWillShow:(NSNotification *)notification {
-    // 调整表格视图以显示文本字段
     CGRect keyboardFrame = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
     CGFloat keyboardHeight = keyboardFrame.size.height;
     
@@ -1284,39 +1254,28 @@ static void loadFriendsAndWalletSettings() {
 
 %end
 
-// ================================
-// 从WCCustomTextHooks.xm提取的Hook
-// ================================
-
 %hook MMUILabel
 
-// 从WCCustomTextHooks.xm提取的好友数量自定义功能
 - (void)setText:(NSString *)text {
-    // 如果文本为空，直接使用原始设置
     if (!text) {
         %orig;
         return;
     }
     
-    // 处理好友数量显示（如"697个朋友"）
     if (isFriendsCountEnabled() && gFriendsCountReplacement && [gFriendsCountReplacement length] > 0) {
-        // 使用正则表达式匹配"数字+个朋友"模式
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"^\\d+个朋友$" options:0 error:nil];
         NSTextCheckingResult *match = [regex firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
         
         if (match) {
-            // 替换为自定义好友数量文本 + "个朋友"
             NSString *customText = [NSString stringWithFormat:@"%@个朋友", gFriendsCountReplacement];
             %orig(customText);
             return;
         }
     }
     
-    // 其他情况保持原样
     %orig;
 }
 
-// 对attributedText也进行处理
 - (void)setAttributedText:(NSAttributedString *)attributedText {
     if (!attributedText) {
         %orig;
@@ -1325,14 +1284,11 @@ static void loadFriendsAndWalletSettings() {
     
     NSString *originalString = [attributedText string];
     
-    // 处理好友数量显示（如"697个朋友"）
     if (isFriendsCountEnabled() && gFriendsCountReplacement && [gFriendsCountReplacement length] > 0) {
-        // 使用正则表达式匹配"数字+个朋友"模式
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"^\\d+个朋友$" options:0 error:nil];
         NSTextCheckingResult *match = [regex firstMatchInString:originalString options:0 range:NSMakeRange(0, originalString.length)];
         
         if (match) {
-            // 创建新的属性字符串，使用自定义好友数量
             NSString *customText = [NSString stringWithFormat:@"%@个朋友", gFriendsCountReplacement];
             NSMutableAttributedString *newAttributedText = [[NSMutableAttributedString alloc] initWithString:customText attributes:[attributedText attributesAtIndex:0 effectiveRange:NULL]];
             %orig(newAttributedText);
@@ -1340,7 +1296,6 @@ static void loadFriendsAndWalletSettings() {
         }
     }
     
-    // 其他情况保持原样
     %orig;
 }
 
@@ -1348,31 +1303,24 @@ static void loadFriendsAndWalletSettings() {
 
 %hook MFTitleView
 
-// 从WCCustomTextHooks.xm提取的通讯录标题处理
 - (void)updateTitleView:(unsigned int)arg1 title:(NSString *)title {
-    // 如果标题为空，直接使用原始设置
     if (!title) {
         %orig;
         return;
     }
     
-    // 检查是否为"通讯录"或"通讯录(数字)"格式
     BOOL isContactsTitle = [title isEqualToString:kWCOriginalContacts];
     if (!isContactsTitle) {
-        // 检查是否匹配"通讯录(数字)"格式
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"^通讯录\\(\\d+\\)$" options:0 error:nil];
         NSTextCheckingResult *match = [regex firstMatchInString:title options:0 range:NSMakeRange(0, title.length)];
         isContactsTitle = (match != nil);
     }
     
-    // 处理"通讯录"标题替换
     if (isContactsTitle && isFriendsCountEnabled() && gFriendsCountReplacement && [gFriendsCountReplacement length] > 0) {
-        // 替换为自定义通讯录文本
         %orig(arg1, gFriendsCountReplacement);
         return;
     }
     
-    // 其他情况保持原样
     %orig;
 }
 
@@ -1380,32 +1328,22 @@ static void loadFriendsAndWalletSettings() {
 
 %hook WCPayWalletEntryHeaderView
 
-// 从WCCustomTextHooks.xm提取的钱包余额自定义功能
 - (void)handleUpdateWalletBalance {
-    // 调用原始方法
     %orig;
     
-    // 如果钱包余额自定义功能未启用，则不做修改
     if (!isWalletBalanceEnabled() || !gWalletBalanceReplacement || [gWalletBalanceReplacement length] == 0) {
         return;
     }
     
-    // 获取TimeoutNumber实例
     TimeoutNumber *timeoutNumber = [self valueForKey:@"_timeoutNumber"];
     if (timeoutNumber) {
-        // 将自定义文本转换为数字（如果可能）
         NSScanner *scanner = [NSScanner scannerWithString:gWalletBalanceReplacement];
         unsigned long long balanceValue = 0;
         
-        // 尝试从自定义文本中解析数字
         if ([scanner scanUnsignedLongLong:&balanceValue]) {
-            // 修复：将balanceValue乘以100，使9999显示为9999.00而不是99.99
             balanceValue = balanceValue * 100;
-            // 如果成功解析为数字，则更新TimeoutNumber
             [timeoutNumber updateNumber:balanceValue];
         } else {
-            // 如果不是数字，尝试将第一个字符作为ASCII码使用
-            // 这是一个变通方法，让TimeoutNumber显示至少一个字符
             if (gWalletBalanceReplacement.length > 0) {
                 unichar firstChar = [gWalletBalanceReplacement characterAtIndex:0];
                 [timeoutNumber updateNumber:firstChar];
@@ -1414,31 +1352,22 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-// 钩入setupTimeoutNumber方法，初始化TimeoutNumber时触发
 - (void)setupTimeoutNumber {
-    // 调用原始方法
     %orig;
     
-    // 如果钱包余额自定义功能未启用，则不做修改
     if (!isWalletBalanceEnabled() || !gWalletBalanceReplacement || [gWalletBalanceReplacement length] == 0) {
         return;
     }
     
-    // 获取TimeoutNumber实例
     TimeoutNumber *timeoutNumber = [self valueForKey:@"_timeoutNumber"];
     if (timeoutNumber) {
-        // 将自定义文本转换为数字（如果可能）
         NSScanner *scanner = [NSScanner scannerWithString:gWalletBalanceReplacement];
         unsigned long long balanceValue = 0;
         
-        // 尝试从自定义文本中解析数字
         if ([scanner scanUnsignedLongLong:&balanceValue]) {
-            // 修复：将balanceValue乘以100，使9999显示为9999.00而不是99.99
             balanceValue = balanceValue * 100;
-            // 如果成功解析为数字，则更新TimeoutNumber
             [timeoutNumber updateNumber:balanceValue];
         } else {
-            // 如果不是数字，尝试将第一个字符作为ASCII码使用
             if (gWalletBalanceReplacement.length > 0) {
                 unichar firstChar = [gWalletBalanceReplacement characterAtIndex:0];
                 [timeoutNumber updateNumber:firstChar];
@@ -1447,31 +1376,22 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-// 钩入updateBalanceEntryView方法，当余额入口视图更新时触发
 - (void)updateBalanceEntryView {
-    // 调用原始方法
     %orig;
     
-    // 如果钱包余额自定义功能未启用，则不做修改
     if (!isWalletBalanceEnabled() || !gWalletBalanceReplacement || [gWalletBalanceReplacement length] == 0) {
         return;
     }
     
-    // 获取TimeoutNumber实例
     TimeoutNumber *timeoutNumber = [self valueForKey:@"_timeoutNumber"];
     if (timeoutNumber) {
-        // 将自定义文本转换为数字（如果可能）
         NSScanner *scanner = [NSScanner scannerWithString:gWalletBalanceReplacement];
         unsigned long long balanceValue = 0;
         
-        // 尝试从自定义文本中解析数字
         if ([scanner scanUnsignedLongLong:&balanceValue]) {
-            // 修复：将balanceValue乘以100，使9999显示为9999.00而不是99.99
             balanceValue = balanceValue * 100;
-            // 如果成功解析为数字，则更新TimeoutNumber
             [timeoutNumber updateNumber:balanceValue];
         } else {
-            // 如果不是数字，尝试将第一个字符作为ASCII码使用
             if (gWalletBalanceReplacement.length > 0) {
                 unichar firstChar = [gWalletBalanceReplacement characterAtIndex:0];
                 [timeoutNumber updateNumber:firstChar];
@@ -1479,13 +1399,10 @@ static void loadFriendsAndWalletSettings() {
         }
     }
     
-    // 尝试获取并修改balanceMoneyLabel（可能显示货币符号或单位）
     MMUILabel *balanceMoneyLabel = [self valueForKey:@"_balanceMoneyLabel"];
     if (balanceMoneyLabel) {
-        // 保留原始文本的格式和符号，但将数字部分替换为自定义文本
         NSString *originalText = balanceMoneyLabel.text;
         if (originalText && [originalText length] > 0) {
-            // 使用正则表达式替换数字部分
             NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"\\d+(\\.\\d+)?" options:0 error:nil];
             NSString *newText = [regex stringByReplacingMatchesInString:originalText options:0 range:NSMakeRange(0, originalText.length) withTemplate:gWalletBalanceReplacement];
             balanceMoneyLabel.text = newText;
@@ -1493,32 +1410,22 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-// 钩入updateBalanceAndRefreshView方法，当余额刷新时触发
 - (void)updateBalanceAndRefreshView {
-    // 调用原始方法
     %orig;
     
-    // 如果钱包余额自定义功能未启用，则不做修改
     if (!isWalletBalanceEnabled() || !gWalletBalanceReplacement || [gWalletBalanceReplacement length] == 0) {
         return;
     }
     
-    // 执行与updateBalanceEntryView相同的操作
-    // 获取TimeoutNumber实例
     TimeoutNumber *timeoutNumber = [self valueForKey:@"_timeoutNumber"];
     if (timeoutNumber) {
-        // 将自定义文本转换为数字（如果可能）
         NSScanner *scanner = [NSScanner scannerWithString:gWalletBalanceReplacement];
         unsigned long long balanceValue = 0;
         
-        // 尝试从自定义文本中解析数字
         if ([scanner scanUnsignedLongLong:&balanceValue]) {
-            // 修复：将balanceValue乘以100，使9999显示为9999.00而不是99.99
             balanceValue = balanceValue * 100;
-            // 如果成功解析为数字，则更新TimeoutNumber
             [timeoutNumber updateNumber:balanceValue];
         } else {
-            // 如果不是数字，尝试将第一个字符作为ASCII码使用
             if (gWalletBalanceReplacement.length > 0) {
                 unichar firstChar = [gWalletBalanceReplacement characterAtIndex:0];
                 [timeoutNumber updateNumber:firstChar];
@@ -1526,13 +1433,10 @@ static void loadFriendsAndWalletSettings() {
         }
     }
     
-    // 尝试获取并修改balanceMoneyLabel（可能显示货币符号或单位）
     MMUILabel *balanceMoneyLabel = [self valueForKey:@"_balanceMoneyLabel"];
     if (balanceMoneyLabel) {
-        // 保留原始文本的格式和符号，但将数字部分替换为自定义文本
         NSString *originalText = balanceMoneyLabel.text;
         if (originalText && [originalText length] > 0) {
-            // 使用正则表达式替换数字部分
             NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"\\d+(\\.\\d+)?" options:0 error:nil];
             NSString *newText = [regex stringByReplacingMatchesInString:originalText options:0 range:NSMakeRange(0, originalText.length) withTemplate:gWalletBalanceReplacement];
             balanceMoneyLabel.text = newText;
@@ -1544,87 +1448,65 @@ static void loadFriendsAndWalletSettings() {
 
 %hook TimeoutNumber
 
-// 从WCCustomTextHooks.xm提取的钱包余额数字显示Hook
 - (void)updateNumber:(unsigned long long)arg1 {
-    // 如果钱包余额自定义功能未启用，则使用原始方法
     if (!isWalletBalanceEnabled() || !gWalletBalanceReplacement || [gWalletBalanceReplacement length] == 0) {
         %orig;
         return;
     }
     
-    // 检查这个TimeoutNumber实例是否用于钱包余额
-    // 这里我们通过判断父视图是否为WCPayWalletEntryHeaderView来确定
     UIView *parentView = self.superview;
     while (parentView && ![parentView isKindOfClass:%c(WCPayWalletEntryHeaderView)]) {
         parentView = parentView.superview;
     }
     
-    // 如果父视图链中没有WCPayWalletEntryHeaderView，则使用原始方法
     if (!parentView) {
         %orig;
         return;
     }
     
-    // 将自定义文本转换为数字（如果可能）
     NSScanner *scanner = [NSScanner scannerWithString:gWalletBalanceReplacement];
     unsigned long long balanceValue = 0;
     
-    // 尝试从自定义文本中解析数字
     if ([scanner scanUnsignedLongLong:&balanceValue]) {
-        // 修复：将balanceValue乘以100，使9999显示为9999.00而不是99.99
         balanceValue = balanceValue * 100;
-        // 如果成功解析为数字，则使用自定义数字
         %orig(balanceValue);
     } else {
-        // 如果不是数字，尝试将第一个字符作为ASCII码使用
         if (gWalletBalanceReplacement.length > 0) {
             unichar firstChar = [gWalletBalanceReplacement characterAtIndex:0];
             %orig(firstChar);
         } else {
-            // 如果自定义文本为空，则使用原始数字
             %orig;
         }
     }
 }
 
-// 钩入defaultNumber方法，直接拦截默认数字设置
 - (void)defaultNumber:(unsigned long long)arg1 {
-    // 如果钱包余额自定义功能未启用，则使用原始方法
     if (!isWalletBalanceEnabled() || !gWalletBalanceReplacement || [gWalletBalanceReplacement length] == 0) {
         %orig;
         return;
     }
     
-    // 检查这个TimeoutNumber实例是否用于钱包余额
-    // 这里我们通过判断父视图是否为WCPayWalletEntryHeaderView来确定
     UIView *parentView = self.superview;
     while (parentView && ![parentView isKindOfClass:%c(WCPayWalletEntryHeaderView)]) {
         parentView = parentView.superview;
     }
     
-    // 如果父视图链中没有WCPayWalletEntryHeaderView，则使用原始方法
     if (!parentView) {
         %orig;
         return;
     }
     
-    // 将自定义文本转换为数字（如果可能）
     NSScanner *scanner = [NSScanner scannerWithString:gWalletBalanceReplacement];
     unsigned long long balanceValue = 0;
     
-    // 尝试从自定义文本中解析数字
     if ([scanner scanUnsignedLongLong:&balanceValue]) {
-        // 修复：将balanceValue乘以100，使9999显示为9999.00而不是99.99
         balanceValue = balanceValue * 100;
-        // 如果成功解析为数字，则使用自定义数字
         %orig(balanceValue);
     } else {
-        // 如果不是数字，尝试将第一个字符作为ASCII码使用
         if (gWalletBalanceReplacement.length > 0) {
             unichar firstChar = [gWalletBalanceReplacement characterAtIndex:0];
             %orig(firstChar);
         } else {
-            // 如果自定义文本为空，则使用原始数字
             %orig;
         }
     }
@@ -1636,7 +1518,6 @@ static void loadFriendsAndWalletSettings() {
     @autoreleasepool {
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
         
-        // 原始插件的默认值
         NSDictionary *defaultValues = @{
             kHideOtherAvatarKey: @NO,
             kHideSelfAvatarKey: @NO,
@@ -1647,8 +1528,6 @@ static void loadFriendsAndWalletSettings() {
             kMessageTimeFontSizeKey: @(kDefaultFontSize),
             kMessageTimeBoldFontKey: @YES,
             kMessageTimeShowBelowAvatarKey: @YES,
-            
-            // 新增功能的默认值
             kFriendsCountEnabledKey: @NO,
             kWalletBalanceEnabledKey: @NO
         };
@@ -1668,10 +1547,8 @@ static void loadFriendsAndWalletSettings() {
         
         [defaults synchronize];
         
-        // 加载通讯录和钱包设置
         loadFriendsAndWalletSettings();
         
-        // 添加通知观察者，当设置变化时重新加载
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL,
                                         (CFNotificationCallback)loadFriendsAndWalletSettings,
