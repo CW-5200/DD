@@ -5,6 +5,12 @@
 #define PLUGIN_NAME @"DD助手"
 #define PLUGIN_VERSION @"1.0.0"
 
+// 新增的集赞助手相关常量
+#define kLikeAssistantEnabledKey @"com.dd.assistant.like.enabled"
+#define kLikeCountKey @"com.dd.assistant.like.count"
+#define kCommentCountKey @"com.dd.assistant.comment.count"
+#define kCommentsKey @"com.dd.assistant.comments"
+
 static NSString * const kPreventRevokeEnabledKey = @"com.dd.assistant.prevent.revoke.enabled";
 static NSString * const kGameCheatEnabledKey = @"com.dd.assistant.game.cheat.enabled";
 static NSString * const kMessageTimeBelowAvatarKey = @"com.dd.assistant.message.time.below.avatar";
@@ -21,6 +27,13 @@ static NSString * const kTouchTrailOnlyWhenRecordingKey = @"com.wechat.tweak.tou
 static NSString * const kTouchTrailDisplayStateKey = @"com.wechat.tweak.touch.trail.display.state";
 static NSString * const kTouchTrailTailEnabledKey = @"com.wechat.tweak.touch.trail.tail.enabled";
 
+// 新增的集赞助手相关变量
+static BOOL gLikeAssistantEnabled = NO;
+static NSString *gLikeCount = nil;
+static NSString *gCommentCount = nil;
+static NSString *gComments = nil;
+static NSArray<NSString *> *gCommentsArray = nil;
+
 static NSMutableDictionary *touchViews = nil;
 static NSMutableDictionary *touchTailViews = nil;
 static NSMutableDictionary *touchLastPointTimes = nil;
@@ -35,6 +48,29 @@ static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
+// 新增类声明
+@interface WCUserComment : NSObject
+@property (nonatomic, copy) NSString *username;
+@property (nonatomic, copy) NSString *nickname;
+@property (nonatomic, assign) NSInteger type;
+@property (nonatomic, copy) NSString *commentID;
+@property (nonatomic, assign) NSTimeInterval createTime;
+@property (nonatomic, copy) NSString *content;
+@end
+
+@interface WCDataItem : NSObject
+@property (nonatomic, strong) NSMutableArray<WCUserComment *> *commentUsers;
+@property (nonatomic, assign) NSTimeInterval createtime;
+@end
+
+@interface CContact : NSObject
+@property (nonatomic, copy) NSString *m_nsUsrName;
+@property (nonatomic, copy) NSString *m_nsNickName;
+@property (nonatomic, copy) NSString *m_nsRemark;
+@property (nonatomic, assign) BOOL isBrandContact;
+@property (nonatomic, assign) unsigned int m_uiSex;
+@end
+
 @interface MessageSettingsViewController : UITableViewController {
     NSArray *_settings;
 }
@@ -46,6 +82,18 @@ static BOOL g_hasPluginsMgr = NO;
     UITextField *_walletBalanceField;
     UIButton *_friendsCountConfirmButton;
     UIButton *_walletBalanceConfirmButton;
+}
+@end
+
+// 新增的集赞助手设置界面
+@interface LikeAssistantSettingsViewController : UITableViewController <UITextFieldDelegate> {
+    NSArray *_settings;
+    UITextField *_likeCountField;
+    UITextField *_commentCountField;
+    UITextField *_commentsField;
+    UIButton *_likeCountConfirmButton;
+    UIButton *_commentCountConfirmButton;
+    UIButton *_commentsConfirmButton;
 }
 @end
 
@@ -127,12 +175,6 @@ static BOOL g_hasPluginsMgr = NO;
     WCTableViewManager *m_tableViewMgr;
 }
 - (void)reloadTableData;
-@end
-
-@interface CContact : NSObject
-@property(copy, nonatomic) NSString *m_nsUsrName;
-@property(copy, nonatomic) NSString *m_nsNickName;
-@property(copy, nonatomic) NSString *m_nsRemark;
 @end
 
 @interface BaseMsgContentViewController : UIViewController
@@ -220,6 +262,105 @@ static BOOL g_hasPluginsMgr = NO;
 - (id)getService:(Class)cls;
 @end
 
+// 新增的集赞助手相关函数
+static void loadLikeAssistantSettings() {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    gLikeAssistantEnabled = [defaults boolForKey:kLikeAssistantEnabledKey];
+    gLikeCount = [defaults objectForKey:kLikeCountKey] ?: @"10";
+    gCommentCount = [defaults objectForKey:kCommentCountKey] ?: @"5";
+    gComments = [defaults objectForKey:kCommentsKey] ?: @"赞,,👍";
+    gCommentsArray = [gComments componentsSeparatedByString:@",,"];
+}
+
+static NSMutableArray<CContact *> *getAllFriends() {
+    static NSMutableArray<CContact *> *allFriends = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        allFriends = [NSMutableArray array];
+    });
+    
+    if (allFriends.count == 0) {
+        CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:[objc_getClass("CContactMgr") class]];
+        NSArray* contacts = [contactMgr getContactList:1 contactType:0];
+        
+        for(CContact* contact in contacts){
+            if (!contact.isBrandContact && contact.m_uiSex != 0 && ![contact.m_nsUsrName containsString:@"@openim"]) {
+                [allFriends addObject:contact];
+            }
+        }
+    }
+    
+    return allFriends;
+}
+
+static NSMutableArray<WCUserComment *> *getLikeCommentUsers() {
+    NSMutableArray* likeCommentUsers = [NSMutableArray array];
+    NSArray<CContact *> *allFriends = getAllFriends();
+    NSInteger likeCount = [gLikeCount integerValue];
+    
+    [allFriends enumerateObjectsUsingBlock:^(CContact *curAddContact, NSUInteger idx, BOOL * _Nonnull stop) {
+        WCUserComment* likeComment = [[objc_getClass("WCUserComment") alloc] init];
+        likeComment.username = curAddContact.m_nsUsrName;
+        likeComment.nickname = curAddContact.m_nsNickName;
+        likeComment.type = 2;
+        likeComment.commentID = [NSString stringWithFormat:@"%lu", (unsigned long)idx];
+        likeComment.createTime = [[NSDate date] timeIntervalSince1970];
+        [likeCommentUsers addObject:likeComment];
+        
+        if (likeCount > 0 && idx >= likeCount - 1) {
+            *stop = YES;
+        }
+    }];
+    
+    return likeCommentUsers;
+}
+
+static NSMutableArray<WCUserComment *> *getCommentsForItem(WCDataItem *origItem) {
+    NSMutableArray* origComment = origItem.commentUsers;
+    NSInteger commentCount = [gCommentCount integerValue];
+    
+    if (origComment.count >= commentCount) {
+        return origComment;
+    }
+    
+    NSMutableArray* newComments = [NSMutableArray array];
+    [newComments addObjectsFromArray:origComment];
+    
+    if (gCommentsArray.count == 0) {
+        gCommentsArray = @[@"赞", @"👍"];
+    }
+    
+    NSArray<CContact *> *allFriends = getAllFriends();
+    NSTimeInterval timeInterval = [[NSDate date] timeIntervalSince1970] - origItem.createtime;
+    
+___addComment:
+    [allFriends enumerateObjectsUsingBlock:^(CContact *curAddContact, NSUInteger idx, BOOL * _Nonnull stop) {
+        WCUserComment* newComment = [[objc_getClass("WCUserComment") alloc] init];
+        newComment.username = curAddContact.m_nsUsrName;
+        newComment.nickname = curAddContact.m_nsNickName;
+        newComment.type = 2;
+        newComment.commentID = [NSString stringWithFormat:@"%lu", (unsigned long)idx + origComment.count];
+        newComment.createTime = [[NSDate date] timeIntervalSince1970] - arc4random() % (NSInteger)timeInterval;
+        newComment.content = gCommentsArray[arc4random() % gCommentsArray.count];
+        [newComments addObject:newComment];
+        
+        if (commentCount <= idx + origComment.count) {
+            *stop = YES;
+        }
+    }];
+    
+    if (commentCount > newComments.count) {
+        goto ___addComment;
+    }
+    
+    [newComments sortUsingComparator:^NSComparisonResult(WCUserComment* obj1, WCUserComment * obj2) {
+        return obj1.createTime < obj2.createTime ? NSOrderedAscending : NSOrderedDescending;
+    }];
+    
+    return newComments;
+}
+
+// 现有的函数
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -265,6 +406,11 @@ static BOOL isFriendsCountEnabled() {
 
 static BOOL isWalletBalanceEnabled() {
     return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];
+}
+
+// 新增的集赞助手开关函数
+static BOOL isLikeAssistantEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kLikeAssistantEnabledKey];
 }
 
 static NSString* parseParam(NSString *content, NSString *begin, NSString *end) {
@@ -318,6 +464,7 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
+// 设置界面实现
 @implementation MessageSettingsViewController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -598,6 +745,265 @@ static void loadFriendsAndWalletSettings() {
 }
 @end
 
+// 新增的集赞助手设置界面实现
+@implementation LikeAssistantSettingsViewController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"集赞助手";
+    self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    _settings = @[@"启用集赞助手", @"点赞数量设置", @"评论数量设置", @"评论内容设置"];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL likeAssistantEnabled = [defaults boolForKey:kLikeAssistantEnabledKey];
+    return likeAssistantEnabled ? _settings.count : 1;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 44.0;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL likeAssistantEnabled = [defaults boolForKey:kLikeAssistantEnabledKey];
+    
+    if (indexPath.row == 0) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"LikeAssistantSwitchCell"];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"LikeAssistantSwitchCell"];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        }
+        cell.textLabel.text = @"启用集赞助手";
+        UISwitch *switchView = [[UISwitch alloc] init];
+        switchView.on = likeAssistantEnabled;
+        [switchView addTarget:self action:@selector(likeAssistantEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+        return cell;
+    }
+    
+    if (!likeAssistantEnabled) {
+        return [[UITableViewCell alloc] init];
+    }
+    
+    int rowIndex = (int)indexPath.row - 1;
+    
+    if (rowIndex == 0) { // 点赞数量设置
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"LikeCountInputCell"];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"LikeCountInputCell"];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            cell.backgroundColor = [UIColor clearColor];
+            
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 7, self.view.frame.size.width - 140, 30)];
+            textField.borderStyle = UITextBorderStyleRoundedRect;
+            textField.placeholder = @"点赞数量（默认：10）";
+            textField.keyboardType = UIKeyboardTypeNumberPad;
+            textField.delegate = self;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            [cell.contentView addSubview:textField];
+            _likeCountField = textField;
+            
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 7, 80, 30);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            [confirmButton addTarget:self action:@selector(likeCountConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _likeCountConfirmButton = confirmButton;
+            
+            NSString *likeCount = [defaults objectForKey:kLikeCountKey];
+            if (likeCount && [likeCount length] > 0) {
+                textField.text = likeCount;
+            } else {
+                textField.text = @"10";
+            }
+        }
+        return cell;
+    } else if (rowIndex == 1) { // 评论数量设置
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"CommentCountInputCell"];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"CommentCountInputCell"];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            cell.backgroundColor = [UIColor clearColor];
+            
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 7, self.view.frame.size.width - 140, 30)];
+            textField.borderStyle = UITextBorderStyleRoundedRect;
+            textField.placeholder = @"评论数量（默认：5）";
+            textField.keyboardType = UIKeyboardTypeNumberPad;
+            textField.delegate = self;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            [cell.contentView addSubview:textField];
+            _commentCountField = textField;
+            
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 7, 80, 30);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            [confirmButton addTarget:self action:@selector(commentCountConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _commentCountConfirmButton = confirmButton;
+            
+            NSString *commentCount = [defaults objectForKey:kCommentCountKey];
+            if (commentCount && [commentCount length] > 0) {
+                textField.text = commentCount;
+            } else {
+                textField.text = @"5";
+            }
+        }
+        return cell;
+    } else if (rowIndex == 2) { // 评论内容设置
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"CommentsInputCell"];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"CommentsInputCell"];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            cell.backgroundColor = [UIColor clearColor];
+            
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 7, self.view.frame.size.width - 140, 30)];
+            textField.borderStyle = UITextBorderStyleRoundedRect;
+            textField.placeholder = @"评论内容，用,,分隔（默认：赞,,👍）";
+            textField.delegate = self;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            [cell.contentView addSubview:textField];
+            _commentsField = textField;
+            
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 7, 80, 30);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            [confirmButton addTarget:self action:@selector(commentsConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _commentsConfirmButton = confirmButton;
+            
+            NSString *comments = [defaults objectForKey:kCommentsKey];
+            if (comments && [comments length] > 0) {
+                textField.text = comments;
+            } else {
+                textField.text = @"赞,,👍";
+            }
+        }
+        return cell;
+    }
+    
+    return [[UITableViewCell alloc] init];
+}
+
+- (void)likeAssistantEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kLikeAssistantEnabledKey];
+    [defaults synchronize];
+    [self.tableView reloadData];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)likeCountConfirmTapped:(UIButton *)sender {
+    if (_likeCountField) {
+        [_likeCountField resignFirstResponder];
+        [self saveLikeCountValue];
+    }
+}
+
+- (void)commentCountConfirmTapped:(UIButton *)sender {
+    if (_commentCountField) {
+        [_commentCountField resignFirstResponder];
+        [self saveCommentCountValue];
+    }
+}
+
+- (void)commentsConfirmTapped:(UIButton *)sender {
+    if (_commentsField) {
+        [_commentsField resignFirstResponder];
+        [self saveCommentsValue];
+    }
+}
+
+- (void)saveLikeCountValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _likeCountField.text;
+    if (text && [text length] > 0) {
+        [defaults setObject:text forKey:kLikeCountKey];
+    } else {
+        [defaults setObject:@"10" forKey:kLikeCountKey];
+    }
+    [defaults synchronize];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)saveCommentCountValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _commentCountField.text;
+    if (text && [text length] > 0) {
+        [defaults setObject:text forKey:kCommentCountKey];
+    } else {
+        [defaults setObject:@"5" forKey:kCommentCountKey];
+    }
+    [defaults synchronize];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)saveCommentsValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _commentsField.text;
+    if (text && [text length] > 0) {
+        [defaults setObject:text forKey:kCommentsKey];
+    } else {
+        [defaults setObject:@"赞,,👍" forKey:kCommentsKey];
+    }
+    [defaults synchronize];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    return YES;
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+    if (textField == _likeCountField) {
+        [self saveLikeCountValue];
+    } else if (textField == _commentCountField) {
+        [self saveCommentCountValue];
+    } else if (textField == _commentsField) {
+        [self saveCommentsValue];
+    }
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification {
+    CGRect keyboardFrame = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGFloat keyboardHeight = keyboardFrame.size.height;
+    UIEdgeInsets contentInsets = UIEdgeInsetsMake(0, 0, keyboardHeight, 0);
+    self.tableView.contentInset = contentInsets;
+    self.tableView.scrollIndicatorInsets = contentInsets;
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification {
+    UIEdgeInsets contentInsets = UIEdgeInsetsZero;
+    self.tableView.contentInset = contentInsets;
+    self.tableView.scrollIndicatorInsets = contentInsets;
+}
+@end
+
 @implementation CSTouchTrailViewController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -716,6 +1122,7 @@ static void loadFriendsAndWalletSettings() {
     _sections = @[
         @[@"消息设置"],
         @[@"娱乐功能"],
+        @[@"集赞助手"],  // 新增的集赞助手选项
         @[@"触摸轨迹"]
     ];
 }
@@ -753,7 +1160,9 @@ static void loadFriendsAndWalletSettings() {
         targetVC = [[MessageSettingsViewController alloc] init];
     } else if (indexPath.section == 1) {
         targetVC = [[GameSettingsViewController alloc] init];
-    } else if (indexPath.section == 2) {
+    } else if (indexPath.section == 2) {  // 集赞助手
+        targetVC = [[LikeAssistantSettingsViewController alloc] init];
+    } else if (indexPath.section == 3) {
         targetVC = [[CSTouchTrailViewController alloc] init];
     }
     if (targetVC) {
@@ -1178,6 +1587,31 @@ static void loadFriendsAndWalletSettings() {
 }
 %end
 
+// 新增的集赞助手 hook
+%hook NSObject
+// 假设这是一个朋友圈相关的方法，需要根据实际的微信类名来修改
+- (id)processLikeAndCommentsForItem:(id)item {
+    id result = %orig;
+    
+    if (isLikeAssistantEnabled()) {
+        // 处理点赞
+        if ([item isKindOfClass:[WCDataItem class]]) {
+            WCDataItem *dataItem = (WCDataItem *)item;
+            
+            // 添加点赞用户
+            NSMutableArray *likeUsers = getLikeCommentUsers();
+            // 这里需要根据实际的微信类和方法来添加点赞
+            
+            // 添加评论
+            NSMutableArray *comments = getCommentsForItem(dataItem);
+            // 这里需要根据实际的微信类和方法来添加评论
+        }
+    }
+    
+    return result;
+}
+%end
+
 %hook MMUILabel
 - (void)setText:(NSString *)text {
     if (!text) {
@@ -1514,6 +1948,10 @@ static void loadFriendsAndWalletSettings() {
             kHideChatTimeLabelKey: @NO,
             kFriendsCountEnabledKey: @NO,
             kWalletBalanceEnabledKey: @NO,
+            kLikeAssistantEnabledKey: @NO,  // 新增的集赞助手默认值
+            kLikeCountKey: @"10",           // 默认点赞数量
+            kCommentCountKey: @"5",         // 默认评论数量
+            kCommentsKey: @"赞,,👍",        // 默认评论内容
             kTouchTrailKey: @NO,
             kTouchTrailOnlyWhenRecordingKey: @NO,
             kTouchTrailDisplayStateKey: @NO,
@@ -1525,17 +1963,23 @@ static void loadFriendsAndWalletSettings() {
                 id value = defaultValues[key];
                 if ([value isKindOfClass:[NSNumber class]]) {
                     [defaults setBool:[value boolValue] forKey:key];
+                } else if ([value isKindOfClass:[NSString class]]) {
+                    [defaults setObject:value forKey:key];
                 }
             }
         }
         [defaults synchronize];
+        
         loadFriendsAndWalletSettings();
+        loadLikeAssistantSettings();  // 加载集赞助手设置
+        
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL,
                                         (CFNotificationCallback)loadFriendsAndWalletSettings,
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
+        
         Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
         if (pluginsMgrClass && [pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
             g_hasPluginsMgr = YES;
