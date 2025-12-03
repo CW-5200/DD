@@ -405,12 +405,9 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    if (@available(iOS 13.0, *)) {
-        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
-        headerView.backgroundColor = [UIColor clearColor];
-        return headerView;
-    }
-    return nil;
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
@@ -700,20 +697,13 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    if (@available(iOS 13.0, *)) {
-        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 40)];
-        UILabel *headerLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, tableView.frame.size.width - 40, 30)];
-        headerLabel.text = @"娱乐与个性化设置";
-        headerLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-        headerLabel.textColor = [UIColor secondaryLabelColor];
-        [headerView addSubview:headerLabel];
-        return headerView;
-    }
-    return nil;
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return 40.0;
+    return 10.0;
 }
 
 - (void)gameCheatEnabledChanged:(UISwitch *)sender {
@@ -950,20 +940,13 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    if (@available(iOS 13.0, *)) {
-        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 40)];
-        UILabel *headerLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, tableView.frame.size.width - 40, 30)];
-        headerLabel.text = @"触摸轨迹显示设置";
-        headerLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-        headerLabel.textColor = [UIColor secondaryLabelColor];
-        [headerView addSubview:headerLabel];
-        return headerView;
-    }
-    return nil;
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return 40.0;
+    return 10.0;
 }
 
 - (void)trailEnabledChanged:(UISwitch *)sender {
@@ -1069,7 +1052,6 @@ static void loadFriendsAndWalletSettings() {
     cell.textLabel.text = cellTitle;
     
     if (@available(iOS 13.0, *)) {
-        // 添加图标
         UIImage *iconImage = nil;
         if (indexPath.section == 0) {
             iconImage = [UIImage systemImageNamed:@"message.fill"];
