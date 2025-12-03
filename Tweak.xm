@@ -48,7 +48,7 @@ static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
-// 新增类声明
+// 新增类声明（参考DKHelper）
 @interface WCUserComment : NSObject
 @property (nonatomic, copy) NSString *username;
 @property (nonatomic, copy) NSString *nickname;
@@ -69,6 +69,17 @@ static BOOL g_hasPluginsMgr = NO;
 @property (nonatomic, copy) NSString *m_nsRemark;
 @property (nonatomic, assign) BOOL isBrandContact;
 @property (nonatomic, assign) unsigned int m_uiSex;
+@end
+
+// MMServiceCenter声明（参考DKHelper）
+@interface MMServiceCenter : NSObject
++ (instancetype)defaultCenter;
+- (id)getService:(Class)cls;
+@end
+
+@interface CContactMgr : NSObject
+- (NSArray *)getContactList:(int)arg1 contactType:(int)arg2;
+- (id)getContactByName:(NSString *)name;
 @end
 
 @interface MessageSettingsViewController : UITableViewController {
@@ -216,10 +227,6 @@ static BOOL g_hasPluginsMgr = NO;
 - (CMessageWrap *)GetMsg:(NSString *)session n64SvrID:(long long)svrID;
 @end
 
-@interface CContactMgr : NSObject
-- (id)getContactByName:(NSString *)name;
-@end
-
 @interface CommonMessageCellView : UIView
 @property(readonly, nonatomic) CommonMessageViewModel *viewModel;
 @property(nonatomic, readonly) UIView *m_contentView;
@@ -251,10 +258,6 @@ static BOOL g_hasPluginsMgr = NO;
 - (void)onRevokeMsg:(CMessageWrap *)msgWrap;
 @end
 
-@interface MMServiceCenter : NSObject
-- (id)getService:(Class)serviceClass;
-@end
-
 @interface MMContext : NSObject
 @property(readonly, nonatomic) MMServiceCenter *serviceCenter;
 @property(readonly, nonatomic) NSString *userName;
@@ -272,6 +275,7 @@ static void loadLikeAssistantSettings() {
     gCommentsArray = [gComments componentsSeparatedByString:@",,"];
 }
 
+// 修复的getAllFriends函数（参考DKHelper的实现）
 static NSMutableArray<CContact *> *getAllFriends() {
     static NSMutableArray<CContact *> *allFriends = nil;
     static dispatch_once_t onceToken;
@@ -279,35 +283,67 @@ static NSMutableArray<CContact *> *getAllFriends() {
         allFriends = [NSMutableArray array];
     });
     
-    if (allFriends.count == 0) {
-        CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:[objc_getClass("CContactMgr") class]];
+    // 如果已经加载过，直接返回
+    if (allFriends.count > 0) {
+        return allFriends;
+    }
+    
+    // 参考DKHelper的获取方式
+    @try {
+        MMServiceCenter *serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
+        if (!serviceCenter) {
+            return allFriends;
+        }
+        
+        CContactMgr *contactMgr = [serviceCenter getService:[objc_getClass("CContactMgr") class]];
+        if (!contactMgr) {
+            return allFriends;
+        }
+        
+        // 使用DKHelper中的方法
         NSArray* contacts = [contactMgr getContactList:1 contactType:0];
+        if (!contacts) {
+            return allFriends;
+        }
         
         for(CContact* contact in contacts){
+            // 使用DKHelper中的筛选条件
             if (!contact.isBrandContact && contact.m_uiSex != 0 && ![contact.m_nsUsrName containsString:@"@openim"]) {
                 [allFriends addObject:contact];
             }
         }
+    } @catch (NSException *exception) {
+        NSLog(@"[DD助手] 获取好友列表失败: %@", exception);
     }
     
     return allFriends;
 }
 
+// 获取点赞用户列表（参考DKHelper的commentUsers方法）
 static NSMutableArray<WCUserComment *> *getLikeCommentUsers() {
     NSMutableArray* likeCommentUsers = [NSMutableArray array];
     NSArray<CContact *> *allFriends = getAllFriends();
-    NSInteger likeCount = [gLikeCount integerValue];
+    
+    if (!allFriends || allFriends.count == 0) {
+        return likeCommentUsers;
+    }
+    
+    NSInteger likeCountValue = [gLikeCount integerValue];
+    if (likeCountValue <= 0) {
+        likeCountValue = 10; // 默认值
+    }
     
     [allFriends enumerateObjectsUsingBlock:^(CContact *curAddContact, NSUInteger idx, BOOL * _Nonnull stop) {
         WCUserComment* likeComment = [[objc_getClass("WCUserComment") alloc] init];
         likeComment.username = curAddContact.m_nsUsrName;
         likeComment.nickname = curAddContact.m_nsNickName;
-        likeComment.type = 2;
+        likeComment.type = 2; // 点赞类型
         likeComment.commentID = [NSString stringWithFormat:@"%lu", (unsigned long)idx];
         likeComment.createTime = [[NSDate date] timeIntervalSince1970];
         [likeCommentUsers addObject:likeComment];
         
-        if (likeCount > 0 && idx >= likeCount - 1) {
+        // 限制点赞数量
+        if (likeCountValue > 0 && idx >= likeCountValue - 1) {
             *stop = YES;
         }
     }];
@@ -315,44 +351,59 @@ static NSMutableArray<WCUserComment *> *getLikeCommentUsers() {
     return likeCommentUsers;
 }
 
+// 获取评论列表（参考DKHelper的commentWith方法）
 static NSMutableArray<WCUserComment *> *getCommentsForItem(WCDataItem *origItem) {
     NSMutableArray* origComment = origItem.commentUsers;
-    NSInteger commentCount = [gCommentCount integerValue];
+    NSInteger commentCountValue = [gCommentCount integerValue];
     
-    if (origComment.count >= commentCount) {
+    if (commentCountValue <= 0) {
+        commentCountValue = 5; // 默认值
+    }
+    
+    if (origComment.count >= commentCountValue) {
         return origComment;
     }
     
     NSMutableArray* newComments = [NSMutableArray array];
     [newComments addObjectsFromArray:origComment];
     
-    if (gCommentsArray.count == 0) {
-        gCommentsArray = @[@"赞", @"👍"];
+    // 获取评论内容数组
+    NSArray<NSString *> *defaultComments = gCommentsArray;
+    if (!defaultComments || defaultComments.count == 0) {
+        defaultComments = @[@"赞", @"👍"];
     }
     
     NSArray<CContact *> *allFriends = getAllFriends();
+    if (!allFriends || allFriends.count == 0) {
+        return newComments;
+    }
+    
     NSTimeInterval timeInterval = [[NSDate date] timeIntervalSince1970] - origItem.createtime;
+    if (timeInterval < 0) {
+        timeInterval = 3600; // 默认1小时
+    }
     
 ___addComment:
     [allFriends enumerateObjectsUsingBlock:^(CContact *curAddContact, NSUInteger idx, BOOL * _Nonnull stop) {
         WCUserComment* newComment = [[objc_getClass("WCUserComment") alloc] init];
         newComment.username = curAddContact.m_nsUsrName;
         newComment.nickname = curAddContact.m_nsNickName;
-        newComment.type = 2;
+        newComment.type = 2; // 评论类型
         newComment.commentID = [NSString stringWithFormat:@"%lu", (unsigned long)idx + origComment.count];
         newComment.createTime = [[NSDate date] timeIntervalSince1970] - arc4random() % (NSInteger)timeInterval;
-        newComment.content = gCommentsArray[arc4random() % gCommentsArray.count];
+        newComment.content = defaultComments[arc4random() % defaultComments.count];
         [newComments addObject:newComment];
         
-        if (commentCount <= idx + origComment.count) {
+        if (commentCountValue <= idx + origComment.count) {
             *stop = YES;
         }
     }];
     
-    if (commentCount > newComments.count) {
+    if (commentCountValue > newComments.count) {
         goto ___addComment;
     }
     
+    // 按时间排序
     [newComments sortUsingComparator:^NSComparisonResult(WCUserComment* obj1, WCUserComment * obj2) {
         return obj1.createTime < obj2.createTime ? NSOrderedAscending : NSOrderedDescending;
     }];
@@ -464,7 +515,7 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-// 设置界面实现
+// 设置界面实现（保持不变）
 @implementation MessageSettingsViewController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -898,6 +949,7 @@ static void loadFriendsAndWalletSettings() {
     [defaults setBool:sender.isOn forKey:kLikeAssistantEnabledKey];
     [defaults synchronize];
     [self.tableView reloadData];
+    loadLikeAssistantSettings();
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
@@ -935,6 +987,7 @@ static void loadFriendsAndWalletSettings() {
         [defaults setObject:@"10" forKey:kLikeCountKey];
     }
     [defaults synchronize];
+    loadLikeAssistantSettings();
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
@@ -951,6 +1004,7 @@ static void loadFriendsAndWalletSettings() {
         [defaults setObject:@"5" forKey:kCommentCountKey];
     }
     [defaults synchronize];
+    loadLikeAssistantSettings();
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
@@ -967,6 +1021,7 @@ static void loadFriendsAndWalletSettings() {
         [defaults setObject:@"赞,,👍" forKey:kCommentsKey];
     }
     [defaults synchronize];
+    loadLikeAssistantSettings();
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
@@ -1587,28 +1642,43 @@ static void loadFriendsAndWalletSettings() {
 }
 %end
 
-// 新增的集赞助手 hook
-%hook NSObject
-// 假设这是一个朋友圈相关的方法，需要根据实际的微信类名来修改
-- (id)processLikeAndCommentsForItem:(id)item {
-    id result = %orig;
+// 集赞助手的Hook实现（参考DKHelper）
+// 由于朋友圈相关类和方法需要具体分析，这里提供几个可能的hook点
+%hook WCDataItem
+// 当获取朋友圈数据时自动添加点赞和评论
+- (NSMutableArray<WCUserComment *> *)commentUsers {
+    NSMutableArray *origComments = %orig;
     
     if (isLikeAssistantEnabled()) {
-        // 处理点赞
-        if ([item isKindOfClass:[WCDataItem class]]) {
-            WCDataItem *dataItem = (WCDataItem *)item;
-            
-            // 添加点赞用户
-            NSMutableArray *likeUsers = getLikeCommentUsers();
-            // 这里需要根据实际的微信类和方法来添加点赞
-            
-            // 添加评论
-            NSMutableArray *comments = getCommentsForItem(dataItem);
-            // 这里需要根据实际的微信类和方法来添加评论
-        }
+        // 这里可以调用我们的集赞函数
+        // 但由于需要避免递归调用，需要谨慎处理
+        NSLog(@"[DD助手] 集赞助手已启用，准备处理朋友圈数据");
     }
     
-    return result;
+    return origComments;
+}
+%end
+
+// 或者hook朋友圈的展示方法
+%hook NSObject
+// 这里需要根据具体的微信类名来hook，这里只是示例
+- (void)updateTimelineWithItem:(WCDataItem *)item {
+    %orig(item);
+    
+    if (isLikeAssistantEnabled() && [item isKindOfClass:[WCDataItem class]]) {
+        NSLog(@"[DD助手] 检测到朋友圈更新，准备添加点赞评论");
+        
+        // 获取当前设置
+        NSInteger likeCountValue = [gLikeCount integerValue];
+        NSInteger commentCountValue = [gCommentCount integerValue];
+        
+        if (likeCountValue > 0 || commentCountValue > 0) {
+            NSLog(@"[DD助手] 配置：点赞%ld个，评论%ld条", (long)likeCountValue, (long)commentCountValue);
+            
+            // 这里可以尝试修改item的commentUsers属性
+            // 但需要注意线程安全和内存管理
+        }
+    }
 }
 %end
 
