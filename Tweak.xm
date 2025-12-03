@@ -55,12 +55,10 @@ static BOOL g_hasPluginsMgr = NO;
 @property (nonatomic, strong) UITableView *tableView;
 @end
 
-@interface DDAssistantSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout> {
+@interface DDAssistantSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
     NSArray *_sections;
 }
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) UICollectionView *collectionView API_AVAILABLE(ios(13.0));
-@property (nonatomic, strong) UICollectionViewDiffableDataSource *dataSource API_AVAILABLE(ios(13.0));
 @end
 
 @interface WBTouchTrailView : UIView
@@ -350,17 +348,8 @@ static void loadFriendsAndWalletSettings() {
     if (@available(iOS 13.0, *)) {
         self.view.backgroundColor = [UIColor systemBackgroundColor];
         self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
-        
-        // 添加现代风格头部
-        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 40)];
-        UILabel *headerLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 0, self.view.frame.size.width - 40, 40)];
-        headerLabel.text = @"个性化消息显示设置";
-        headerLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-        headerLabel.textColor = [UIColor secondaryLabelColor];
-        [headerView addSubview:headerLabel];
-        self.tableView.tableHeaderView = headerView;
     } else {
-        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
@@ -469,7 +458,7 @@ static void loadFriendsAndWalletSettings() {
         self.view.backgroundColor = [UIColor systemBackgroundColor];
         self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
     } else {
-        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
@@ -863,7 +852,7 @@ static void loadFriendsAndWalletSettings() {
         self.view.backgroundColor = [UIColor systemBackgroundColor];
         self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
     } else {
-        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
@@ -1021,140 +1010,33 @@ static void loadFriendsAndWalletSettings() {
 
 - (void)loadView {
     [super loadView];
-    
+    [self setupTableView];
+}
+
+- (void)setupTableView {
     if (@available(iOS 13.0, *)) {
-        [self setupModernUI];
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     } else {
-        [self setupLegacyUI];
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
     }
-}
-
-- (void)setupModernUI API_AVAILABLE(ios(13.0)) {
-    self.title = PLUGIN_NAME;
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    
-    // 启用大标题
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
-    
-    // 创建集合视图布局
-    UICollectionViewCompositionalLayout *layout = [self createModernLayout];
-    
-    // 创建集合视图
-    self.collectionView = [[UICollectionView alloc] initWithFrame:self.view.bounds collectionViewLayout:layout];
-    self.collectionView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.collectionView.backgroundColor = [UIColor clearColor];
-    self.collectionView.delegate = self;
-    [self.view addSubview:self.collectionView];
-    
-    // 注册单元格
-    [self.collectionView registerClass:[UICollectionViewListCell class] forCellWithReuseIdentifier:@"SettingsCell"];
-    
-    // 创建数据源
-    [self setupDataSource];
-    
-    // 设置初始数据
-    [self applyInitialSnapshot];
-}
-
-- (UICollectionViewCompositionalLayout *)createModernLayout API_AVAILABLE(ios(13.0)) {
-    UICollectionLayoutListConfiguration *listConfiguration = [[UICollectionLayoutListConfiguration alloc] 
-        initWithAppearance:UICollectionLayoutListStyleInsetGrouped];
-    
-    listConfiguration.backgroundColor = [UIColor systemBackgroundColor];
-    listConfiguration.headerMode = UICollectionLayoutListHeaderModeSupplementary;
-    
-    return [UICollectionViewCompositionalLayout layoutWithListConfiguration:listConfiguration];
-}
-
-- (void)setupDataSource API_AVAILABLE(ios(13.0)) {
-    __weak typeof(self) weakSelf = self;
-    
-    UICollectionViewCellRegistration *cellRegistration = [UICollectionViewCellRegistration 
-        registrationWithCellClass:[UICollectionViewListCell class]
-        configurationHandler:^(__kindof UICollectionViewListCell *cell, 
-                               NSIndexPath *indexPath, 
-                               id item) {
-        
-        UIListContentConfiguration *contentConfig = [UIListContentConfiguration cellConfiguration];
-        
-        NSArray *sectionData = weakSelf.sections[indexPath.section];
-        if (indexPath.row < sectionData.count) {
-            NSDictionary *cellData = sectionData[indexPath.row];
-            contentConfig.text = cellData[@"title"];
-            contentConfig.image = [UIImage systemImageNamed:cellData[@"icon"]];
-        }
-        
-        contentConfig.textProperties.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-        contentConfig.imageProperties.tintColor = [UIColor systemBlueColor];
-        
-        cell.contentConfiguration = contentConfig;
-        
-        // 设置背景配置
-        UIBackgroundConfiguration *bgConfig = [UIBackgroundConfiguration listGroupedCellConfiguration];
-        bgConfig.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
-        cell.backgroundConfiguration = bgConfig;
-        
-        // 添加箭头
-        cell.accessories = @[[UICellAccessory disclosureIndicator]];
-    }];
-    
-    self.dataSource = [[UICollectionViewDiffableDataSource alloc] initWithCollectionView:self.collectionView
-        cellProvider:^UICollectionViewCell *(UICollectionView *collectionView, 
-                                             NSIndexPath *indexPath, 
-                                             id identifier) {
-        
-        return [collectionView dequeueConfiguredReusableCellWithRegistration:cellRegistration
-                                                                forIndexPath:indexPath
-                                                                        item:identifier];
-    }];
-}
-
-- (void)applyInitialSnapshot API_AVAILABLE(ios(13.0)) {
-    // 配置数据
-    self.sections = @[
-        @[
-            @{@"title": @"消息设置", @"icon": @"message.fill", @"type": @"message"}
-        ],
-        @[
-            @{@"title": @"娱乐功能", @"icon": @"gamecontroller.fill", @"type": @"game"}
-        ],
-        @[
-            @{@"title": @"触摸轨迹", @"icon": @"cursorarrow.motionlines", @"type": @"touch"}
-        ]
-    ];
-    
-    NSDiffableDataSourceSnapshot *snapshot = [[NSDiffableDataSourceSnapshot alloc] init];
-    
-    // 添加节
-    [snapshot appendSectionsWithIdentifiers:@[@0, @1, @2]];
-    
-    // 为每节添加项目
-    for (NSInteger section = 0; section < self.sections.count; section++) {
-        NSArray *sectionData = self.sections[section];
-        NSMutableArray *itemIdentifiers = [NSMutableArray array];
-        
-        for (NSInteger row = 0; row < sectionData.count; row++) {
-            NSString *identifier = [NSString stringWithFormat:@"%ld-%ld", (long)section, (long)row];
-            [itemIdentifiers addObject:identifier];
-        }
-        
-        [snapshot appendItemsWithIdentifiers:itemIdentifiers intoSectionWithIdentifier:@(section)];
-    }
-    
-    [self.dataSource applySnapshot:snapshot animatingDifferences:NO];
-}
-
-- (void)setupLegacyUI {
-    self.title = PLUGIN_NAME;
-    self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
-    
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     [self.view addSubview:self.tableView];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = PLUGIN_NAME;
     
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
+    
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     _sections = @[
         @[@"消息设置"],
         @[@"娱乐功能"],
@@ -1162,25 +1044,69 @@ static void loadFriendsAndWalletSettings() {
     ];
 }
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    // 添加版本信息
-    if (@available(iOS 13.0, *)) {
-        UILabel *versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 60)];
-        versionLabel.text = [NSString stringWithFormat:@"%@ v%@", PLUGIN_NAME, PLUGIN_VERSION];
-        versionLabel.textAlignment = NSTextAlignmentCenter;
-        versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-        versionLabel.textColor = [UIColor secondaryLabelColor];
-        
-        self.collectionView.tableFooterView = versionLabel;
-    }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return _sections.count;
 }
 
-#pragma mark - UICollectionViewDelegate (Modern UI)
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return [_sections[section] count];
+}
 
-- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
-    [collectionView deselectItemAtIndexPath:indexPath animated:YES];
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *cellIdentifier = @"DDAssistantCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
+    }
+    
+    NSString *cellTitle = _sections[indexPath.section][indexPath.row];
+    cell.textLabel.text = cellTitle;
+    
+    if (@available(iOS 13.0, *)) {
+        // 添加图标
+        UIImage *iconImage = nil;
+        if (indexPath.section == 0) {
+            iconImage = [UIImage systemImageNamed:@"message.fill"];
+        } else if (indexPath.section == 1) {
+            iconImage = [UIImage systemImageNamed:@"gamecontroller.fill"];
+        } else if (indexPath.section == 2) {
+            iconImage = [UIImage systemImageNamed:@"cursorarrow.motionlines"];
+        }
+        
+        if (iconImage) {
+            cell.imageView.image = iconImage;
+            cell.imageView.tintColor = [UIColor systemBlueColor];
+        }
+    }
+    
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 55.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    if (section == 0) {
+        return 20.0;
+    }
+    return 10.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, [self tableView:tableView heightForHeaderInSection:section])];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
     UIViewController *targetVC = nil;
     if (indexPath.section == 0) {
@@ -1192,77 +1118,8 @@ static void loadFriendsAndWalletSettings() {
     }
     
     if (targetVC) {
-        // 推入导航栈
         [self.navigationController pushViewController:targetVC animated:YES];
     }
-}
-
-#pragma mark - UITableViewDelegate & DataSource (Legacy UI)
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    if (@available(iOS 13.0, *)) {
-        return 0; // 使用 CollectionView
-    }
-    return _sections.count;
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (@available(iOS 13.0, *)) {
-        return 0; // 使用 CollectionView
-    }
-    return [_sections[section] count];
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (@available(iOS 13.0, *)) {
-        return [[UITableViewCell alloc] init];
-    }
-    
-    NSString *cellIdentifier = @"DDAssistantCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    }
-    
-    NSString *cellTitle = _sections[indexPath.section][indexPath.row];
-    cell.textLabel.text = cellTitle;
-    
-    return cell;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (@available(iOS 13.0, *)) {
-        return 0;
-    }
-    return 50.0;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    if (@available(iOS 13.0, *)) {
-        return 0;
-    }
-    return 10.0;
-}
-
-- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    if (@available(iOS 13.0, *)) {
-        return nil;
-    }
-    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 10)];
-    headerView.backgroundColor = [UIColor clearColor];
-    return headerView;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (@available(iOS 13.0, *)) {
-        return;
-    }
-    
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    
-    // 模拟 CollectionView 的选择
-    [self collectionView:nil didSelectItemAtIndexPath:indexPath];
 }
 
 @end
