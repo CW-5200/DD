@@ -1,5 +1,3 @@
-[file name]: Tweak.xm
-[file content begin]
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
@@ -37,108 +35,32 @@ static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
-// 图标管理类
-@interface DDAssistantIconManager : NSObject
-+ (UIImage *)iconForFeature:(NSString *)featureName;
-+ (UIImage *)symbolWithName:(NSString *)name size:(CGFloat)size weight:(UIImageSymbolWeight)weight;
-+ (UIImage *)gradientIconWithSymbol:(NSString *)symbolName size:(CGFloat)size color1:(UIColor *)color1 color2:(UIColor *)color2;
-@end
-
-@implementation DDAssistantIconManager
-
-+ (UIImage *)iconForFeature:(NSString *)featureName {
-    if (@available(iOS 13.0, *)) {
-        if ([featureName isEqualToString:@"消息设置"]) {
-            return [self gradientIconWithSymbol:@"message.fill" size:28 color1:[UIColor systemBlueColor] color2:[UIColor systemCyanColor]];
-        } else if ([featureName isEqualToString:@"娱乐功能"]) {
-            return [self gradientIconWithSymbol:@"gamecontroller.fill" size:28 color1:[UIColor systemPurpleColor] color2:[UIColor systemPinkColor]];
-        } else if ([featureName isEqualToString:@"触摸轨迹"]) {
-            return [self gradientIconWithSymbol:@"hand.draw.fill" size:28 color1:[UIColor systemOrangeColor] color2:[UIColor systemYellowColor]];
-        } else if ([featureName isEqualToString:@"好友数量"]) {
-            return [self gradientIconWithSymbol:@"person.3.fill" size:28 color1:[UIColor systemBlueColor] color2:[UIColor systemTealColor]];
-        } else if ([featureName isEqualToString:@"钱包余额"]) {
-            return [self gradientIconWithSymbol:@"dollarsign.circle.fill" size:28 color1:[UIColor systemGreenColor] color2:[UIColor systemBlueColor]];
-        } else if ([featureName isEqualToString:@"防撤提示"]) {
-            return [self gradientIconWithSymbol:@"arrow.uturn.backward.circle.fill" size:28 color1:[UIColor systemRedColor] color2:[UIColor systemOrangeColor]];
-        } else if ([featureName isEqualToString:@"骰子控制"]) {
-            return [self gradientIconWithSymbol:@"die.face.6.fill" size:28 color1:[UIColor systemPurpleColor] color2:[UIColor systemIndigoColor]];
-        } else if ([featureName isEqualToString:@"录屏显示"]) {
-            return [self gradientIconWithSymbol:@"record.circle.fill" size:28 color1:[UIColor systemRedColor] color2:[UIColor systemPinkColor]];
-        }
-    }
-    return nil;
-}
-
-+ (UIImage *)symbolWithName:(NSString *)name size:(CGFloat)size weight:(UIImageSymbolWeight)weight {
-    if (@available(iOS 13.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:size 
-                                                                                           weight:weight
-                                                                                            scale:UIImageSymbolScaleLarge];
-        UIImage *image = [UIImage systemImageNamed:name withConfiguration:config];
-        return image;
-    }
-    return nil;
-}
-
-+ (UIImage *)gradientIconWithSymbol:(NSString *)symbolName size:(CGFloat)size color1:(UIColor *)color1 color2:(UIColor *)color2 {
-    if (@available(iOS 13.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:size 
-                                                                                           weight:UIImageSymbolWeightSemibold
-                                                                                            scale:UIImageSymbolScaleLarge];
-        
-        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size + 16, size + 16)];
-        
-        return [renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull context) {
-            CGContextRef ctx = context.CGContext;
-            CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-            
-            NSArray *colors = @[
-                (__bridge id)color1.CGColor,
-                (__bridge id)color2.CGColor
-            ];
-            
-            CGFloat locations[] = {0.0, 1.0};
-            CGGradientRef gradient = CGGradientCreateWithColors(colorSpace, (__bridge CFArrayRef)colors, locations);
-            
-            CGRect rect = CGRectMake(2, 2, size + 12, size + 12);
-            UIBezierPath *circlePath = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:(size + 12)/4];
-            [circlePath addClip];
-            
-            CGContextDrawLinearGradient(ctx, gradient, 
-                                      CGPointMake(0, 0), 
-                                      CGPointMake(size + 16, size + 16), 
-                                      0);
-            
-            UIImage *symbol = [UIImage systemImageNamed:symbolName withConfiguration:config];
-            [symbol drawInRect:CGRectMake(8, 8, size, size)];
-            
-            CFRelease(gradient);
-            CFRelease(colorSpace);
-        }];
-    }
-    return nil;
-}
-
-@end
-
-@interface MessageSettingsViewController : UITableViewController {
+@interface MessageSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
     NSArray *_settings;
 }
+@property (nonatomic, strong) UITableView *tableView;
 @end
 
-@interface GameSettingsViewController : UITableViewController <UITextFieldDelegate> {
+@interface GameSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate> {
     NSArray *_settings;
     UITextField *_friendsCountField;
     UITextField *_walletBalanceField;
     UIButton *_friendsCountConfirmButton;
     UIButton *_walletBalanceConfirmButton;
 }
+@property (nonatomic, strong) UITableView *tableView;
 @end
 
-@interface CSTouchTrailViewController : UITableViewController
+@interface CSTouchTrailViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+@property (nonatomic, strong) UITableView *tableView;
 @end
 
-@interface ModernDDAssistantSettingsViewController : UIViewController
+@interface DDAssistantSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout> {
+    NSArray *_sections;
+}
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UICollectionView *collectionView API_AVAILABLE(ios(13.0));
+@property (nonatomic, strong) UICollectionViewDiffableDataSource *dataSource API_AVAILABLE(ios(13.0));
 @end
 
 @interface WBTouchTrailView : UIView
@@ -402,389 +324,62 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-@implementation ModernDDAssistantSettingsViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    // 设置iOS 13+现代风格
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    
-    if (@available(iOS 13.0, *)) {
-        // 创建动态模糊背景
-        UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial];
-        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-        blurView.frame = self.view.bounds;
-        blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [self.view addSubview:blurView];
-    }
-    
-    // 创建现代风格的UI
-    [self setupModernUI];
-}
-
-- (void)setupModernUI {
-    // 创建主容器
-    UIView *mainContainer = [[UIView alloc] init];
-    mainContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:mainContainer];
-    
-    // 应用图标
-    UIImageView *appIconView = [[UIImageView alloc] init];
-    appIconView.translatesAutoresizingMaskIntoConstraints = NO;
-    appIconView.contentMode = UIViewContentModeScaleAspectFit;
-    
-    // 创建应用图标（使用渐变）
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(120, 120)];
-    UIImage *appIcon = [renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull context) {
-        CGRect rect = CGRectMake(0, 0, 120, 120);
-        
-        // 绘制渐变背景
-        UIBezierPath *roundedRect = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:28];
-        [roundedRect addClip];
-        
-        // 创建渐变
-        CGContextRef ctx = context.CGContext;
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-        NSArray *colors = @[
-            (__bridge id)[UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:1.0].CGColor,
-            (__bridge id)[UIColor colorWithRed:0.35 green:0.34 blue:0.84 alpha:1.0].CGColor
-        ];
-        CGGradientRef gradient = CGGradientCreateWithColors(colorSpace, (__bridge CFArrayRef)colors, NULL);
-        CGContextDrawLinearGradient(ctx, gradient, CGPointMake(0, 0), CGPointMake(120, 120), 0);
-        
-        // 绘制DD字母
-        NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-        style.alignment = NSTextAlignmentCenter;
-        
-        NSDictionary *attributes = @{
-            NSFontAttributeName: [UIFont systemFontOfSize:48 weight:UIFontWeightHeavy],
-            NSForegroundColorAttributeName: [UIColor whiteColor],
-            NSParagraphStyleAttributeName: style
-        };
-        
-        [@"DD" drawInRect:CGRectMake(0, 35, 120, 50) withAttributes:attributes];
-        
-        CFRelease(gradient);
-        CFRelease(colorSpace);
-    }];
-    
-    appIconView.image = appIcon;
-    appIconView.layer.shadowColor = [UIColor blackColor].CGColor;
-    appIconView.layer.shadowOffset = CGSizeMake(0, 4);
-    appIconView.layer.shadowOpacity = 0.2;
-    appIconView.layer.shadowRadius = 8;
-    [mainContainer addSubview:appIconView];
-    
-    // 应用名称
-    UILabel *appNameLabel = [[UILabel alloc] init];
-    appNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    appNameLabel.text = PLUGIN_NAME;
-    appNameLabel.font = [UIFont systemFontOfSize:32 weight:UIFontWeightHeavy];
-    appNameLabel.textColor = [UIColor labelColor];
-    appNameLabel.textAlignment = NSTextAlignmentCenter;
-    [mainContainer addSubview:appNameLabel];
-    
-    // 版本标签
-    UILabel *versionLabel = [[UILabel alloc] init];
-    versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    versionLabel.text = [NSString stringWithFormat:@"Version %@", PLUGIN_VERSION];
-    versionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    versionLabel.textColor = [UIColor secondaryLabelColor];
-    versionLabel.textAlignment = NSTextAlignmentCenter;
-    [mainContainer addSubview:versionLabel];
-    
-    // 功能卡片
-    NSArray *features = @[
-        @{
-            @"title": @"消息设置",
-            @"subtitle": @"防撤回、时间显示等",
-            @"icon": @"message.fill",
-            @"color": [UIColor systemBlueColor],
-            @"targetVC": @"MessageSettingsViewController"
-        },
-        @{
-            @"title": @"娱乐功能", 
-            @"subtitle": @"游戏控制、好友数量",
-            @"icon": @"gamecontroller.fill",
-            @"color": [UIColor systemPurpleColor],
-            @"targetVC": @"GameSettingsViewController"
-        },
-        @{
-            @"title": @"触摸轨迹",
-            @"subtitle": @"录屏触摸显示",
-            @"icon": @"hand.draw.fill",
-            @"color": [UIColor systemOrangeColor],
-            @"targetVC": @"CSTouchTrailViewController"
-        }
-    ];
-    
-    UIStackView *cardsStack = [[UIStackView alloc] init];
-    cardsStack.translatesAutoresizingMaskIntoConstraints = NO;
-    cardsStack.axis = UILayoutConstraintAxisVertical;
-    cardsStack.spacing = 16;
-    cardsStack.distribution = UIStackViewDistributionFillEqually;
-    [mainContainer addSubview:cardsStack];
-    
-    for (NSDictionary *feature in features) {
-        UIControl *card = [self createFeatureCardWithTitle:feature[@"title"]
-                                                  subtitle:feature[@"subtitle"]
-                                                     icon:feature[@"icon"]
-                                                     color:feature[@"color"]
-                                                  targetVC:feature[@"targetVC"]];
-        [cardsStack addArrangedSubview:card];
-    }
-    
-    // 底部信息
-    UILabel *footerLabel = [[UILabel alloc] init];
-    footerLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    footerLabel.text = @"✨ 让微信体验更美好";
-    footerLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    footerLabel.textColor = [UIColor tertiaryLabelColor];
-    footerLabel.textAlignment = NSTextAlignmentCenter;
-    [mainContainer addSubview:footerLabel];
-    
-    // 约束
-    [NSLayoutConstraint activateConstraints:@[
-        [mainContainer.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:20],
-        [mainContainer.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-20],
-        [mainContainer.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:20],
-        [mainContainer.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-20],
-        
-        [appIconView.topAnchor constraintEqualToAnchor:mainContainer.topAnchor constant:20],
-        [appIconView.centerXAnchor constraintEqualToAnchor:mainContainer.centerXAnchor],
-        [appIconView.widthAnchor constraintEqualToConstant:120],
-        [appIconView.heightAnchor constraintEqualToConstant:120],
-        
-        [appNameLabel.topAnchor constraintEqualToAnchor:appIconView.bottomAnchor constant:16],
-        [appNameLabel.centerXAnchor constraintEqualToAnchor:mainContainer.centerXAnchor],
-        
-        [versionLabel.topAnchor constraintEqualToAnchor:appNameLabel.bottomAnchor constant:4],
-        [versionLabel.centerXAnchor constraintEqualToAnchor:mainContainer.centerXAnchor],
-        
-        [cardsStack.topAnchor constraintEqualToAnchor:versionLabel.bottomAnchor constant:40],
-        [cardsStack.leadingAnchor constraintEqualToAnchor:mainContainer.leadingAnchor],
-        [cardsStack.trailingAnchor constraintEqualToAnchor:mainContainer.trailingAnchor],
-        [cardsStack.heightAnchor constraintEqualToConstant:240],
-        
-        [footerLabel.bottomAnchor constraintEqualToAnchor:mainContainer.bottomAnchor constant:-20],
-        [footerLabel.centerXAnchor constraintEqualToAnchor:mainContainer.centerXAnchor]
-    ]];
-}
-
-- (UIControl *)createFeatureCardWithTitle:(NSString *)title 
-                                 subtitle:(NSString *)subtitle 
-                                    icon:(NSString *)iconName 
-                                    color:(UIColor *)color
-                                 targetVC:(NSString *)targetVCName {
-    
-    UIControl *card = [[UIControl alloc] init];
-    card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = [UIColor secondarySystemBackgroundColor];
-    card.layer.cornerRadius = 20;
-    card.layer.cornerCurve = kCACornerCurveContinuous;
-    
-    // 添加阴影
-    card.layer.shadowColor = [UIColor blackColor].CGColor;
-    card.layer.shadowOffset = CGSizeMake(0, 2);
-    card.layer.shadowOpacity = 0.1;
-    card.layer.shadowRadius = 8;
-    
-    // 添加点击效果
-    [card addTarget:self action:@selector(cardTouchDown:) forControlEvents:UIControlEventTouchDown];
-    [card addTarget:self action:@selector(cardTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
-    
-    // 图标容器
-    UIView *iconContainer = [[UIView alloc] init];
-    iconContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    iconContainer.backgroundColor = color;
-    iconContainer.layer.cornerRadius = 12;
-    iconContainer.layer.cornerCurve = kCACornerCurveContinuous;
-    [card addSubview:iconContainer];
-    
-    // 图标
-    UIImageView *iconView = [[UIImageView alloc] init];
-    iconView.translatesAutoresizingMaskIntoConstraints = NO;
-    iconView.contentMode = UIViewContentModeScaleAspectFit;
-    iconView.tintColor = [UIColor whiteColor];
-    
-    if (@available(iOS 13.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:24 
-                                                                                           weight:UIImageSymbolWeightSemibold];
-        iconView.image = [[UIImage systemImageNamed:iconName withConfiguration:config] 
-                         imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    }
-    [iconContainer addSubview:iconView];
-    
-    // 标题
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.text = title;
-    titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
-    titleLabel.textColor = [UIColor labelColor];
-    [card addSubview:titleLabel];
-    
-    // 副标题
-    UILabel *subtitleLabel = [[UILabel alloc] init];
-    subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitleLabel.text = subtitle;
-    subtitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
-    subtitleLabel.textColor = [UIColor secondaryLabelColor];
-    [card addSubview:subtitleLabel];
-    
-    // 箭头
-    UIImageView *arrowIcon = [[UIImageView alloc] init];
-    arrowIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    arrowIcon.contentMode = UIViewContentModeScaleAspectFit;
-    arrowIcon.tintColor = [UIColor tertiaryLabelColor];
-    
-    if (@available(iOS 13.0, *)) {
-        arrowIcon.image = [UIImage systemImageNamed:@"chevron.right"];
-    }
-    [card addSubview:arrowIcon];
-    
-    // 约束
-    [NSLayoutConstraint activateConstraints:@[
-        [iconContainer.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
-        [iconContainer.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
-        [iconContainer.widthAnchor constraintEqualToConstant:44],
-        [iconContainer.heightAnchor constraintEqualToConstant:44],
-        
-        [iconView.centerXAnchor constraintEqualToAnchor:iconContainer.centerXAnchor],
-        [iconView.centerYAnchor constraintEqualToAnchor:iconContainer.centerYAnchor],
-        [iconView.widthAnchor constraintEqualToConstant:24],
-        [iconView.heightAnchor constraintEqualToConstant:24],
-        
-        [titleLabel.leadingAnchor constraintEqualToAnchor:iconContainer.trailingAnchor constant:16],
-        [titleLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
-        
-        [subtitleLabel.leadingAnchor constraintEqualToAnchor:titleLabel.leadingAnchor],
-        [subtitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
-        [subtitleLabel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20],
-        
-        [arrowIcon.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
-        [arrowIcon.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
-        [arrowIcon.widthAnchor constraintEqualToConstant:12],
-        [arrowIcon.heightAnchor constraintEqualToConstant:20]
-    ]];
-    
-    // 关联数据
-    objc_setAssociatedObject(card, @"featureTitle", title, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(card, @"targetVC", targetVCName, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    
-    return card;
-}
-
-- (void)cardTouchDown:(UIControl *)card {
-    [UIView animateWithDuration:0.1 animations:^{
-        card.transform = CGAffineTransformMakeScale(0.98, 0.98);
-        card.backgroundColor = [UIColor tertiarySystemBackgroundColor];
-    }];
-}
-
-- (void)cardTouchUp:(UIControl *)card {
-    [UIView animateWithDuration:0.2 delay:0 usingSpringWithDamping:0.6 initialSpringVelocity:0.5 options:0 animations:^{
-        card.transform = CGAffineTransformIdentity;
-        card.backgroundColor = [UIColor secondarySystemBackgroundColor];
-    } completion:^(BOOL finished) {
-        // 处理点击
-        NSString *featureTitle = objc_getAssociatedObject(card, @"featureTitle");
-        NSString *targetVCName = objc_getAssociatedObject(card, @"targetVC");
-        [self handleCardTap:featureTitle targetVC:targetVCName];
-    }];
-}
-
-- (void)handleCardTap:(NSString *)featureTitle targetVC:(NSString *)targetVCName {
-    UIViewController *targetVC = nil;
-    
-    if ([targetVCName isEqualToString:@"MessageSettingsViewController"]) {
-        targetVC = [[MessageSettingsViewController alloc] init];
-    } else if ([targetVCName isEqualToString:@"GameSettingsViewController"]) {
-        targetVC = [[GameSettingsViewController alloc] init];
-    } else if ([targetVCName isEqualToString:@"CSTouchTrailViewController"]) {
-        targetVC = [[CSTouchTrailViewController alloc] init];
-    }
-    
-    if (targetVC) {
-        // 配置子页面的导航栏
-        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:targetVC];
-        
-        if (@available(iOS 13.0, *)) {
-            // 现代导航栏样式
-            UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-            [appearance configureWithOpaqueBackground];
-            appearance.backgroundColor = [UIColor systemBackgroundColor];
-            appearance.shadowColor = [UIColor clearColor];
-            
-            nav.navigationBar.standardAppearance = appearance;
-            nav.navigationBar.scrollEdgeAppearance = appearance;
-        }
-        
-        // 使用 sheet 呈现
-        if (@available(iOS 15.0, *)) {
-            nav.modalPresentationStyle = UIModalPresentationPageSheet;
-            
-            UISheetPresentationController *sheet = nav.sheetPresentationController;
-            if (sheet) {
-                sheet.preferredCornerRadius = 20;
-                sheet.prefersGrabberVisible = YES;
-                sheet.detents = @[
-                    [UISheetPresentationControllerDetent mediumDetent],
-                    [UISheetPresentationControllerDetent largeDetent]
-                ];
-                sheet.selectedDetentIdentifier = UISheetPresentationControllerDetentIdentifierMedium;
-            }
-        } else if (@available(iOS 13.0, *)) {
-            nav.modalPresentationStyle = UIModalPresentationAutomatic;
-        } else {
-            nav.modalPresentationStyle = UIModalPresentationFullScreen;
-        }
-        
-        [self presentViewController:nav animated:YES completion:nil];
-    }
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    
-    // 隐藏导航栏
-    [self.navigationController setNavigationBarHidden:YES animated:animated];
-}
-
-- (void)viewWillDisappear:(BOOL)animated {
-    [super viewWillDisappear:animated];
-    
-    // 显示导航栏
-    [self.navigationController setNavigationBarHidden:NO animated:animated];
-}
-
-@end
-
 @implementation MessageSettingsViewController
+
+- (void)loadView {
+    [super loadView];
+    [self setupTableView];
+}
+
+- (void)setupTableView {
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"消息设置";
     
     if (@available(iOS 13.0, *)) {
-        self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+        
+        // 添加现代风格头部
+        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 40)];
+        UILabel *headerLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 0, self.view.frame.size.width - 40, 40)];
+        headerLabel.text = @"个性化消息显示设置";
+        headerLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+        headerLabel.textColor = [UIColor secondaryLabelColor];
+        [headerView addSubview:headerLabel];
+        self.tableView.tableHeaderView = headerView;
     } else {
-        self.tableView.backgroundColor = [UIColor groupTableViewBackgroundColor];
+        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
     }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    _settings = @[@"防撤提示", @"隐藏自带时间", @"头像时间标签"];
+    _settings = @[@"消息防撤提示", @"隐藏自带时间", @"头像时间标签"];
 }
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return _settings.count;
 }
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ModernCell"];
+    NSString *cellIdentifier = @"MessageSettingsCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
     if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"ModernCell"];
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         
         if (@available(iOS 13.0, *)) {
-            cell.backgroundColor = [UIColor secondarySystemBackgroundColor];
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
         }
     }
     
@@ -792,29 +387,15 @@ static void loadFriendsAndWalletSettings() {
     NSString *cellTitle = _settings[indexPath.row];
     cell.textLabel.text = cellTitle;
     
-    // 添加图标
     if (@available(iOS 13.0, *)) {
-        NSString *iconName = @"";
-        UIColor *iconColor = [UIColor systemBlueColor];
-        
-        if (indexPath.row == 0) {
-            iconName = @"arrow.uturn.backward.circle.fill";
-            iconColor = [UIColor systemRedColor];
-        } else if (indexPath.row == 1) {
-            iconName = @"clock.fill";
-            iconColor = [UIColor systemOrangeColor];
-        } else if (indexPath.row == 2) {
-            iconName = @"person.crop.circle.fill";
-            iconColor = [UIColor systemGreenColor];
-        }
-        
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 
-                                                                                           weight:UIImageSymbolWeightMedium];
-        cell.imageView.image = [[UIImage systemImageNamed:iconName withConfiguration:config]
-                               imageWithTintColor:iconColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     }
     
     UISwitch *switchView = [[UISwitch alloc] init];
+    if (@available(iOS 13.0, *)) {
+        switchView.onTintColor = [UIColor systemBlueColor];
+    }
+    
     if (indexPath.row == 0) {
         switchView.on = [defaults boolForKey:kPreventRevokeEnabledKey];
         [switchView addTarget:self action:@selector(preventRevokeChanged:) forControlEvents:UIControlEventValueChanged];
@@ -826,44 +407,82 @@ static void loadFriendsAndWalletSettings() {
         [switchView addTarget:self action:@selector(messageTimeBelowAvatarChanged:) forControlEvents:UIControlEventValueChanged];
     }
     
-    // 使用iOS 13+的开关样式
-    if (@available(iOS 13.0, *)) {
-        switchView.onTintColor = [UIColor systemBlueColor];
-    }
-    
     cell.accessoryView = switchView;
     return cell;
 }
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 50.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (@available(iOS 13.0, *)) {
+        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
+        headerView.backgroundColor = [UIColor clearColor];
+        return headerView;
+    }
+    return nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 10.0;
+}
+
 - (void)preventRevokeChanged:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kPreventRevokeEnabledKey];
 }
+
 - (void)hideChatTimeLabelChanged:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kHideChatTimeLabelKey];
 }
+
 - (void)messageTimeBelowAvatarChanged:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kMessageTimeBelowAvatarKey];
 }
+
 @end
 
 @implementation GameSettingsViewController
+
+- (void)loadView {
+    [super loadView];
+    [self setupTableView];
+}
+
+- (void)setupTableView {
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"娱乐功能";
     
     if (@available(iOS 13.0, *)) {
-        self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
     } else {
-        self.tableView.backgroundColor = [UIColor groupTableViewBackgroundColor];
+        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
     }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"好友数量输入框", @"钱包余额自定义", @"钱包余额输入框"];
+    
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
 }
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
@@ -879,9 +498,34 @@ static void loadFriendsAndWalletSettings() {
     }
     return rowCount;
 }
+
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return 44.0;
+    if ([self isInputCellAtIndexPath:indexPath]) {
+        return 60.0;
+    }
+    return 50.0;
 }
+
+- (BOOL)isInputCellAtIndexPath:(NSIndexPath *)indexPath {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
+    BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    
+    int rowIndex = indexPath.row;
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    if (friendsCountEnabled && rowIndex == 0) return YES;
+    if (friendsCountEnabled) {
+        rowIndex -= 1;
+    }
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    if (walletBalanceEnabled && rowIndex == 0) return YES;
+    return NO;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
@@ -889,83 +533,70 @@ static void loadFriendsAndWalletSettings() {
     int rowIndex = indexPath.row;
     
     if (rowIndex == 0) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"GameCell"];
+        NSString *cellIdentifier = @"GameCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
         if (!cell) {
-            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"GameCell"];
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             if (@available(iOS 13.0, *)) {
-                cell.backgroundColor = [UIColor secondarySystemBackgroundColor];
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
             }
         }
-        NSString *cellTitle = _settings[0];
-        cell.textLabel.text = cellTitle;
+        cell.textLabel.text = @"骰子猜拳控制";
         
-        // 添加图标
         if (@available(iOS 13.0, *)) {
-            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 
-                                                                                               weight:UIImageSymbolWeightMedium];
-            cell.imageView.image = [[UIImage systemImageNamed:@"die.face.6.fill" withConfiguration:config]
-                                   imageWithTintColor:[UIColor systemPurpleColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
         }
         
         UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kGameCheatEnabledKey];
         [switchView addTarget:self action:@selector(gameCheatEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-        
-        if (@available(iOS 13.0, *)) {
-            switchView.onTintColor = [UIColor systemPurpleColor];
-        }
-        
         cell.accessoryView = switchView;
         return cell;
     }
     
     rowIndex -= 1;
     if (rowIndex == 0) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FriendsCountSwitchCell"];
+        NSString *cellIdentifier = @"FriendsCountSwitchCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
         if (!cell) {
-            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"FriendsCountSwitchCell"];
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             if (@available(iOS 13.0, *)) {
-                cell.backgroundColor = [UIColor secondarySystemBackgroundColor];
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
             }
         }
         cell.textLabel.text = @"好友数量自定义";
         
-        // 添加图标
         if (@available(iOS 13.0, *)) {
-            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 
-                                                                                               weight:UIImageSymbolWeightMedium];
-            cell.imageView.image = [[UIImage systemImageNamed:@"person.3.fill" withConfiguration:config]
-                                   imageWithTintColor:[UIColor systemBlueColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
         }
         
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.on = friendsCountEnabled;
-        [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-        
         if (@available(iOS 13.0, *)) {
             switchView.onTintColor = [UIColor systemBlueColor];
         }
-        
+        switchView.on = friendsCountEnabled;
+        [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
         return cell;
     }
     
     rowIndex -= 1;
     if (friendsCountEnabled && rowIndex == 0) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FriendsCountInputCell"];
+        NSString *cellIdentifier = @"FriendsCountInputCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
         if (!cell) {
-            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"FriendsCountInputCell"];
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            
             if (@available(iOS 13.0, *)) {
-                cell.backgroundColor = [UIColor tertiarySystemBackgroundColor];
-            } else {
-                cell.backgroundColor = [UIColor clearColor];
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
             }
             
-            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(50, 7, self.view.frame.size.width - 160, 30)];
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入好友数量（如：999）";
             textField.keyboardType = UIKeyboardTypeNumberPad;
@@ -973,18 +604,21 @@ static void loadFriendsAndWalletSettings() {
             textField.clearButtonMode = UITextFieldViewModeWhileEditing;
             
             if (@available(iOS 13.0, *)) {
-                textField.backgroundColor = [UIColor systemBackgroundColor];
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
                 textField.textColor = [UIColor labelColor];
-                textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:textField.placeholder 
-                                                                                  attributes:@{NSForegroundColorAttributeName: [UIColor placeholderTextColor]}];
             }
             
             [cell.contentView addSubview:textField];
             _friendsCountField = textField;
             
             UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
-            confirmButton.frame = CGRectMake(self.view.frame.size.width - 100, 7, 80, 30);
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
             [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
+            
             [confirmButton addTarget:self action:@selector(friendsCountConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
             [cell.contentView addSubview:confirmButton];
             _friendsCountConfirmButton = confirmButton;
@@ -1002,50 +636,43 @@ static void loadFriendsAndWalletSettings() {
     }
     
     if (rowIndex == 0) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"WalletBalanceSwitchCell"];
+        NSString *cellIdentifier = @"WalletBalanceSwitchCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
         if (!cell) {
-            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"WalletBalanceSwitchCell"];
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             if (@available(iOS 13.0, *)) {
-                cell.backgroundColor = [UIColor secondarySystemBackgroundColor];
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
             }
         }
         cell.textLabel.text = @"钱包余额自定义";
         
-        // 添加图标
         if (@available(iOS 13.0, *)) {
-            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 
-                                                                                               weight:UIImageSymbolWeightMedium];
-            cell.imageView.image = [[UIImage systemImageNamed:@"dollarsign.circle.fill" withConfiguration:config]
-                                   imageWithTintColor:[UIColor systemGreenColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
         }
         
         UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = walletBalanceEnabled;
         [switchView addTarget:self action:@selector(walletBalanceEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-        
-        if (@available(iOS 13.0, *)) {
-            switchView.onTintColor = [UIColor systemGreenColor];
-        }
-        
         cell.accessoryView = switchView;
         return cell;
     }
     
     rowIndex -= 1;
     if (walletBalanceEnabled && rowIndex == 0) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"WalletBalanceInputCell"];
+        NSString *cellIdentifier = @"WalletBalanceInputCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
         if (!cell) {
-            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"WalletBalanceInputCell"];
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            
             if (@available(iOS 13.0, *)) {
-                cell.backgroundColor = [UIColor tertiarySystemBackgroundColor];
-            } else {
-                cell.backgroundColor = [UIColor clearColor];
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
             }
             
-            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(50, 7, self.view.frame.size.width - 160, 30)];
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
             textField.placeholder = @"输入余额（如：9999.99）";
             textField.keyboardType = UIKeyboardTypeDecimalPad;
@@ -1053,18 +680,21 @@ static void loadFriendsAndWalletSettings() {
             textField.clearButtonMode = UITextFieldViewModeWhileEditing;
             
             if (@available(iOS 13.0, *)) {
-                textField.backgroundColor = [UIColor systemBackgroundColor];
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
                 textField.textColor = [UIColor labelColor];
-                textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:textField.placeholder 
-                                                                                  attributes:@{NSForegroundColorAttributeName: [UIColor placeholderTextColor]}];
             }
             
             [cell.contentView addSubview:textField];
             _walletBalanceField = textField;
             
             UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
-            confirmButton.frame = CGRectMake(self.view.frame.size.width - 100, 7, 80, 30);
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
             [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
+            
             [confirmButton addTarget:self action:@selector(walletBalanceConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
             [cell.contentView addSubview:confirmButton];
             _walletBalanceConfirmButton = confirmButton;
@@ -1079,9 +709,28 @@ static void loadFriendsAndWalletSettings() {
     
     return [[UITableViewCell alloc] init];
 }
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (@available(iOS 13.0, *)) {
+        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 40)];
+        UILabel *headerLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, tableView.frame.size.width - 40, 30)];
+        headerLabel.text = @"娱乐与个性化设置";
+        headerLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+        headerLabel.textColor = [UIColor secondaryLabelColor];
+        [headerView addSubview:headerLabel];
+        return headerView;
+    }
+    return nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 40.0;
+}
+
 - (void)gameCheatEnabledChanged:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kGameCheatEnabledKey];
 }
+
 - (void)friendsCountEnabledChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kFriendsCountEnabledKey];
@@ -1093,6 +742,7 @@ static void loadFriendsAndWalletSettings() {
                                         NULL,
                                         YES);
 }
+
 - (void)walletBalanceEnabledChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kWalletBalanceEnabledKey];
@@ -1104,18 +754,21 @@ static void loadFriendsAndWalletSettings() {
                                         NULL,
                                         YES);
 }
+
 - (void)friendsCountConfirmTapped:(UIButton *)sender {
     if (_friendsCountField) {
         [_friendsCountField resignFirstResponder];
         [self saveFriendsCountValue];
     }
 }
+
 - (void)walletBalanceConfirmTapped:(UIButton *)sender {
     if (_walletBalanceField) {
         [_walletBalanceField resignFirstResponder];
         [self saveWalletBalanceValue];
     }
 }
+
 - (void)saveFriendsCountValue {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *text = _friendsCountField.text;
@@ -1133,6 +786,7 @@ static void loadFriendsAndWalletSettings() {
                                         NULL,
                                         YES);
 }
+
 - (void)saveWalletBalanceValue {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *text = _walletBalanceField.text;
@@ -1150,10 +804,12 @@ static void loadFriendsAndWalletSettings() {
                                         NULL,
                                         YES);
 }
+
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
     return YES;
 }
+
 - (void)textFieldDidEndEditing:(UITextField *)textField {
     if (textField == _friendsCountField) {
         [self saveFriendsCountValue];
@@ -1162,6 +818,7 @@ static void loadFriendsAndWalletSettings() {
         [self saveWalletBalanceValue];
     }
 }
+
 - (void)keyboardWillShow:(NSNotification *)notification {
     CGRect keyboardFrame = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
     CGFloat keyboardHeight = keyboardFrame.size.height;
@@ -1169,23 +826,44 @@ static void loadFriendsAndWalletSettings() {
     self.tableView.contentInset = contentInsets;
     self.tableView.scrollIndicatorInsets = contentInsets;
 }
+
 - (void)keyboardWillHide:(NSNotification *)notification {
     UIEdgeInsets contentInsets = UIEdgeInsetsZero;
     self.tableView.contentInset = contentInsets;
     self.tableView.scrollIndicatorInsets = contentInsets;
 }
+
 @end
 
 @implementation CSTouchTrailViewController
+
+- (void)loadView {
+    [super loadView];
+    [self setupTableView];
+}
+
+- (void)setupTableView {
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     
     self.title = @"触摸轨迹";
     
     if (@available(iOS 13.0, *)) {
-        self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
     } else {
-        self.tableView.backgroundColor = [UIColor groupTableViewBackgroundColor];
+        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
     }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
@@ -1195,9 +873,11 @@ static void loadFriendsAndWalletSettings() {
                                                name:UIScreenCapturedDidChangeNotification
                                              object:nil];
 }
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
+
 - (void)screenCaptureDidChange {
     BOOL isRecording = UIScreen.mainScreen.isCaptured;
     
@@ -1214,92 +894,89 @@ static void loadFriendsAndWalletSettings() {
         [defaults synchronize];
     }
 }
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 1;
 }
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL isTrailEnabled = [defaults boolForKey:kTouchTrailKey];
     
     return isTrailEnabled ? 3 : 1;
 }
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ModernCell"];
+    NSString *cellIdentifier = @"CSTouchTrailCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
     if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"ModernCell"];
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         
         if (@available(iOS 13.0, *)) {
-            cell.backgroundColor = [UIColor secondarySystemBackgroundColor];
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
         }
     }
     
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
+    if (@available(iOS 13.0, *)) {
+        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    }
+    
     if (indexPath.row == 0) {
         cell.textLabel.text = @"启用触摸轨迹";
-        
-        // 添加图标
-        if (@available(iOS 13.0, *)) {
-            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 
-                                                                                               weight:UIImageSymbolWeightMedium];
-            cell.imageView.image = [[UIImage systemImageNamed:@"hand.draw.fill" withConfiguration:config]
-                                   imageWithTintColor:[UIColor systemOrangeColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
-        }
-        
         UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kTouchTrailKey];
         [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-        
-        if (@available(iOS 13.0, *)) {
-            switchView.onTintColor = [UIColor systemOrangeColor];
-        }
-        
         cell.accessoryView = switchView;
     } else if (indexPath.row == 1) {
         cell.textLabel.text = @"仅在录屏显示";
-        
-        // 添加图标
-        if (@available(iOS 13.0, *)) {
-            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 
-                                                                                               weight:UIImageSymbolWeightMedium];
-            cell.imageView.image = [[UIImage systemImageNamed:@"record.circle.fill" withConfiguration:config]
-                                   imageWithTintColor:[UIColor systemRedColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
-        }
-        
         UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
         [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
-        
-        if (@available(iOS 13.0, *)) {
-            switchView.onTintColor = [UIColor systemRedColor];
-        }
-        
         cell.accessoryView = switchView;
     } else if (indexPath.row == 2) {
         cell.textLabel.text = @"使用拖尾效果";
-        
-        // 添加图标
-        if (@available(iOS 13.0, *)) {
-            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 
-                                                                                               weight:UIImageSymbolWeightMedium];
-            cell.imageView.image = [[UIImage systemImageNamed:@"sparkles" withConfiguration:config]
-                                   imageWithTintColor:[UIColor systemYellowColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
-        }
-        
         UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
         [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
-        
-        if (@available(iOS 13.0, *)) {
-            switchView.onTintColor = [UIColor systemYellowColor];
-        }
-        
         cell.accessoryView = switchView;
     }
     
     return cell;
 }
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 50.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (@available(iOS 13.0, *)) {
+        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 40)];
+        UILabel *headerLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, tableView.frame.size.width - 40, 30)];
+        headerLabel.text = @"触摸轨迹显示设置";
+        headerLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+        headerLabel.textColor = [UIColor secondaryLabelColor];
+        [headerView addSubview:headerLabel];
+        return headerView;
+    }
+    return nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 40.0;
+}
+
 - (void)trailEnabledChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kTouchTrailKey];
@@ -1316,6 +993,7 @@ static void loadFriendsAndWalletSettings() {
     
     [self.tableView reloadData];
 }
+
 - (void)onlyWhenRecordingChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kTouchTrailOnlyWhenRecordingKey];
@@ -1330,11 +1008,263 @@ static void loadFriendsAndWalletSettings() {
     
     [defaults synchronize];
 }
+
 - (void)tailEnabledChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setBool:sender.isOn forKey:kTouchTrailTailEnabledKey];
     [defaults synchronize];
 }
+
+@end
+
+@implementation DDAssistantSettingsViewController
+
+- (void)loadView {
+    [super loadView];
+    
+    if (@available(iOS 13.0, *)) {
+        [self setupModernUI];
+    } else {
+        [self setupLegacyUI];
+    }
+}
+
+- (void)setupModernUI API_AVAILABLE(ios(13.0)) {
+    self.title = PLUGIN_NAME;
+    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    
+    // 启用大标题
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    
+    // 创建集合视图布局
+    UICollectionViewCompositionalLayout *layout = [self createModernLayout];
+    
+    // 创建集合视图
+    self.collectionView = [[UICollectionView alloc] initWithFrame:self.view.bounds collectionViewLayout:layout];
+    self.collectionView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.collectionView.backgroundColor = [UIColor clearColor];
+    self.collectionView.delegate = self;
+    [self.view addSubview:self.collectionView];
+    
+    // 注册单元格
+    [self.collectionView registerClass:[UICollectionViewListCell class] forCellWithReuseIdentifier:@"SettingsCell"];
+    
+    // 创建数据源
+    [self setupDataSource];
+    
+    // 设置初始数据
+    [self applyInitialSnapshot];
+}
+
+- (UICollectionViewCompositionalLayout *)createModernLayout API_AVAILABLE(ios(13.0)) {
+    UICollectionLayoutListConfiguration *listConfiguration = [[UICollectionLayoutListConfiguration alloc] 
+        initWithAppearance:UICollectionLayoutListStyleInsetGrouped];
+    
+    listConfiguration.backgroundColor = [UIColor systemBackgroundColor];
+    listConfiguration.headerMode = UICollectionLayoutListHeaderModeSupplementary;
+    
+    return [UICollectionViewCompositionalLayout layoutWithListConfiguration:listConfiguration];
+}
+
+- (void)setupDataSource API_AVAILABLE(ios(13.0)) {
+    __weak typeof(self) weakSelf = self;
+    
+    UICollectionViewCellRegistration *cellRegistration = [UICollectionViewCellRegistration 
+        registrationWithCellClass:[UICollectionViewListCell class]
+        configurationHandler:^(__kindof UICollectionViewListCell *cell, 
+                               NSIndexPath *indexPath, 
+                               id item) {
+        
+        UIListContentConfiguration *contentConfig = [UIListContentConfiguration cellConfiguration];
+        
+        NSArray *sectionData = weakSelf.sections[indexPath.section];
+        if (indexPath.row < sectionData.count) {
+            NSDictionary *cellData = sectionData[indexPath.row];
+            contentConfig.text = cellData[@"title"];
+            contentConfig.image = [UIImage systemImageNamed:cellData[@"icon"]];
+        }
+        
+        contentConfig.textProperties.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        contentConfig.imageProperties.tintColor = [UIColor systemBlueColor];
+        
+        cell.contentConfiguration = contentConfig;
+        
+        // 设置背景配置
+        UIBackgroundConfiguration *bgConfig = [UIBackgroundConfiguration listGroupedCellConfiguration];
+        bgConfig.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        cell.backgroundConfiguration = bgConfig;
+        
+        // 添加箭头
+        cell.accessories = @[[UICellAccessory disclosureIndicator]];
+    }];
+    
+    self.dataSource = [[UICollectionViewDiffableDataSource alloc] initWithCollectionView:self.collectionView
+        cellProvider:^UICollectionViewCell *(UICollectionView *collectionView, 
+                                             NSIndexPath *indexPath, 
+                                             id identifier) {
+        
+        return [collectionView dequeueConfiguredReusableCellWithRegistration:cellRegistration
+                                                                forIndexPath:indexPath
+                                                                        item:identifier];
+    }];
+}
+
+- (void)applyInitialSnapshot API_AVAILABLE(ios(13.0)) {
+    // 配置数据
+    self.sections = @[
+        @[
+            @{@"title": @"消息设置", @"icon": @"message.fill", @"type": @"message"}
+        ],
+        @[
+            @{@"title": @"娱乐功能", @"icon": @"gamecontroller.fill", @"type": @"game"}
+        ],
+        @[
+            @{@"title": @"触摸轨迹", @"icon": @"cursorarrow.motionlines", @"type": @"touch"}
+        ]
+    ];
+    
+    NSDiffableDataSourceSnapshot *snapshot = [[NSDiffableDataSourceSnapshot alloc] init];
+    
+    // 添加节
+    [snapshot appendSectionsWithIdentifiers:@[@0, @1, @2]];
+    
+    // 为每节添加项目
+    for (NSInteger section = 0; section < self.sections.count; section++) {
+        NSArray *sectionData = self.sections[section];
+        NSMutableArray *itemIdentifiers = [NSMutableArray array];
+        
+        for (NSInteger row = 0; row < sectionData.count; row++) {
+            NSString *identifier = [NSString stringWithFormat:@"%ld-%ld", (long)section, (long)row];
+            [itemIdentifiers addObject:identifier];
+        }
+        
+        [snapshot appendItemsWithIdentifiers:itemIdentifiers intoSectionWithIdentifier:@(section)];
+    }
+    
+    [self.dataSource applySnapshot:snapshot animatingDifferences:NO];
+}
+
+- (void)setupLegacyUI {
+    self.title = PLUGIN_NAME;
+    self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
+    
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    [self.view addSubview:self.tableView];
+    
+    _sections = @[
+        @[@"消息设置"],
+        @[@"娱乐功能"],
+        @[@"触摸轨迹"]
+    ];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    // 添加版本信息
+    if (@available(iOS 13.0, *)) {
+        UILabel *versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 60)];
+        versionLabel.text = [NSString stringWithFormat:@"%@ v%@", PLUGIN_NAME, PLUGIN_VERSION];
+        versionLabel.textAlignment = NSTextAlignmentCenter;
+        versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+        versionLabel.textColor = [UIColor secondaryLabelColor];
+        
+        self.collectionView.tableFooterView = versionLabel;
+    }
+}
+
+#pragma mark - UICollectionViewDelegate (Modern UI)
+
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
+    [collectionView deselectItemAtIndexPath:indexPath animated:YES];
+    
+    UIViewController *targetVC = nil;
+    if (indexPath.section == 0) {
+        targetVC = [[MessageSettingsViewController alloc] init];
+    } else if (indexPath.section == 1) {
+        targetVC = [[GameSettingsViewController alloc] init];
+    } else if (indexPath.section == 2) {
+        targetVC = [[CSTouchTrailViewController alloc] init];
+    }
+    
+    if (targetVC) {
+        // 推入导航栈
+        [self.navigationController pushViewController:targetVC animated:YES];
+    }
+}
+
+#pragma mark - UITableViewDelegate & DataSource (Legacy UI)
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    if (@available(iOS 13.0, *)) {
+        return 0; // 使用 CollectionView
+    }
+    return _sections.count;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (@available(iOS 13.0, *)) {
+        return 0; // 使用 CollectionView
+    }
+    return [_sections[section] count];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (@available(iOS 13.0, *)) {
+        return [[UITableViewCell alloc] init];
+    }
+    
+    NSString *cellIdentifier = @"DDAssistantCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    }
+    
+    NSString *cellTitle = _sections[indexPath.section][indexPath.row];
+    cell.textLabel.text = cellTitle;
+    
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (@available(iOS 13.0, *)) {
+        return 0;
+    }
+    return 50.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    if (@available(iOS 13.0, *)) {
+        return 0;
+    }
+    return 10.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (@available(iOS 13.0, *)) {
+        return nil;
+    }
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 10)];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (@available(iOS 13.0, *)) {
+        return;
+    }
+    
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    // 模拟 CollectionView 的选择
+    [self collectionView:nil didSelectItemAtIndexPath:indexPath];
+}
+
 @end
 
 @implementation WBTouchTrailDotView
@@ -1352,15 +1282,6 @@ static void loadFriendsAndWalletSettings() {
         
         self.backgroundColor = dotColor;
         self.layer.cornerRadius = dotSize / 2;
-        
-        if (@available(iOS 13.0, *)) {
-            self.layer.shadowColor = [UIColor.labelColor CGColor];
-        } else {
-            self.layer.shadowColor = [UIColor.blackColor CGColor];
-        }
-        self.layer.shadowOffset = CGSizeMake(0, 1);
-        self.layer.shadowOpacity = 0.3;
-        self.layer.shadowRadius = 2;
         
         self.alpha = 0.7;
         [UIView animateWithDuration:duration animations:^{
@@ -1381,13 +1302,7 @@ static void loadFriendsAndWalletSettings() {
     if (self) {
         self.backgroundColor = [UIColor clearColor];
         self.userInteractionEnabled = NO;
-        
-        if (@available(iOS 13.0, *)) {
-            self.trailColor = [UIColor.systemRedColor colorWithAlphaComponent:0.7];
-        } else {
-            self.trailColor = [UIColor.redColor colorWithAlphaComponent:0.7];
-        }
-        
+        self.trailColor = [UIColor redColor];
         self.trailSize = 25.0;
         self.isMoving = NO;
         
@@ -1454,16 +1369,7 @@ static void loadFriendsAndWalletSettings() {
     }
     if (!tableViewMgr) return;
     WCTableViewSectionManager *sectionInfo = [%c(WCTableViewSectionManager) sectionInfoDefaut];
-    
-    // 创建带有图标的单元格
-    WCTableViewCellManager *settingCell = nil;
-    if (@available(iOS 13.0, *)) {
-        // 创建一个自定义的单元格，带有图标
-        settingCell = [%c(WCTableViewCellManager) normalCellForSel:@selector(onDDAssistantClicked) target:self title:PLUGIN_NAME];
-    } else {
-        settingCell = [%c(WCTableViewCellManager) normalCellForSel:@selector(onDDAssistantClicked) target:self title:PLUGIN_NAME];
-    }
-    
+    WCTableViewCellManager *settingCell = [%c(WCTableViewCellManager) normalCellForSel:@selector(onDDAssistantClicked) target:self title:PLUGIN_NAME];
     [sectionInfo addCell:settingCell];
     [tableViewMgr insertSection:sectionInfo At:0];
     MMTableView *tableView = [tableViewMgr getTableView];
@@ -1472,43 +1378,14 @@ static void loadFriendsAndWalletSettings() {
 }
 %new
 - (void)onDDAssistantClicked {
-    ModernDDAssistantSettingsViewController *modernVC = [[ModernDDAssistantSettingsViewController alloc] init];
-    
-    // 使用现代风格导航控制器
-    UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:modernVC];
-    
-    // 配置iOS 13+模态展示
+    DDAssistantSettingsViewController *settingsVC = [[DDAssistantSettingsViewController alloc] init];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
     if (@available(iOS 13.0, *)) {
-        // 配置导航栏外观
-        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithOpaqueBackground];
-        appearance.backgroundColor = [UIColor systemBackgroundColor];
-        
-        navController.navigationBar.standardAppearance = appearance;
-        navController.navigationBar.scrollEdgeAppearance = appearance;
-        
-        navController.modalPresentationStyle = UIModalPresentationPageSheet;
-        
-        // 配置 sheet 控制器
-        if (@available(iOS 15.0, *)) {
-            UISheetPresentationController *sheet = navController.sheetPresentationController;
-            if (sheet) {
-                // 设置首选展开状态为较大
-                sheet.preferredCornerRadius = 20;
-                sheet.prefersGrabberVisible = YES;
-                sheet.detents = @[
-                    [UISheetPresentationControllerDetent mediumDetent],
-                    [UISheetPresentationControllerDetent largeDetent]
-                ];
-                sheet.selectedDetentIdentifier = UISheetPresentationControllerDetentIdentifierMedium;
-                sheet.prefersScrollingExpandsWhenScrolledToEdge = NO;
-            }
-        }
+        nav.modalPresentationStyle = UIModalPresentationPageSheet;
     } else {
-        navController.modalPresentationStyle = UIModalPresentationFullScreen;
+        nav.modalPresentationStyle = UIModalPresentationFullScreen;
     }
-    
-    [self presentViewController:navController animated:YES completion:nil];
+    [self presentViewController:nav animated:YES completion:nil];
 }
 %end
 
@@ -1535,28 +1412,16 @@ static void loadFriendsAndWalletSettings() {
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
         NSString *title = [msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
-        
-        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"请选择" 
-                                                                       message:title 
-                                                                preferredStyle:UIAlertControllerStyleActionSheet];
-        
-        // 配置现代样式
-        if (@available(iOS 13.0, *)) {
-            alert.view.tintColor = [UIColor labelColor];
-        }
-        
+        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"请选择" message:title preferredStyle:UIAlertControllerStyleActionSheet];
         NSArray *actions;
         if ([msgWrap m_uiGameType] == 1) {
             actions = @[@"剪刀", @"石头", @"布"];
         } else {
             actions = @[@"1", @"2", @"3", @"4", @"5", @"6"];
         }
-        
         for (int i = 0; i < actions.count; i++) {
             NSString *actionTitle = actions[i];
-            UIAlertAction* action = [UIAlertAction actionWithTitle:actionTitle 
-                                                             style:UIAlertActionStyleDefault 
-                                                           handler:^(UIAlertAction * _Nonnull action) {
+            UIAlertAction* action = [UIAlertAction actionWithTitle:actionTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
                 unsigned int gameContent;
                 if ([msgWrap m_uiGameType] == 1) {
                     gameContent = i + 1;
@@ -1570,39 +1435,10 @@ static void loadFriendsAndWalletSettings() {
                 }
                 %orig(msg, msgWrap);
             }];
-            
-            // 为不同选项添加图标
-            if (@available(iOS 13.0, *)) {
-                NSString *iconName = @"";
-                if ([msgWrap m_uiGameType] == 1) {
-                    if (i == 0) iconName = @"scissors";
-                    else if (i == 1) iconName = @"circle.fill";
-                    else if (i == 2) iconName = @"hand.raised.fill";
-                } else {
-                    iconName = [NSString stringWithFormat:@"%d.circle.fill", i + 1];
-                }
-                
-                if (iconName.length > 0) {
-                    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:18 
-                                                                                                       weight:UIImageSymbolWeightMedium];
-                    UIImage *icon = [UIImage systemImageNamed:iconName withConfiguration:config];
-                    [action setValue:icon forKey:@"image"];
-                }
-            }
-            
             [alert addAction:action];
         }
-        
-        UIAlertAction* cancelAction = [UIAlertAction actionWithTitle:@"取消" 
-                                                               style:UIAlertActionStyleCancel 
-                                                             handler:nil];
-        
-        if (@available(iOS 13.0, *)) {
-            [cancelAction setValue:[UIColor systemRedColor] forKey:@"titleTextColor"];
-        }
-        
+        UIAlertAction* cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
         [alert addAction:cancelAction];
-        
         if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
             UIWindowScene *windowScene = nil;
             for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -1616,7 +1452,6 @@ static void loadFriendsAndWalletSettings() {
             alert.popoverPresentationController.sourceRect = CGRectMake(window.frame.size.width / 2, window.frame.size.height / 2, 0, 0);
             alert.popoverPresentationController.permittedArrowDirections = 0;
         }
-        
         UIViewController *topController = nil;
         UIWindowScene *windowScene = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -1680,19 +1515,7 @@ static void loadFriendsAndWalletSettings() {
         timeLabel.text = messageTime;
         
         timeLabel.font = [UIFont boldSystemFontOfSize:7.0];
-        
-        if (@available(iOS 13.0, *)) {
-            timeLabel.textColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-                if (traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
-                    return [UIColor colorWithWhite:0.7 alpha:0.8];
-                } else {
-                    return [UIColor colorWithWhite:0.5 alpha:0.8];
-                }
-            }];
-        } else {
-            timeLabel.textColor = [UIColor colorWithWhite:0.5 alpha:0.8];
-        }
-        
+        timeLabel.textColor = [UIColor colorWithWhite:0.5 alpha:0.8];
         timeLabel.numberOfLines = 2;
         
         CGSize constraintSize = CGSizeMake(80, CGFLOAT_MAX);
@@ -2125,12 +1948,7 @@ static void loadFriendsAndWalletSettings() {
                 if (!trailView) {
                     trailView = [[WBTouchTrailView alloc] init];
                     trailView.trailSize = 25.0;
-                    
-                    if (@available(iOS 13.0, *)) {
-                        trailView.trailColor = [UIColor.systemRedColor colorWithAlphaComponent:0.7];
-                    } else {
-                        trailView.trailColor = [UIColor.redColor colorWithAlphaComponent:0.7];
-                    }
+                    trailView.trailColor = [UIColor redColor];
                     
                     [touch.window addSubview:trailView];
                     touchViews[key] = trailView;
@@ -2154,15 +1972,8 @@ static void loadFriendsAndWalletSettings() {
                         CGFloat timeDiff = now - lastTime;
                         
                         if (timeDiff >= 0.05) {
-                            UIColor *dotColor = nil;
-                            if (@available(iOS 13.0, *)) {
-                                dotColor = [UIColor.systemOrangeColor colorWithAlphaComponent:0.6];
-                            } else {
-                                dotColor = [UIColor.orangeColor colorWithAlphaComponent:0.6];
-                            }
-                            
                             WBTouchTrailDotView *dotView = [[WBTouchTrailDotView alloc] initWithPoint:location 
-                                                                                            dotColor:dotColor 
+                                                                                            dotColor:[UIColor redColor] 
                                                                                             dotSize:17.5
                                                                                            duration:0.8];
                             
@@ -2236,7 +2047,7 @@ static void loadFriendsAndWalletSettings() {
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
                 registerControllerWithTitle:PLUGIN_NAME 
                 version:PLUGIN_VERSION 
-                controller:@"ModernDDAssistantSettingsViewController"];
+                controller:@"DDAssistantSettingsViewController"];
             NSLog(@"[DD助手] 插件已注册到插件管理器 - %@ v%@", PLUGIN_NAME, PLUGIN_VERSION);
         } else {
             g_hasPluginsMgr = NO;
@@ -2244,4 +2055,3 @@ static void loadFriendsAndWalletSettings() {
         }
     }
 }
-[file content end]
