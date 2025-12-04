@@ -36,17 +36,16 @@ static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
 // ------------------------------
-// 抽屉模式弹窗UI类（骰子/猜拳选择）- 美化版
+// 抽屉模式弹窗UI类（骰子/猜拳选择）- 修改版
 // ------------------------------
 @interface DDDiceRPSDrawerPopup : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value); // type:0=骰子 1=猜拳
 @property (nonatomic, assign) NSInteger type; // 0=骰子 1=猜拳
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) UIVisualEffectView *drawerView;
+@property (nonatomic, strong) UIView *drawerView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) NSArray *options;
-@property (nonatomic, strong) NSArray *icons;
 @end
 
 @implementation DDDiceRPSDrawerPopup
@@ -56,7 +55,6 @@ static BOOL g_hasPluginsMgr = NO;
     if (self) {
         _type = type;
         _options = type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"石头", @"剪刀", @"布"];
-        _icons = type == 0 ? @[@"⚀", @"⚁", @"⚂", @"⚃", @"⚄", @"⚅"] : @[@"✊", @"✌️", @"✋"];
         
         // 抽屉模式弹窗样式
         self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
@@ -79,8 +77,8 @@ static BOOL g_hasPluginsMgr = NO;
     [backgroundView addGestureRecognizer:tapGesture];
     
     // 动态计算抽屉高度
-    CGFloat cellHeight = 60.0; // 单元格高度
-    CGFloat headerHeight = 20.0; // 标题栏高度
+    CGFloat cellHeight = 50.0; // 单元格高度
+    CGFloat headerHeight = 30.0; // 标题栏高度改为30
     CGFloat bottomMargin = 30.0; // 底部边距
     CGFloat drawerHeight = headerHeight + (cellHeight * _options.count) + bottomMargin;
     
@@ -89,14 +87,15 @@ static BOOL g_hasPluginsMgr = NO;
     
     // 创建磨砂效果视图
     UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
-    _drawerView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-    _drawerView.frame = CGRectMake(0, screenHeight, screenWidth, drawerHeight);
+    UIVisualEffectView *blurEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    blurEffectView.frame = CGRectMake(0, screenHeight, screenWidth, drawerHeight);
     
     // 设置磨砂效果的cornerRadius
-    _drawerView.layer.cornerRadius = 20.0;
-    _drawerView.layer.masksToBounds = YES;
-    _drawerView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    blurEffectView.layer.cornerRadius = 20.0;
+    blurEffectView.layer.masksToBounds = YES;
+    blurEffectView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
     
+    _drawerView = blurEffectView;
     [self.view addSubview:_drawerView];
     
     // 标题栏
@@ -107,7 +106,7 @@ static BOOL g_hasPluginsMgr = NO;
     // 标题
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(50, 0, screenWidth - 100, headerHeight)];
     _titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
-    _titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    _titleLabel.font = [UIFont systemFontOfSize:15]; // 不使用粗体
     _titleLabel.textAlignment = NSTextAlignmentCenter;
     
     // 适配深色模式
@@ -119,22 +118,28 @@ static BOOL g_hasPluginsMgr = NO;
     
     [headerView addSubview:_titleLabel];
     
-    // 关闭按钮 - 使用系统图标
-    _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _closeButton.frame = CGRectMake(screenWidth - 40, 0, 30, headerHeight);
+    // 关闭按钮 - 使用圆角按钮
+    _closeButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _closeButton.frame = CGRectMake(screenWidth - 40, 5, 20, 20);
     
-    // 创建配置对象
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightMedium];
-    UIImage *closeImage = [UIImage systemImageNamed:@"xmark" withConfiguration:config];
+    // 设置圆角
+    _closeButton.layer.cornerRadius = 10; // 20/2 = 10
+    _closeButton.layer.masksToBounds = YES;
     
-    [_closeButton setImage:closeImage forState:UIControlStateNormal];
-    
-    // 适配深色模式
+    // 设置背景色
     if (@available(iOS 13.0, *)) {
-        [_closeButton setTintColor:[UIColor secondaryLabelColor]];
+        _closeButton.backgroundColor = [UIColor systemGray4Color];
     } else {
-        [_closeButton setTintColor:[UIColor grayColor]];
+        _closeButton.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
     }
+    
+    // 设置x符号
+    UILabel *xLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 20, 20)];
+    xLabel.text = @"✕";
+    xLabel.textAlignment = NSTextAlignmentCenter;
+    xLabel.font = [UIFont systemFontOfSize:16];
+    xLabel.textColor = [UIColor darkGrayColor];
+    [_closeButton addSubview:xLabel];
     
     [_closeButton addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
     [headerView addSubview:_closeButton];
@@ -187,36 +192,19 @@ static BOOL g_hasPluginsMgr = NO;
     cell.backgroundColor = [UIColor clearColor];
     cell.contentView.backgroundColor = [UIColor clearColor];
     
-    // 设置选中背景
-    UIView *selectionView = [[UIView alloc] init];
-    if (@available(iOS 13.0, *)) {
-        selectionView.backgroundColor = [UIColor secondarySystemBackgroundColor];
-    } else {
-        selectionView.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1.0];
-    }
-    cell.selectedBackgroundView = selectionView;
+    // 设置选中样式 - 不使用特效
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
     
     // 移除所有子视图，防止重用问题
     for (UIView *subview in cell.contentView.subviews) {
         [subview removeFromSuperview];
     }
     
-    // 创建容器视图
-    UIView *containerView = [[UIView alloc] initWithFrame:CGRectMake(20, 5, tableView.frame.size.width - 40, 50)];
-    containerView.backgroundColor = [UIColor clearColor];
-    [cell.contentView addSubview:containerView];
-    
-    // 图标标签
-    UILabel *iconLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 50, 50)];
-    iconLabel.text = _icons[indexPath.row];
-    iconLabel.font = [UIFont systemFontOfSize:30];
-    iconLabel.textAlignment = NSTextAlignmentCenter;
-    [containerView addSubview:iconLabel];
-    
-    // 文本标签
-    UILabel *textLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 0, containerView.frame.size.width - 60, 50)];
+    // 创建文本标签
+    UILabel *textLabel = [[UILabel alloc] init];
     textLabel.text = _options[indexPath.row];
-    textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    textLabel.font = [UIFont systemFontOfSize:18];
+    textLabel.textAlignment = NSTextAlignmentCenter;
     
     // 适配深色模式
     if (@available(iOS 13.0, *)) {
@@ -225,7 +213,22 @@ static BOOL g_hasPluginsMgr = NO;
         textLabel.textColor = [UIColor blackColor];
     }
     
-    [containerView addSubview:textLabel];
+    // 设置自适应大小
+    [textLabel sizeToFit];
+    
+    // 居中显示，两边增加安全区
+    CGFloat labelWidth = textLabel.bounds.size.width;
+    CGFloat cellWidth = tableView.frame.size.width;
+    CGFloat padding = 40.0; // 左右各40px安全区
+    CGFloat maxWidth = cellWidth - padding * 2;
+    
+    if (labelWidth > maxWidth) {
+        labelWidth = maxWidth;
+    }
+    
+    textLabel.frame = CGRectMake((cellWidth - labelWidth) / 2, 0, labelWidth, 50);
+    
+    [cell.contentView addSubview:textLabel];
     
     return cell;
 }
@@ -233,12 +236,11 @@ static BOOL g_hasPluginsMgr = NO;
 #pragma mark - UITableViewDelegate
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return 60.0;
+    return 50.0;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    
+    // 不使用特效，直接调用处理函数
     if (self.selectHandler) {
         self.selectHandler(_type, indexPath.row + 1); // 索引+1作为选项值
     }
@@ -1327,7 +1329,7 @@ static void loadFriendsAndWalletSettings() {
     }
     
     if (targetVC) {
-        [self.navigationController pushViewController:targetVC animated:YES];
+        [this.navigationController pushViewController:targetVC animated:YES];
     }
 }
 
