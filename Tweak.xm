@@ -74,9 +74,9 @@ static BOOL g_hasPluginsMgr = NO;
         [self.view addSubview:contentView];
         
         // 标题栏
-        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 280, 25)];
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, 280, 30)];
         titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
-        titleLabel.font = [UIFont SystemFontOfSize:14];
+        titleLabel.font = [UIFont boldSystemFontOfSize:18];
         titleLabel.textAlignment = NSTextAlignmentCenter;
         [contentView addSubview:titleLabel];
         
@@ -1428,7 +1428,7 @@ static void loadFriendsAndWalletSettings() {
         timeLabel.hidden = NO;
         timeLabel.text = messageTime;
         
-        timeLabel.font = [UIFont boldSystemFontOfSize:8.0];
+        timeLabel.font = [UIFont boldSystemFontOfSize:7.0];
         timeLabel.textColor = [UIColor colorWithWhite:0.5 alpha:0.8];
         timeLabel.numberOfLines = 2;
         
