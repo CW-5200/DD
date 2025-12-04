@@ -36,94 +36,177 @@ static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
 // ------------------------------
-// 弹窗UI类（骰子/猜拳选择）
+// 抽屉模式弹窗UI类（骰子/猜拳选择）
 // ------------------------------
-@interface DDDiceRPSPopup : UIViewController
+@interface DDDiceRPSDrawerPopup : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value); // type:0=骰子 1=猜拳
-- (instancetype)initWithType:(NSInteger)type;
+@property (nonatomic, assign) NSInteger type; // 0=骰子 1=猜拳
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UIView *drawerView;
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UIButton *closeButton;
+@property (nonatomic, strong) NSArray *options;
 @end
 
-@implementation DDDiceRPSPopup {
-    NSInteger _type; // 0=骰子 1=猜拳
-}
+@implementation DDDiceRPSDrawerPopup
 
 - (instancetype)initWithType:(NSInteger)type {
     self = [super init];
     if (self) {
         _type = type;
-        // 弹窗基础样式（匹配"DD助手"模态弹窗）
+        _options = type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"石头", @"剪刀", @"布"];
+        
+        // 抽屉模式弹窗样式
         self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
         self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
-        self.view.backgroundColor = [UIColor clearColor];
-        
-        // 创建半透明背景
-        UIView *backgroundView = [[UIView alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        backgroundView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
-        [self.view addSubview:backgroundView];
-        
-        // 添加点击背景关闭的手势
-        UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
-        [backgroundView addGestureRecognizer:tapGesture];
-        
-        // 内容容器
-        UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 320)];
-        contentView.center = self.view.center;
-        contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
-        contentView.layer.cornerRadius = 12;
-        contentView.clipsToBounds = YES;
-        [self.view addSubview:contentView];
-        
-        // 标题栏
-        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, 280, 30)];
-        titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
-        titleLabel.font = [UIFont boldSystemFontOfSize:18];
-        titleLabel.textAlignment = NSTextAlignmentCenter;
-        [contentView addSubview:titleLabel];
-        
-        // 选项按钮
-        [self setupOptionButtonsInView:contentView];
-        
-        // 右上角关闭按钮
-        UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 15, 25, 25)];
-        if (@available(iOS 13.0, *)) {
-            [closeBtn setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
-        }
-        [closeBtn setTintColor:[UIColor grayColor]];
-        [closeBtn addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
-        [contentView addSubview:closeBtn];
     }
     return self;
 }
 
-- (void)setupOptionButtonsInView:(UIView *)containerView {
-    NSArray *options = _type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"石头", @"剪刀", @"布"];
-    CGFloat btnW = 80, btnH = 44;
-    CGFloat marginX = 40, marginY = 80;
-    CGFloat gapX = 100, gapY = 60;
+- (void)viewDidLoad {
+    [super viewDidLoad];
     
-    for (NSInteger i = 0; i < options.count; i++) {
-        CGFloat x = marginX + (i % 2) * gapX;
-        CGFloat y = marginY + (i / 2) * gapY;
-        UIButton *btn = [[UIButton alloc] initWithFrame:CGRectMake(x, y, btnW, btnH)];
-        [btn setTitle:options[i] forState:UIControlStateNormal];
-        [btn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-        btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-        btn.layer.cornerRadius = 8;
-        btn.tag = i + 1; // 点数/结果（1~6或1~3）
-        [btn addTarget:self action:@selector(onOptionSelected:) forControlEvents:UIControlEventTouchUpInside];
-        [containerView addSubview:btn];
-    }
+    // 背景遮罩
+    UIView *backgroundView = [[UIView alloc] initWithFrame:self.view.bounds];
+    backgroundView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+    backgroundView.alpha = 0;
+    [self.view addSubview:backgroundView];
+    
+    // 添加点击背景关闭的手势
+    UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
+    [backgroundView addGestureRecognizer:tapGesture];
+    
+    // 抽屉视图
+    CGFloat drawerHeight = 350; // 抽屉高度
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+    
+    _drawerView = [[UIView alloc] initWithFrame:CGRectMake(0, screenHeight, screenWidth, drawerHeight)];
+    _drawerView.backgroundColor = [UIColor colorWithWhite:0.98 alpha:1.0];
+    
+    // 顶部大圆角（20px）
+    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:_drawerView.bounds 
+                                                   byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
+                                                         cornerRadii:CGSizeMake(20, 20)];
+    CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
+    maskLayer.frame = _drawerView.bounds;
+    maskLayer.path = maskPath.CGPath;
+    _drawerView.layer.mask = maskLayer;
+    
+    [self.view addSubview:_drawerView];
+    
+    // 标题栏
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, screenWidth, 60)];
+    headerView.backgroundColor = [UIColor whiteColor];
+    [_drawerView addSubview:headerView];
+    
+    // 标题
+    _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 20, screenWidth - 120, 40)];
+    _titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
+    _titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    _titleLabel.textAlignment = NSTextAlignmentCenter;
+    _titleLabel.textColor = [UIColor blackColor];
+    [headerView addSubview:_titleLabel];
+    
+    // 关闭按钮
+    _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _closeButton.frame = CGRectMake(screenWidth - 60, 20, 40, 40);
+    [_closeButton setTitle:@"关闭" forState:UIControlStateNormal];
+    [_closeButton setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
+    [_closeButton addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
+    [headerView addSubview:_closeButton];
+    
+    // 分隔线
+    UIView *separator = [[UIView alloc] initWithFrame:CGRectMake(0, 59.5, screenWidth, 0.5)];
+    separator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    [headerView addSubview:separator];
+    
+    // 列表视图
+    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 60, screenWidth, drawerHeight - 60) style:UITableViewStylePlain];
+    _tableView.delegate = self;
+    _tableView.dataSource = self;
+    _tableView.backgroundColor = [UIColor clearColor];
+    _tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    _tableView.separatorColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    _tableView.separatorInset = UIEdgeInsetsMake(0, 20, 0, 20);
+    _tableView.tableFooterView = [[UIView alloc] init]; // 去掉多余的分隔线
+    [_drawerView addSubview:_tableView];
+    
+    // 注册单元格
+    [_tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DiceRPSCell"];
 }
 
-- (void)onOptionSelected:(UIButton *)btn {
-    if (self.selectHandler) {
-        self.selectHandler(_type, btn.tag);
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    
+    // 动画显示抽屉
+    [UIView animateWithDuration:0.3 animations:^{
+        self.view.subviews[0].alpha = 1; // 背景遮罩
+        
+        CGRect drawerFrame = self.drawerView.frame;
+        drawerFrame.origin.y = [UIScreen mainScreen].bounds.size.height - drawerFrame.size.height;
+        self.drawerView.frame = drawerFrame;
+    }];
+}
+
+#pragma mark - UITableViewDataSource
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return _options.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DiceRPSCell" forIndexPath:indexPath];
+    
+    cell.textLabel.text = _options[indexPath.row];
+    cell.textLabel.textAlignment = NSTextAlignmentCenter;
+    cell.textLabel.font = [UIFont systemFontOfSize:16];
+    cell.textLabel.textColor = [UIColor blackColor];
+    
+    cell.backgroundColor = [UIColor clearColor];
+    cell.selectionStyle = UITableViewCellSelectionStyleGray;
+    
+    // 移除所有子视图，防止重用问题
+    for (UIView *subview in cell.contentView.subviews) {
+        [subview removeFromSuperview];
     }
+    
+    // 添加自定义分隔线（如果需要）
+    UIView *separator = [[UIView alloc] initWithFrame:CGRectMake(20, cell.contentView.frame.size.height - 0.5, cell.contentView.frame.size.width - 40, 0.5)];
+    separator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    [cell.contentView addSubview:separator];
+    
+    return cell;
+}
+
+#pragma mark - UITableViewDelegate
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 55.0;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    if (self.selectHandler) {
+        self.selectHandler(_type, indexPath.row + 1); // 索引+1作为选项值
+    }
+    
     [self closePopup];
 }
 
+#pragma mark - 关闭弹窗
+
 - (void)closePopup {
-    [self dismissViewControllerAnimated:YES completion:nil];
+    [UIView animateWithDuration:0.3 animations:^{
+        self.view.subviews[0].alpha = 0; // 背景遮罩
+        
+        CGRect drawerFrame = self.drawerView.frame;
+        drawerFrame.origin.y = [UIScreen mainScreen].bounds.size.height;
+        self.drawerView.frame = drawerFrame;
+    } completion:^(BOOL finished) {
+        [self dismissViewControllerAnimated:NO completion:nil];
+    }];
 }
 
 @end
@@ -1343,8 +1426,8 @@ static void loadFriendsAndWalletSettings() {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
-        // 创建自定义弹窗
-        DDDiceRPSPopup *popup = [[DDDiceRPSPopup alloc] initWithType:([msgWrap m_uiGameType] == 1 ? 1 : 0)];
+        // 创建抽屉模式弹窗
+        DDDiceRPSDrawerPopup *popup = [[DDDiceRPSDrawerPopup alloc] initWithType:([msgWrap m_uiGameType] == 1 ? 1 : 0)];
         
         // 设置选择回调
         popup.selectHandler = ^(NSInteger type, NSInteger value) {
@@ -1379,7 +1462,7 @@ static void loadFriendsAndWalletSettings() {
                 topController = topController.presentedViewController;
             }
             
-            // 弹出自定义弹窗
+            // 弹出抽屉模式弹窗
             [topController presentViewController:popup animated:YES completion:nil];
         }
         return;
