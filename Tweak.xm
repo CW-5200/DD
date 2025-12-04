@@ -224,6 +224,28 @@ static BOOL g_hasPluginsMgr = NO;
 - (id)getService:(Class)cls;
 @end
 
+// 新增接口声明
+@interface GameSelectionViewController : UIViewController <UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout>
+@property (nonatomic, assign) unsigned int gameType;
+@property (nonatomic, strong) CMessageWrap *msgWrap;
+@property (nonatomic, copy) NSString *session;
+@property (nonatomic, copy) void (^completionHandler)(unsigned int selectedGameContent);
+- (void)handleTapGesture:(UITapGestureRecognizer *)gesture;
+- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture;
+- (void)closeButtonTapped;
+@end
+
+@interface GameSelectionCell : UICollectionViewCell
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UIImageView *iconImageView;
+- (void)handleHoverGesture:(UIHoverGestureRecognizer *)gesture;
+@end
+
+@interface GameSelectionHeaderView : UICollectionReusableView
+@property (nonatomic, strong) UIButton *closeButton;
+@property (nonatomic, strong) UIView *handleView;
+@end
+
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -1192,6 +1214,324 @@ static void loadFriendsAndWalletSettings() {
 
 @end
 
+// ==================== 新增：游戏选择抽屉弹窗实现 ====================
+
+@implementation GameSelectionCell
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        [self setupView];
+    }
+    return self;
+}
+
+- (void)setupView {
+    self.contentView.layer.cornerRadius = 12;
+    self.contentView.layer.masksToBounds = YES;
+    
+    if (@available(iOS 13.0, *)) {
+        self.contentView.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+    }
+    
+    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 60, 60)];
+    self.titleLabel.center = self.contentView.center;
+    self.titleLabel.font = [UIFont systemFontOfSize:32];
+    self.titleLabel.textAlignment = NSTextAlignmentCenter;
+    [self.contentView addSubview:self.titleLabel];
+    
+    // 添加触摸反馈
+    if (@available(iOS 13.0, *)) {
+        UIImpactFeedbackGenerator *feedbackGenerator = [[UIImpactFeedbackGenerator alloc] 
+            initWithStyle:UIImpactFeedbackStyleLight];
+        [feedbackGenerator prepare];
+        
+        UIHoverGestureRecognizer *hoverGesture = [[UIHoverGestureRecognizer alloc] 
+            initWithTarget:self 
+                    action:@selector(handleHoverGesture:)];
+        [self.contentView addGestureRecognizer:hoverGesture];
+    }
+}
+
+- (void)handleHoverGesture:(UIHoverGestureRecognizer *)gesture {
+    if (@available(iOS 13.0, *)) {
+        if (gesture.state == UIGestureRecognizerStateBegan) {
+            [UIView animateWithDuration:0.1 animations:^{
+                self.transform = CGAffineTransformMakeScale(0.95, 0.95);
+            }];
+        } else if (gesture.state == UIGestureRecognizerStateEnded) {
+            [UIView animateWithDuration:0.1 animations:^{
+                self.transform = CGAffineTransformIdentity;
+            }];
+        }
+    }
+}
+
+@end
+
+@implementation GameSelectionHeaderView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        [self setupView];
+    }
+    return self;
+}
+
+- (void)setupView {
+    // 添加把手视图
+    self.handleView = [[UIView alloc] initWithFrame:CGRectMake((self.bounds.size.width - 40)/2, 8, 40, 4)];
+    self.handleView.backgroundColor = [UIColor colorWithWhite:0.6 alpha:0.3];
+    self.handleView.layer.cornerRadius = 2;
+    self.handleView.layer.masksToBounds = YES;
+    [self addSubview:self.handleView];
+    
+    // 添加关闭按钮
+    self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.closeButton.frame = CGRectMake(self.bounds.size.width - 50, 10, 40, 40);
+    
+    if (@available(iOS 13.0, *)) {
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:20];
+        UIImage *xmarkImage = [UIImage systemImageNamed:@"xmark.circle.fill" withConfiguration:config];
+        [self.closeButton setImage:xmarkImage forState:UIControlStateNormal];
+        self.closeButton.tintColor = [UIColor secondaryLabelColor];
+    }
+    
+    [self addSubview:self.closeButton];
+}
+
+@end
+
+@implementation GameSelectionViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [self setupView];
+    [self setupBlurBackground];
+}
+
+- (void)setupBlurBackground {
+    if (@available(iOS 13.0, *)) {
+        UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+        blurView.frame = self.view.bounds;
+        blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [self.view addSubview:blurView];
+    }
+}
+
+- (void)setupView {
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+    CGFloat containerHeight = 400;
+    CGFloat containerWidth = screenWidth - 40;
+    
+    // 创建主容器
+    UIView *containerView = [[UIView alloc] initWithFrame:CGRectMake(20, screenHeight, containerWidth, containerHeight)];
+    containerView.center = CGPointMake(screenWidth / 2, screenHeight + containerHeight / 2);
+    containerView.backgroundColor = [UIColor clearColor];
+    containerView.tag = 1001;
+    [self.view addSubview:containerView];
+    
+    // 创建内容视图
+    UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
+    layout.minimumLineSpacing = 12;
+    layout.minimumInteritemSpacing = 12;
+    layout.sectionInset = UIEdgeInsetsMake(20, 20, 20, 20);
+    
+    UICollectionView *collectionView = [[UICollectionView alloc] initWithFrame:containerView.bounds
+                                                          collectionViewLayout:layout];
+    collectionView.backgroundColor = [UIColor clearColor];
+    collectionView.showsVerticalScrollIndicator = NO;
+    collectionView.showsHorizontalScrollIndicator = NO;
+    collectionView.delegate = self;
+    collectionView.dataSource = self;
+    
+    [collectionView registerClass:[GameSelectionCell class] forCellWithReuseIdentifier:@"GameSelectionCell"];
+    [collectionView registerClass:[GameSelectionHeaderView class]
+       forSupplementaryViewOfKind:UICollectionElementKindSectionHeader
+              withReuseIdentifier:@"GameSelectionHeaderView"];
+    
+    [containerView addSubview:collectionView];
+    
+    // 添加模糊背景效果
+    if (@available(iOS 13.0, *)) {
+        UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
+        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+        blurView.frame = collectionView.bounds;
+        blurView.layer.cornerRadius = 16;
+        blurView.layer.masksToBounds = YES;
+        [containerView insertSubview:blurView atIndex:0];
+    }
+    
+    // 添加阴影
+    containerView.layer.shadowColor = [UIColor blackColor].CGColor;
+    containerView.layer.shadowOffset = CGSizeMake(0, 8);
+    containerView.layer.shadowRadius = 16;
+    containerView.layer.shadowOpacity = 0.15;
+    containerView.layer.cornerRadius = 16;
+    
+    // 动画显示
+    [UIView animateWithDuration:0.4
+                          delay:0
+         usingSpringWithDamping:0.7
+          initialSpringVelocity:0
+                        options:UIViewAnimationOptionCurveEaseOut
+                     animations:^{
+        containerView.center = CGPointMake(screenWidth / 2, screenHeight - containerHeight / 2 - 20);
+    } completion:nil];
+}
+
+- (void)handleTapGesture:(UITapGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+        CGPoint location = [gesture locationInView:self.view];
+        UIView *containerView = [self.view viewWithTag:1001];
+        
+        if (!CGRectContainsPoint(containerView.frame, location)) {
+            [self dismissWithAnimation];
+        }
+    }
+}
+
+- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture {
+    UIView *containerView = [self.view viewWithTag:1001];
+    CGPoint translation = [gesture translationInView:self.view];
+    
+    if (gesture.state == UIGestureRecognizerStateChanged) {
+        CGFloat newY = MAX(0, translation.y);
+        containerView.transform = CGAffineTransformMakeTranslation(0, newY);
+        
+        CGFloat progress = MIN(1.0, newY / 200);
+        if (@available(iOS 13.0, *)) {
+            self.view.subviews.firstObject.alpha = 1.0 - progress;
+        }
+    }
+    else if (gesture.state == UIGestureRecognizerStateEnded) {
+        CGFloat velocity = [gesture velocityInView:self.view].y;
+        
+        if (velocity > 500 || translation.y > 100) {
+            [self dismissWithAnimation];
+        } else {
+            [UIView animateWithDuration:0.4
+                                  delay:0
+                 usingSpringWithDamping:0.7
+                  initialSpringVelocity:0
+                                options:UIViewAnimationOptionCurveEaseOut
+                             animations:^{
+                containerView.transform = CGAffineTransformIdentity;
+                if (@available(iOS 13.0, *)) {
+                    self.view.subviews.firstObject.alpha = 1.0;
+                }
+            } completion:nil];
+        }
+    }
+}
+
+- (void)dismissWithAnimation {
+    UIView *containerView = [self.view viewWithTag:1001];
+    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        containerView.transform = CGAffineTransformMakeTranslation(0, 400);
+        if (@available(iOS 13.0, *)) {
+            self.view.subviews.firstObject.alpha = 0;
+        }
+    } completion:^(BOOL finished) {
+        [self dismissViewControllerAnimated:NO completion:nil];
+    }];
+}
+
+- (void)closeButtonTapped {
+    [self dismissWithAnimation];
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+    return (self.gameType == 1) ? 3 : 6;
+}
+
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
+    GameSelectionCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"GameSelectionCell" 
+                                                                       forIndexPath:indexPath];
+    
+    if (self.gameType == 1) { // 猜拳
+        NSArray *titles = @[@"✌️", @"✊", @"✋"];
+        cell.titleLabel.text = titles[indexPath.item];
+    } else { // 骰子
+        NSArray *diceEmojis = @[@"⚀", @"⚁", @"⚂", @"⚃", @"⚄", @"⚅"];
+        cell.titleLabel.text = diceEmojis[indexPath.item];
+    }
+    
+    return cell;
+}
+
+- (UICollectionReusableView *)collectionView:(UICollectionView *)collectionView 
+           viewForSupplementaryElementOfKind:(NSString *)kind 
+                                 atIndexPath:(NSIndexPath *)indexPath {
+    
+    if (kind == UICollectionElementKindSectionHeader) {
+        GameSelectionHeaderView *headerView = [collectionView 
+            dequeueReusableSupplementaryViewOfKind:kind
+                               withReuseIdentifier:@"GameSelectionHeaderView" 
+                                      forIndexPath:indexPath];
+        
+        [headerView.closeButton addTarget:self 
+                                   action:@selector(closeButtonTapped) 
+                         forControlEvents:UIControlEventTouchUpInside];
+        
+        return headerView;
+    }
+    
+    return nil;
+}
+
+- (CGSize)collectionView:(UICollectionView *)collectionView 
+                  layout:(UICollectionViewLayout *)collectionViewLayout 
+  sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+    
+    CGFloat width = (collectionView.bounds.size.width - 68) / 3; // 20*2 + 12*2 + 4
+    return CGSizeMake(width, width);
+}
+
+- (CGSize)collectionView:(UICollectionView *)collectionView 
+                  layout:(UICollectionViewLayout *)collectionViewLayout 
+referenceSizeForHeaderInSection:(NSInteger)section {
+    
+    return CGSizeMake(collectionView.bounds.size.width, 60);
+}
+
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
+    [collectionView deselectItemAtIndexPath:indexPath animated:YES];
+    
+    unsigned int gameContent;
+    if (self.gameType == 1) {
+        gameContent = (unsigned int)indexPath.item + 1; // 猜拳: 1-3
+    } else {
+        gameContent = (unsigned int)indexPath.item + 4; // 骰子: 4-9
+    }
+    
+    NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+    if (md5) {
+        [self.msgWrap setM_nsEmoticonMD5:md5];
+        [self.msgWrap setM_uiGameContent:gameContent];
+        
+        // 执行原始方法
+        MMServiceCenter *serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
+        if (serviceCenter) {
+            CMessageMgr *messageMgr = [serviceCenter getService:objc_getClass("CMessageMgr")];
+            if (messageMgr) {
+                [messageMgr AddEmoticonMsg:self.session MsgWrap:self.msgWrap];
+            }
+        }
+    }
+    
+    [self dismissWithAnimation];
+}
+
+@end
+
+// ==================== 钩子方法实现 ====================
+
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
@@ -1250,61 +1590,56 @@ static void loadFriendsAndWalletSettings() {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
-        NSString *title = [msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
-        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"请选择" message:title preferredStyle:UIAlertControllerStyleActionSheet];
-        NSArray *actions;
-        if ([msgWrap m_uiGameType] == 1) {
-            actions = @[@"剪刀", @"石头", @"布"];
-        } else {
-            actions = @[@"1", @"2", @"3", @"4", @"5", @"6"];
-        }
-        for (int i = 0; i < actions.count; i++) {
-            NSString *actionTitle = actions[i];
-            UIAlertAction* action = [UIAlertAction actionWithTitle:actionTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                unsigned int gameContent;
-                if ([msgWrap m_uiGameType] == 1) {
-                    gameContent = i + 1;
-                } else {
-                    gameContent = i + 4;
-                }
-                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
-                if (md5) {
-                    [msgWrap setM_nsEmoticonMD5:md5];
-                    [msgWrap setM_uiGameContent:gameContent];
-                }
-                %orig(msg, msgWrap);
-            }];
-            [alert addAction:action];
-        }
-        if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
-            UIWindowScene *windowScene = nil;
-            for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-                if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
-                    windowScene = (UIWindowScene *)scene;
-                    break;
-                }
-            }
-            UIWindow *window = windowScene.windows.firstObject;
-            alert.popoverPresentationController.sourceView = window;
-            alert.popoverPresentationController.sourceRect = CGRectMake(window.frame.size.width / 2, window.frame.size.height / 2, 0, 0);
-            alert.popoverPresentationController.permittedArrowDirections = 0;
-        }
+        
+        // 获取顶层控制器
         UIViewController *topController = nil;
         UIWindowScene *windowScene = nil;
+        
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
                 windowScene = (UIWindowScene *)scene;
                 break;
             }
         }
-        if (windowScene) {
-            UIWindow *window = windowScene.windows.firstObject;
-            topController = window.rootViewController;
-            while (topController.presentedViewController) {
-                topController = topController.presentedViewController;
-            }
-            [topController presentViewController:alert animated:YES completion:nil];
+        
+        if (!windowScene) {
+            %orig(msg, msgWrap);
+            return;
         }
+        
+        UIWindow *window = windowScene.windows.firstObject;
+        topController = window.rootViewController;
+        
+        while (topController.presentedViewController) {
+            topController = topController.presentedViewController;
+        }
+        
+        // 创建抽屉式弹窗
+        GameSelectionViewController *selectionVC = [[GameSelectionViewController alloc] init];
+        selectionVC.gameType = msgWrap.m_uiGameType;
+        selectionVC.msgWrap = msgWrap;
+        selectionVC.session = msg;
+        
+        // 设置模态样式
+        selectionVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
+        selectionVC.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+        
+        // 显示弹窗
+        [topController presentViewController:selectionVC animated:YES completion:^{
+            // 添加手势
+            UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] 
+                initWithTarget:selectionVC 
+                        action:@selector(handleTapGesture:)];
+            tapGesture.cancelsTouchesInView = NO;
+            [selectionVC.view addGestureRecognizer:tapGesture];
+            
+            UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] 
+                initWithTarget:selectionVC 
+                        action:@selector(handlePanGesture:)];
+            [selectionVC.view viewWithTag:1001].userInteractionEnabled = YES;
+            [[selectionVC.view viewWithTag:1001] addGestureRecognizer:panGesture];
+        }];
+        
         return;
     }
     %orig(msg, msgWrap);
