@@ -1220,111 +1220,83 @@ static void loadFriendsAndWalletSettings() {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
     
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+    
     UIView *dimView = [[UIView alloc] initWithFrame:self.view.bounds];
-    dimView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+    dimView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.3];
     dimView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    dimView.alpha = 0;
     [self.view addSubview:dimView];
     
-    UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 0)];
-    contentView.backgroundColor = [UIColor whiteColor];
-    contentView.layer.cornerRadius = 16;
-    contentView.clipsToBounds = YES;
-    contentView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:contentView];
-    
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.text = [self.msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
-    titleLabel.font = [UIFont boldSystemFontOfSize:16];
-    titleLabel.textColor = [UIColor darkTextColor];
-    titleLabel.textAlignment = NSTextAlignmentCenter;
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [contentView addSubview:titleLabel];
-    
-    UIButton *closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [closeButton setTitle:@"✕" forState:UIControlStateNormal];
-    [closeButton setTitleColor:[UIColor grayColor] forState:UIControlStateNormal];
-    closeButton.titleLabel.font = [UIFont systemFontOfSize:18];
-    closeButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [closeButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
-    [contentView addSubview:closeButton];
-    
-    UIView *separator = [[UIView alloc] init];
-    separator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1];
-    separator.translatesAutoresizingMaskIntoConstraints = NO;
-    [contentView addSubview:separator];
+    UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleBackgroundTap)];
+    [dimView addGestureRecognizer:tapGesture];
     
     NSArray *actions;
     if ([self.msgWrap m_uiGameType] == 1) {
-        actions = @[@"✌️ 剪刀", @"✊ 石头", @"✋ 布"];
+        actions = @[@"剪刀", @"石头", @"布"];
     } else {
-        actions = @[@"⚀ 1点", @"⚁ 2点", @"⚂ 3点", @"⚃ 4点", @"⚄ 5点", @"⚅ 6点"];
+        actions = @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"];
     }
     
-    UIStackView *stackView = [[UIStackView alloc] init];
-    stackView.axis = UILayoutConstraintAxisVertical;
-    stackView.distribution = UIStackViewDistributionFillEqually;
-    stackView.spacing = 1;
-    stackView.translatesAutoresizingMaskIntoConstraints = NO;
-    [contentView addSubview:stackView];
+    CGFloat buttonHeight = 55.0;
+    CGFloat headerHeight = 50.0;
+    CGFloat bottomSafeArea = 0;
+    if (@available(iOS 11.0, *)) {
+        bottomSafeArea = self.view.safeAreaInsets.bottom;
+    }
+    
+    CGFloat sheetHeight = headerHeight + (actions.count * buttonHeight) + bottomSafeArea;
+    
+    UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, screenHeight, screenWidth, sheetHeight)];
+    contentView.backgroundColor = [UIColor whiteColor];
+    contentView.layer.cornerRadius = 12.0;
+    contentView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    contentView.clipsToBounds = YES;
+    [self.view addSubview:contentView];
+    
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 15, screenWidth - 60, 20)];
+    titleLabel.text = [self.msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
+    titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    titleLabel.textColor = [UIColor colorWithWhite:0.2 alpha:1.0];
+    titleLabel.textAlignment = NSTextAlignmentLeft;
+    [contentView addSubview:titleLabel];
+    
+    UIButton *closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    closeButton.frame = CGRectMake(screenWidth - 45, 10, 30, 30);
+    [closeButton setTitle:@"✕" forState:UIControlStateNormal];
+    [closeButton setTitleColor:[UIColor colorWithWhite:0.4 alpha:1.0] forState:UIControlStateNormal];
+    closeButton.titleLabel.font = [UIFont systemFontOfSize:20];
+    [closeButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
+    [contentView addSubview:closeButton];
+    
+    UIView *separator = [[UIView alloc] initWithFrame:CGRectMake(0, 49, screenWidth, 1)];
+    separator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    [contentView addSubview:separator];
     
     for (int i = 0; i < actions.count; i++) {
         UIButton *actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        actionButton.frame = CGRectMake(0, headerHeight + (i * buttonHeight), screenWidth, buttonHeight);
         [actionButton setTitle:actions[i] forState:UIControlStateNormal];
-        actionButton.titleLabel.font = [UIFont systemFontOfSize:16];
-        
-        if ([actions[i] containsString:@"剪刀"] || [actions[i] containsString:@"1"]) {
-            [actionButton setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
-        } else if ([actions[i] containsString:@"石头"] || [actions[i] containsString:@"2"]) {
-            [actionButton setTitleColor:[UIColor systemGreenColor] forState:UIControlStateNormal];
-        } else if ([actions[i] containsString:@"布"] || [actions[i] containsString:@"3"]) {
-            [actionButton setTitleColor:[UIColor systemOrangeColor] forState:UIControlStateNormal];
-        } else {
-            [actionButton setTitleColor:[UIColor systemPurpleColor] forState:UIControlStateNormal];
-        }
-        
+        actionButton.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightRegular];
+        [actionButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
         actionButton.backgroundColor = [UIColor whiteColor];
         actionButton.tag = i;
         [actionButton addTarget:self action:@selector(handleSelection:) forControlEvents:UIControlEventTouchUpInside];
         
         if (i < actions.count - 1) {
-            UIView *buttonSeparator = [[UIView alloc] init];
-            buttonSeparator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1];
+            UIView *buttonSeparator = [[UIView alloc] initWithFrame:CGRectMake(0, buttonHeight - 1, screenWidth, 1)];
+            buttonSeparator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
             [actionButton addSubview:buttonSeparator];
-            
-            buttonSeparator.translatesAutoresizingMaskIntoConstraints = NO;
-            [NSLayoutConstraint activateConstraints:@[
-                [buttonSeparator.leadingAnchor constraintEqualToAnchor:actionButton.leadingAnchor],
-                [buttonSeparator.trailingAnchor constraintEqualToAnchor:actionButton.trailingAnchor],
-                [buttonSeparator.bottomAnchor constraintEqualToAnchor:actionButton.bottomAnchor],
-                [buttonSeparator.heightAnchor constraintEqualToConstant:1]
-            ]];
         }
         
-        [stackView addArrangedSubview:actionButton];
+        [contentView addSubview:actionButton];
     }
     
-    [NSLayoutConstraint activateConstraints:@[
-        [contentView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [contentView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
-        [contentView.widthAnchor constraintEqualToConstant:280],
-        
-        [titleLabel.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:15],
-        [titleLabel.centerXAnchor constraintEqualToAnchor:contentView.centerXAnchor],
-        
-        [closeButton.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:10],
-        [closeButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-15],
-        
-        [separator.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:15],
-        [separator.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
-        [separator.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
-        [separator.heightAnchor constraintEqualToConstant:1],
-        
-        [stackView.topAnchor constraintEqualToAnchor:separator.bottomAnchor],
-        [stackView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
-        [stackView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
-        [stackView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor],
-        [stackView.heightAnchor constraintEqualToConstant:actions.count * 44]
-    ]];
+    [UIView animateWithDuration:0.3 animations:^{
+        dimView.alpha = 1.0;
+        contentView.frame = CGRectMake(0, screenHeight - sheetHeight, screenWidth, sheetHeight);
+    }];
 }
 
 - (void)handleSelection:(UIButton *)sender {
@@ -1335,15 +1307,31 @@ static void loadFriendsAndWalletSettings() {
         gameContent = (unsigned int)sender.tag + 4;
     }
     
-    if (self.selectionHandler) {
-        self.selectionHandler(gameContent);
-    }
-    
-    [self dismissViewControllerAnimated:YES completion:nil];
+    [self dismissWithCompletion:^{
+        if (self.selectionHandler) {
+            self.selectionHandler(gameContent);
+        }
+    }];
+}
+
+- (void)handleBackgroundTap {
+    [self dismiss];
 }
 
 - (void)dismiss {
-    [self dismissViewControllerAnimated:YES completion:nil];
+    [self dismissWithCompletion:nil];
+}
+
+- (void)dismissWithCompletion:(void (^)(void))completion {
+    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+    UIView *contentView = self.view.subviews.lastObject;
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        self.view.subviews.firstObject.alpha = 0;
+        contentView.frame = CGRectMake(0, screenHeight, contentView.frame.size.width, contentView.frame.size.height);
+    } completion:^(BOOL finished) {
+        [self dismissViewControllerAnimated:NO completion:completion];
+    }];
 }
 
 @end
