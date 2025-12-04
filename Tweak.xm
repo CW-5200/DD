@@ -36,16 +36,18 @@ static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
 // ------------------------------
-// 抽屉模式弹窗UI类（骰子/猜拳选择）
+// 抽屉模式弹窗UI类（骰子/猜拳选择）- 美化版
 // ------------------------------
 @interface DDDiceRPSDrawerPopup : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value); // type:0=骰子 1=猜拳
 @property (nonatomic, assign) NSInteger type; // 0=骰子 1=猜拳
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UIView *drawerView;
+@property (nonatomic, strong) UIVisualEffectView *blurEffectView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) NSArray *options;
+@property (nonatomic, strong) NSArray *icons;
 @end
 
 @implementation DDDiceRPSDrawerPopup
@@ -55,6 +57,7 @@ static BOOL g_hasPluginsMgr = NO;
     if (self) {
         _type = type;
         _options = type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"石头", @"剪刀", @"布"];
+        _icons = type == 0 ? @[@"⚀", @"⚁", @"⚂", @"⚃", @"⚄", @"⚅"] : @[@"✊", @"✌️", @"✋"];
         
         // 抽屉模式弹窗样式
         self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
@@ -76,61 +79,80 @@ static BOOL g_hasPluginsMgr = NO;
     UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
     [backgroundView addGestureRecognizer:tapGesture];
     
-    // 抽屉视图
-    CGFloat drawerHeight = 350; // 抽屉高度
+    // 动态计算抽屉高度
+    CGFloat cellHeight = 60.0; // 单元格高度
+    CGFloat headerHeight = 20.0; // 标题栏高度
+    CGFloat bottomMargin = 30.0; // 底部边距
+    CGFloat drawerHeight = headerHeight + (cellHeight * _options.count) + bottomMargin;
+    
     CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
     CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
     
-    _drawerView = [[UIView alloc] initWithFrame:CGRectMake(0, screenHeight, screenWidth, drawerHeight)];
-    _drawerView.backgroundColor = [UIColor colorWithWhite:0.98 alpha:1.0];
+    // 创建磨砂效果视图
+    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+    _blurEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    _blurEffectView.frame = CGRectMake(0, screenHeight, screenWidth, drawerHeight);
     
-    // 顶部大圆角（20px）
-    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:_drawerView.bounds 
-                                                   byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
-                                                         cornerRadii:CGSizeMake(20, 20)];
-    CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-    maskLayer.frame = _drawerView.bounds;
-    maskLayer.path = maskPath.CGPath;
-    _drawerView.layer.mask = maskLayer;
+    // 设置磨砂效果的cornerRadius
+    _blurEffectView.layer.cornerRadius = 20.0;
+    _blurEffectView.layer.masksToBounds = YES;
+    _blurEffectView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
     
+    _drawerView = _blurEffectView;
     [self.view addSubview:_drawerView];
     
     // 标题栏
-    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, screenWidth, 60)];
-    headerView.backgroundColor = [UIColor whiteColor];
-    [_drawerView addSubview:headerView];
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, screenWidth, headerHeight)];
+    headerView.backgroundColor = [UIColor clearColor];
+    [_drawerView.contentView addSubview:headerView];
     
     // 标题
-    _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 20, screenWidth - 120, 40)];
+    _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(50, 0, screenWidth - 100, headerHeight)];
     _titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
-    _titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    _titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
     _titleLabel.textAlignment = NSTextAlignmentCenter;
-    _titleLabel.textColor = [UIColor blackColor];
+    
+    // 适配深色模式
+    if (@available(iOS 13.0, *)) {
+        _titleLabel.textColor = [UIColor labelColor];
+    } else {
+        _titleLabel.textColor = [UIColor blackColor];
+    }
+    
     [headerView addSubview:_titleLabel];
     
-    // 关闭按钮
+    // 关闭按钮 - 使用系统图标
     _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _closeButton.frame = CGRectMake(screenWidth - 60, 20, 40, 40);
-    [_closeButton setTitle:@"关闭" forState:UIControlStateNormal];
-    [_closeButton setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
+    _closeButton.frame = CGRectMake(screenWidth - 40, 0, 30, headerHeight);
+    
+    // 创建配置对象
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightMedium];
+    UIImage *closeImage = [UIImage systemImageNamed:@"xmark" withConfiguration:config];
+    
+    [_closeButton setImage:closeImage forState:UIControlStateNormal];
+    
+    // 适配深色模式
+    if (@available(iOS 13.0, *)) {
+        [_closeButton setTintColor:[UIColor secondaryLabelColor]];
+    } else {
+        [_closeButton setTintColor:[UIColor grayColor]];
+    }
+    
     [_closeButton addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
     [headerView addSubview:_closeButton];
     
-    // 分隔线
-    UIView *separator = [[UIView alloc] initWithFrame:CGRectMake(0, 59.5, screenWidth, 0.5)];
-    separator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-    [headerView addSubview:separator];
-    
     // 列表视图
-    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 60, screenWidth, drawerHeight - 60) style:UITableViewStylePlain];
+    CGFloat tableViewY = headerHeight;
+    CGFloat tableViewHeight = cellHeight * _options.count;
+    
+    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, tableViewY, screenWidth, tableViewHeight) style:UITableViewStylePlain];
     _tableView.delegate = self;
     _tableView.dataSource = self;
     _tableView.backgroundColor = [UIColor clearColor];
-    _tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    _tableView.separatorColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-    _tableView.separatorInset = UIEdgeInsetsMake(0, 20, 0, 20);
-    _tableView.tableFooterView = [[UIView alloc] init]; // 去掉多余的分隔线
-    [_drawerView addSubview:_tableView];
+    _tableView.separatorStyle = UITableViewCellSeparatorStyleNone; // 去掉分割线
+    _tableView.scrollEnabled = NO; // 禁用滚动
+    _tableView.tableFooterView = [[UIView alloc] init];
+    [_drawerView.contentView addSubview:_tableView];
     
     // 注册单元格
     [_tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DiceRPSCell"];
@@ -158,23 +180,54 @@ static BOOL g_hasPluginsMgr = NO;
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DiceRPSCell" forIndexPath:indexPath];
     
-    cell.textLabel.text = _options[indexPath.row];
-    cell.textLabel.textAlignment = NSTextAlignmentCenter;
-    cell.textLabel.font = [UIFont systemFontOfSize:16];
-    cell.textLabel.textColor = [UIColor blackColor];
+    // 清除旧的内容
+    cell.textLabel.text = nil;
+    cell.detailTextLabel.text = nil;
+    cell.imageView.image = nil;
     
+    // 设置背景颜色
     cell.backgroundColor = [UIColor clearColor];
-    cell.selectionStyle = UITableViewCellSelectionStyleGray;
+    cell.contentView.backgroundColor = [UIColor clearColor];
+    
+    // 设置选中背景
+    UIView *selectionView = [[UIView alloc] init];
+    if (@available(iOS 13.0, *)) {
+        selectionView.backgroundColor = [UIColor secondarySystemBackgroundColor];
+    } else {
+        selectionView.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1.0];
+    }
+    cell.selectedBackgroundView = selectionView;
     
     // 移除所有子视图，防止重用问题
     for (UIView *subview in cell.contentView.subviews) {
         [subview removeFromSuperview];
     }
     
-    // 添加自定义分隔线（如果需要）
-    UIView *separator = [[UIView alloc] initWithFrame:CGRectMake(20, cell.contentView.frame.size.height - 0.5, cell.contentView.frame.size.width - 40, 0.5)];
-    separator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-    [cell.contentView addSubview:separator];
+    // 创建容器视图
+    UIView *containerView = [[UIView alloc] initWithFrame:CGRectMake(20, 5, tableView.frame.size.width - 40, 50)];
+    containerView.backgroundColor = [UIColor clearColor];
+    [cell.contentView addSubview:containerView];
+    
+    // 图标标签
+    UILabel *iconLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 50, 50)];
+    iconLabel.text = _icons[indexPath.row];
+    iconLabel.font = [UIFont systemFontOfSize:30];
+    iconLabel.textAlignment = NSTextAlignmentCenter;
+    [containerView addSubview:iconLabel];
+    
+    // 文本标签
+    UILabel *textLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 0, containerView.frame.size.width - 60, 50)];
+    textLabel.text = _options[indexPath.row];
+    textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    
+    // 适配深色模式
+    if (@available(iOS 13.0, *)) {
+        textLabel.textColor = [UIColor labelColor];
+    } else {
+        textLabel.textColor = [UIColor blackColor];
+    }
+    
+    [containerView addSubview:textLabel];
     
     return cell;
 }
@@ -182,7 +235,7 @@ static BOOL g_hasPluginsMgr = NO;
 #pragma mark - UITableViewDelegate
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return 55.0;
+    return 60.0;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -1115,7 +1168,7 @@ static void loadFriendsAndWalletSettings() {
     return 50.0;
 }
 
-- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+1- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
     UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
     headerView.backgroundColor = [UIColor clearColor];
     return headerView;
