@@ -741,7 +741,7 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-- (void)walletBalanceConfirmTapped:(UIButton *)sender {
+1. (void)walletBalanceConfirmTapped:(UIButton *)sender {
     if (_walletBalanceField) {
         [_walletBalanceField resignFirstResponder];
         [self saveWalletBalanceValue];
@@ -1100,7 +1100,6 @@ static void loadFriendsAndWalletSettings() {
     }
     
     if (targetVC) {
-        // 修复：使用 self.navigationController 而不是 this.navigationController
         [self.navigationController pushViewController:targetVC animated:YES];
     }
 }
