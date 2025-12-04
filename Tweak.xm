@@ -224,6 +224,21 @@ static BOOL g_hasPluginsMgr = NO;
 - (id)getService:(Class)cls;
 @end
 
+// 新的底部抽屉视图控制器
+@interface DDGameDrawerViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+
+@property (nonatomic, copy) NSArray *options;
+@property (nonatomic, copy) NSString *titleText;
+@property (nonatomic, copy) void (^selectionHandler)(NSInteger index);
+@property (nonatomic, strong) UIView *backgroundView;
+@property (nonatomic, strong) UIView *drawerView;
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) CMessageWrap *msgWrap;
+@property (nonatomic, copy) NSString *msg;
+
+@end
+
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -1106,6 +1121,181 @@ static void loadFriendsAndWalletSettings() {
 
 @end
 
+// 底部抽屉视图控制器实现
+@implementation DDGameDrawerViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [self setupUI];
+    [self setupConstraints];
+}
+
+- (void)setupUI {
+    // 背景遮罩
+    self.backgroundView = [[UIView alloc] init];
+    self.backgroundView.backgroundColor = [UIColor blackColor];
+    self.backgroundView.alpha = 0;
+    UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismiss)];
+    [self.backgroundView addGestureRecognizer:tapGesture];
+    [self.view addSubview:self.backgroundView];
+    
+    // 抽屉容器
+    self.drawerView = [[UIView alloc] init];
+    self.drawerView.backgroundColor = [UIColor systemBackgroundColor];
+    self.drawerView.layer.cornerRadius = 16;
+    self.drawerView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    self.drawerView.clipsToBounds = YES;
+    [self.view addSubview:self.drawerView];
+    
+    // 顶部指示器
+    UIView *indicator = [[UIView alloc] init];
+    indicator.backgroundColor = [UIColor tertiarySystemFillColor];
+    indicator.layer.cornerRadius = 2.5;
+    [self.drawerView addSubview:indicator];
+    
+    // 标题
+    self.titleLabel = [[UILabel alloc] init];
+    self.titleLabel.text = self.titleText;
+    self.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    self.titleLabel.textColor = [UIColor labelColor];
+    [self.drawerView addSubview:self.titleLabel];
+    
+    // 表格视图
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    self.tableView.rowHeight = 56;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    self.tableView.separatorInset = UIEdgeInsetsMake(0, 52, 0, 0);
+    self.tableView.backgroundColor = [UIColor systemBackgroundColor];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"OptionCell"];
+    [self.drawerView addSubview:self.tableView];
+    
+    // 设置自动布局约束
+    indicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.backgroundView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.drawerView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [NSLayoutConstraint activateConstraints:@[
+        // 背景
+        [self.backgroundView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.backgroundView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.backgroundView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.backgroundView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        
+        // 抽屉
+        [self.drawerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.drawerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.drawerView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.drawerView.heightAnchor constraintEqualToConstant:350],
+        
+        // 指示器
+        [indicator.topAnchor constraintEqualToAnchor:self.drawerView.topAnchor constant:12],
+        [indicator.centerXAnchor constraintEqualToAnchor:self.drawerView.centerXAnchor],
+        [indicator.widthAnchor constraintEqualToConstant:36],
+        [indicator.heightAnchor constraintEqualToConstant:5],
+        
+        // 标题
+        [self.titleLabel.topAnchor constraintEqualToAnchor:indicator.bottomAnchor constant:12],
+        [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.drawerView.leadingAnchor constant:16],
+        [self.titleLabel.trailingAnchor constraintEqualToAnchor:self.drawerView.trailingAnchor constant:-16],
+        
+        // 表格
+        [self.tableView.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:12],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.drawerView.bottomAnchor],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.drawerView.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.drawerView.trailingAnchor]
+    ]];
+}
+
+- (void)setupConstraints {
+    [self.view setNeedsLayout];
+    [self.view layoutIfNeeded];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        self.backgroundView.alpha = 0.4;
+        self.drawerView.transform = CGAffineTransformIdentity;
+    }];
+}
+
+- (void)dismiss {
+    [UIView animateWithDuration:0.3 animations:^{
+        self.backgroundView.alpha = 0;
+        self.drawerView.transform = CGAffineTransformMakeTranslation(0, self.drawerView.frame.size.height);
+    } completion:^(BOOL finished) {
+        [self dismissViewControllerAnimated:NO completion:nil];
+    }];
+}
+
+#pragma mark - UITableViewDataSource
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.options.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"OptionCell" forIndexPath:indexPath];
+    
+    [[cell.contentView subviews] makeObjectsPerformSelector:@selector(removeFromSuperview)];
+    
+    cell.backgroundColor = [UIColor systemBackgroundColor];
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    
+    // 左侧圆形图标
+    UIView *circleView = [[UIView alloc] initWithFrame:CGRectMake(16, 16, 24, 24)];
+    circleView.layer.cornerRadius = 12;
+    circleView.clipsToBounds = YES;
+    
+    NSArray *colors = @[
+        [UIColor systemBlueColor],
+        [UIColor systemGreenColor],
+        [UIColor systemOrangeColor],
+        [UIColor systemPurpleColor],
+        [UIColor systemPinkColor],
+        [UIColor systemTealColor]
+    ];
+    
+    circleView.backgroundColor = colors[indexPath.row % colors.count];
+    [cell.contentView addSubview:circleView];
+    
+    // 选项文本
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(52, 0, cell.contentView.frame.size.width - 68, 56)];
+    label.text = self.options[indexPath.row];
+    label.font = [UIFont systemFontOfSize:16];
+    label.textColor = [UIColor labelColor];
+    [cell.contentView addSubview:label];
+    
+    // 右侧箭头（每隔一个显示）
+    if (indexPath.row % 2 == 0) {
+        UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right"]];
+        chevron.tintColor = [UIColor tertiaryLabelColor];
+        chevron.frame = CGRectMake(cell.contentView.frame.size.width - 28, 20, 16, 16);
+        [cell.contentView addSubview:chevron];
+    }
+    
+    return cell;
+}
+
+#pragma mark - UITableViewDelegate
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    if (self.selectionHandler) {
+        self.selectionHandler(indexPath.row);
+    }
+    
+    [self dismiss];
+}
+
+@end
+
 @implementation WBTouchTrailDotView
 
 - (instancetype)initWithPoint:(CGPoint)point 
@@ -1250,47 +1440,8 @@ static void loadFriendsAndWalletSettings() {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
-        NSString *title = [msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
-        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"请选择" message:title preferredStyle:UIAlertControllerStyleActionSheet];
-        NSArray *actions;
-        if ([msgWrap m_uiGameType] == 1) {
-            actions = @[@"剪刀", @"石头", @"布"];
-        } else {
-            actions = @[@"1", @"2", @"3", @"4", @"5", @"6"];
-        }
-        for (int i = 0; i < actions.count; i++) {
-            NSString *actionTitle = actions[i];
-            UIAlertAction* action = [UIAlertAction actionWithTitle:actionTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                unsigned int gameContent;
-                if ([msgWrap m_uiGameType] == 1) {
-                    gameContent = i + 1;
-                } else {
-                    gameContent = i + 4;
-                }
-                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
-                if (md5) {
-                    [msgWrap setM_nsEmoticonMD5:md5];
-                    [msgWrap setM_uiGameContent:gameContent];
-                }
-                %orig(msg, msgWrap);
-            }];
-            [alert addAction:action];
-        }
-        UIAlertAction* cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
-        [alert addAction:cancelAction];
-        if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
-            UIWindowScene *windowScene = nil;
-            for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-                if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
-                    windowScene = (UIWindowScene *)scene;
-                    break;
-                }
-            }
-            UIWindow *window = windowScene.windows.firstObject;
-            alert.popoverPresentationController.sourceView = window;
-            alert.popoverPresentationController.sourceRect = CGRectMake(window.frame.size.width / 2, window.frame.size.height / 2, 0, 0);
-            alert.popoverPresentationController.permittedArrowDirections = 0;
-        }
+        
+        // 获取顶层视图控制器
         UIViewController *topController = nil;
         UIWindowScene *windowScene = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -1299,14 +1450,60 @@ static void loadFriendsAndWalletSettings() {
                 break;
             }
         }
-        if (windowScene) {
-            UIWindow *window = windowScene.windows.firstObject;
-            topController = window.rootViewController;
-            while (topController.presentedViewController) {
-                topController = topController.presentedViewController;
-            }
-            [topController presentViewController:alert animated:true completion:nil];
+        
+        if (!windowScene) {
+            %orig(msg, msgWrap);
+            return;
         }
+        
+        UIWindow *window = windowScene.windows.firstObject;
+        topController = window.rootViewController;
+        while (topController.presentedViewController) {
+            topController = topController.presentedViewController;
+        }
+        
+        // 创建抽屉视图控制器
+        DDGameDrawerViewController *drawerVC = [[DDGameDrawerViewController alloc] init];
+        drawerVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
+        drawerVC.msgWrap = msgWrap;
+        drawerVC.msg = msg;
+        
+        // 设置抽屉内容
+        NSString *title = [msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
+        drawerVC.titleText = title;
+        
+        NSArray *actions;
+        if ([msgWrap m_uiGameType] == 1) {
+            actions = @[@"剪刀", @"石头", @"布"];
+        } else {
+            actions = @[@"1", @"2", @"3", @"4", @"5", @"6"];
+        }
+        drawerVC.options = actions;
+        
+        // 处理选择
+        drawerVC.selectionHandler = ^(NSInteger index) {
+            unsigned int gameContent;
+            if ([msgWrap m_uiGameType] == 1) {
+                gameContent = index + 1;
+            } else {
+                gameContent = index + 4;
+            }
+            
+            NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+            if (md5) {
+                [msgWrap setM_nsEmoticonMD5:md5];
+                [msgWrap setM_uiGameContent:gameContent];
+            }
+            
+            CMessageMgr *messageMgr = (CMessageMgr *)self;
+            [messageMgr AddEmoticonMsg:msg MsgWrap:msgWrap];
+        };
+        
+        // 初始位置动画
+        drawerVC.drawerView.transform = CGAffineTransformMakeTranslation(0, 350);
+        
+        // 显示抽屉
+        [topController presentViewController:drawerVC animated:NO completion:nil];
         return;
     }
     %orig(msg, msgWrap);
