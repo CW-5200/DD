@@ -51,7 +51,7 @@ static BOOL g_hasPluginsMgr = NO;
     self = [super init];
     if (self) {
         _type = type;
-        // 弹窗基础样式（匹配"DD助手"模态弹窗）
+        // 弹窗模态样式
         self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
         self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
         self.view.backgroundColor = [UIColor clearColor];
