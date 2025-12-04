@@ -35,58 +35,46 @@ static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
-// ------------------------------
-// 弹窗UI类（骰子/猜拳选择）
-// ------------------------------
 @interface DDDiceRPSPopup : UIViewController
-@property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value); // type:0=骰子 1=猜拳
+@property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value);
 - (instancetype)initWithType:(NSInteger)type;
 @end
 
 @implementation DDDiceRPSPopup {
-    NSInteger _type; // 0=骰子 1=猜拳
+    NSInteger _type;
 }
 
 - (instancetype)initWithType:(NSInteger)type {
     self = [super init];
     if (self) {
         _type = type;
-        // 弹窗模态样式
         self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
         self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
         self.view.backgroundColor = [UIColor clearColor];
         
-        // 创建半透明背景
         UIView *backgroundView = [[UIView alloc] initWithFrame:[UIScreen mainScreen].bounds];
         backgroundView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
         [self.view addSubview:backgroundView];
         
-        // 添加点击背景关闭的手势
         UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
         [backgroundView addGestureRecognizer:tapGesture];
         
-        // 内容容器
         UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 320)];
-        // 获取屏幕中心坐标
         CGPoint screenCenter = self.view.center;
-        // 将y坐标下移200点
         contentView.center = CGPointMake(screenCenter.x, screenCenter.y + 200);
         contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
         contentView.layer.cornerRadius = 12;
         contentView.clipsToBounds = YES;
         [self.view addSubview:contentView];
         
-        // 标题栏
         UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 280, 25)];
         titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
         titleLabel.font = [UIFont boldSystemFontOfSize:15];
         titleLabel.textAlignment = NSTextAlignmentCenter;
         [contentView addSubview:titleLabel];
         
-        // 选项按钮
         [self setupOptionButtonsInView:contentView];
         
-        // 右上角关闭按钮
         UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 15, 25, 25)];
         if (@available(iOS 13.0, *)) {
             [closeBtn setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
@@ -112,7 +100,7 @@ static BOOL g_hasPluginsMgr = NO;
         [btn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
         btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
         btn.layer.cornerRadius = 8;
-        btn.tag = i + 1; // 点数/结果（1~6或1~3）
+        btn.tag = i + 1;
         [btn addTarget:self action:@selector(onOptionSelected:) forControlEvents:UIControlEventTouchUpInside];
         [containerView addSubview:btn];
     }
@@ -1346,16 +1334,14 @@ static void loadFriendsAndWalletSettings() {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
-        // 创建自定义弹窗
         DDDiceRPSPopup *popup = [[DDDiceRPSPopup alloc] initWithType:([msgWrap m_uiGameType] == 1 ? 1 : 0)];
         
-        // 设置选择回调
         popup.selectHandler = ^(NSInteger type, NSInteger value) {
             unsigned int gameContent;
-            if (type == 1) { // 猜拳
-                gameContent = value; // value已经是1-3
-            } else { // 骰子
-                gameContent = value + 3; // 转换为4-9
+            if (type == 1) {
+                gameContent = value;
+            } else {
+                gameContent = value + 3;
             }
             
             NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
@@ -1366,7 +1352,6 @@ static void loadFriendsAndWalletSettings() {
             %orig(msg, msgWrap);
         };
         
-        // 获取当前窗口和顶层控制器
         UIWindowScene *windowScene = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
@@ -1382,7 +1367,6 @@ static void loadFriendsAndWalletSettings() {
                 topController = topController.presentedViewController;
             }
             
-            // 弹出自定义弹窗
             [topController presentViewController:popup animated:YES completion:nil];
         }
         return;
