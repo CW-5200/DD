@@ -42,8 +42,7 @@ static BOOL g_hasPluginsMgr = NO;
 @property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value); // type:0=骰子 1=猜拳
 @property (nonatomic, assign) NSInteger type; // 0=骰子 1=猜拳
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) UIView *drawerView;
-@property (nonatomic, strong) UIVisualEffectView *blurEffectView;
+@property (nonatomic, strong) UIVisualEffectView *drawerView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) NSArray *options;
@@ -80,7 +79,7 @@ static BOOL g_hasPluginsMgr = NO;
     [backgroundView addGestureRecognizer:tapGesture];
     
     // 动态计算抽屉高度
-    CGFloat cellHeight = 20.0; // 单元格高度
+    CGFloat cellHeight = 60.0; // 单元格高度
     CGFloat headerHeight = 20.0; // 标题栏高度
     CGFloat bottomMargin = 30.0; // 底部边距
     CGFloat drawerHeight = headerHeight + (cellHeight * _options.count) + bottomMargin;
@@ -90,15 +89,14 @@ static BOOL g_hasPluginsMgr = NO;
     
     // 创建磨砂效果视图
     UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
-    _blurEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-    _blurEffectView.frame = CGRectMake(0, screenHeight, screenWidth, drawerHeight);
+    _drawerView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    _drawerView.frame = CGRectMake(0, screenHeight, screenWidth, drawerHeight);
     
     // 设置磨砂效果的cornerRadius
-    _blurEffectView.layer.cornerRadius = 20.0;
-    _blurEffectView.layer.masksToBounds = YES;
-    _blurEffectView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    _drawerView.layer.cornerRadius = 20.0;
+    _drawerView.layer.masksToBounds = YES;
+    _drawerView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
     
-    _drawerView = _blurEffectView;
     [self.view addSubview:_drawerView];
     
     // 标题栏
@@ -1168,7 +1166,7 @@ static void loadFriendsAndWalletSettings() {
     return 50.0;
 }
 
-1- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
     UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
     headerView.backgroundColor = [UIColor clearColor];
     return headerView;
