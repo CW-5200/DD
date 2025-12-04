@@ -80,7 +80,7 @@ static BOOL g_hasPluginsMgr = NO;
     [backgroundView addGestureRecognizer:tapGesture];
     
     // 动态计算抽屉高度
-    CGFloat cellHeight = 60.0; // 单元格高度
+    CGFloat cellHeight = 20.0; // 单元格高度
     CGFloat headerHeight = 20.0; // 标题栏高度
     CGFloat bottomMargin = 30.0; // 底部边距
     CGFloat drawerHeight = headerHeight + (cellHeight * _options.count) + bottomMargin;
