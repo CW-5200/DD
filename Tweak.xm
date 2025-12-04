@@ -35,6 +35,30 @@ static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
+@interface CContact : NSObject
+@property(copy, nonatomic) NSString *m_nsUsrName;
+@property(copy, nonatomic) NSString *m_nsNickName;
+@property(copy, nonatomic) NSString *m_nsRemark;
+@end
+
+@interface CMessageWrap : NSObject
+@property(nonatomic) unsigned int m_uiCreateTime;
+@property(nonatomic) unsigned int m_uiMessageType;
+@property(nonatomic) unsigned int m_uiGameType;
+@property(nonatomic) unsigned int m_uiGameContent;
+@property(copy, nonatomic) NSString *m_nsEmoticonMD5;
+@property(copy, nonatomic) NSString *m_nsContent;
+@property(copy, nonatomic) NSString *m_nsFromUsr;
+@property(copy, nonatomic) NSString *m_nsToUsr;
+@property(nonatomic) unsigned int m_uiStatus;
+@property(readonly, nonatomic) BOOL IsImgMsg;
+@property(readonly, nonatomic) BOOL IsVideoMsg;
+@property(readonly, nonatomic) BOOL IsVoiceMsg;
+@property(readonly, nonatomic) BOOL IsTextMsg;
+@property(readonly, nonatomic) unsigned int m_uiMesLocalID;
+- (instancetype)initWithMsgType:(unsigned int)type;
+@end
+
 static NSString* parseParam(NSString *content, NSString *begin, NSString *end) {
     if (!content) return nil;
     
@@ -275,12 +299,6 @@ static void loadFriendsAndWalletSettings() {
 - (void)reloadTableData;
 @end
 
-@interface CContact : NSObject
-@property(copy, nonatomic) NSString *m_nsUsrName;
-@property(copy, nonatomic) NSString *m_nsNickName;
-@property(copy, nonatomic) NSString *m_nsRemark;
-@end
-
 @interface BaseMsgContentViewController : UIViewController
 - (CContact *)GetContact;
 @end
@@ -294,24 +312,6 @@ static void loadFriendsAndWalletSettings() {
 @interface TextMessageSubViewModel : CommonMessageViewModel
 @property(readonly, nonatomic) CommonMessageViewModel *parentModel;
 @property(readonly, nonatomic) NSArray *subViewModels;
-@end
-
-@interface CMessageWrap : NSObject
-@property(nonatomic) unsigned int m_uiCreateTime;
-@property(nonatomic) unsigned int m_uiMessageType;
-@property(nonatomic) unsigned int m_uiGameType;
-@property(nonatomic) unsigned int m_uiGameContent;
-@property(copy, nonatomic) NSString *m_nsEmoticonMD5;
-@property(copy, nonatomic) NSString *m_nsContent;
-@property(copy, nonatomic) NSString *m_nsFromUsr;
-@property(copy, nonatomic) NSString *m_nsToUsr;
-@property(nonatomic) unsigned int m_uiStatus;
-@property(readonly, nonatomic) BOOL IsImgMsg;
-@property(readonly, nonatomic) BOOL IsVideoMsg;
-@property(readonly, nonatomic) BOOL IsVoiceMsg;
-@property(readonly, nonatomic) BOOL IsTextMsg;
-@property(readonly, nonatomic) unsigned int m_uiMesLocalID;
-- (instancetype)initWithMsgType:(unsigned int)type;
 @end
 
 @interface CMessageMgr : NSObject
