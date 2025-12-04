@@ -87,7 +87,7 @@ static BOOL g_hasPluginsMgr = NO;
 }
 
 - (void)setupOptionButtonsInView:(UIView *)containerView {
-    NSArray *options = _type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"石头", @"剪刀", @"布"];
+    NSArray *options = _type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"剪刀", @"石头", @"布"];
     CGFloat btnW = 80, btnH = 44;
     CGFloat marginX = 50, marginY = 80;
     CGFloat gapX = 100, gapY = 50;
