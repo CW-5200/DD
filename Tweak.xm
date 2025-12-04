@@ -35,88 +35,146 @@ static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
+static NSString* parseParam(NSString *content, NSString *begin, NSString *end) {
+    if (!content) return nil;
+    
+    NSRange beginRange = [content rangeOfString:begin];
+    NSRange endRange = [content rangeOfString:end];
+    
+    if (beginRange.location == NSNotFound || endRange.location == NSNotFound) return nil;
+    if (endRange.location <= beginRange.location + begin.length) return nil;
+    
+    NSRange subRange = NSMakeRange(beginRange.location + begin.length, 
+                                  endRange.location - (beginRange.location + begin.length));
+    
+    if (NSMaxRange(subRange) > content.length) return nil;
+    
+    return [content substringWithRange:subRange];
+}
+
+static NSString* getDisplayName(CContact *contact, BOOL isGroupChat, NSString *revokeContent) {
+    if (isGroupChat) {
+        NSString *name = parseParam(revokeContent, @"<![CDATA[", @"撤回了一条消息");
+        if (name.length > 0) {
+            name = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            return [NSString stringWithFormat:@"\"%@\"", name];
+        }
+        return contact.m_nsNickName ? [NSString stringWithFormat:@"\"%@\"", contact.m_nsNickName] : contact.m_nsUsrName;
+    } else {
+        if (contact.m_nsRemark.length > 0) return [NSString stringWithFormat:@"\"%@\"", contact.m_nsRemark];
+        if (contact.m_nsNickName.length > 0) return [NSString stringWithFormat:@"\"%@\"", contact.m_nsNickName];
+        return contact.m_nsUsrName ? [NSString stringWithFormat:@"\"%@\"", contact.m_nsUsrName] : @"\"对方\"";
+    }
+}
+
+static NSString* formatTimeString(unsigned int timestamp) {
+    static NSDateFormatter *formatter;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss";
+        formatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"zh_CN"];
+    });
+    return [formatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:timestamp]];
+}
+
+static NSString* getMessageContentAdapter(CMessageWrap *msgWrap) {
+    switch (msgWrap.m_uiMessageType) {
+        case 1: {
+            NSString *content = msgWrap.m_nsContent;
+            if (content.length > 30) {
+                NSString *truncated = [content substringToIndex:27];
+                return [NSString stringWithFormat:@"\"%@...\"", truncated];
+            }
+            return [NSString stringWithFormat:@"\"%@\"", content];
+        }
+        case 3:
+            return @"\"图片\"";
+        case 34:
+            return @"\"语音\"";
+        case 43:
+            return @"\"视频\"";
+        case 47:
+            return @"\"表情\"";
+        case 49:
+            return @"\"链接\"";
+        case 50:
+            return @"\"视频号\"";
+        case 62:
+            return @"\"直播\"";
+        default:
+            return [NSString stringWithFormat:@"\"类型%d\"", (int)msgWrap.m_uiMessageType];
+    }
+}
+
+static NSString* getDoubleLineTimeString(unsigned int timestamp) {
+    NSDate *date = [NSDate dateWithTimeIntervalSince1970:timestamp];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    [formatter setDateFormat:@"yyyy-MM-dd\nHH:mm:ss"];
+    return [formatter stringFromDate:date];
+}
+
+static BOOL isPreventRevokeEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kPreventRevokeEnabledKey];
+}
+
+static BOOL isGameCheatEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kGameCheatEnabledKey];
+}
+
+static BOOL isMessageTimeBelowAvatarEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kMessageTimeBelowAvatarKey];
+}
+
+static BOOL isHideChatTimeLabelEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kHideChatTimeLabelKey];
+}
+
+static BOOL isFriendsCountEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kFriendsCountEnabledKey];
+}
+
+static BOOL isWalletBalanceEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];
+}
+
+static void setMessageTime(id self, NSString *time) {
+    objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static NSString *getMessageTime(id self) {
+    return objc_getAssociatedObject(self, &kMessageTimeKey);
+}
+
+static void setTimeView(id self, UIView *view) {
+    objc_setAssociatedObject(self, &kTimeViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static UIView *getTimeView(id self) {
+    return objc_getAssociatedObject(self, &kTimeViewKey);
+}
+
+static void loadFriendsAndWalletSettings() {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    gFriendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
+    NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey];
+    if (friendsCountValue && [friendsCountValue length] > 0) {
+        gFriendsCountReplacement = friendsCountValue;
+    } else {
+        gFriendsCountReplacement = nil;
+    }
+    gWalletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
+    if (walletBalanceValue && [walletBalanceValue length] > 0) {
+        gWalletBalanceReplacement = walletBalanceValue;
+    } else {
+        gWalletBalanceReplacement = nil;
+    }
+}
+
 @interface DDDiceRPSPopup : UIViewController
 @property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value);
 - (instancetype)initWithType:(NSInteger)type;
-@end
-
-@implementation DDDiceRPSPopup {
-    NSInteger _type;
-}
-
-- (instancetype)initWithType:(NSInteger)type {
-    self = [super init];
-    if (self) {
-        _type = type;
-        self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
-        self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
-        self.view.backgroundColor = [UIColor clearColor];
-        
-        UIView *backgroundView = [[UIView alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        backgroundView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
-        [self.view addSubview:backgroundView];
-        
-        UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
-        [backgroundView addGestureRecognizer:tapGesture];
-        
-        UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 320)];
-        CGPoint screenCenter = self.view.center;
-        contentView.center = CGPointMake(screenCenter.x, screenCenter.y + 200);
-        contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
-        contentView.layer.cornerRadius = 12;
-        contentView.clipsToBounds = YES;
-        [self.view addSubview:contentView];
-        
-        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 280, 25)];
-        titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
-        titleLabel.font = [UIFont boldSystemFontOfSize:15];
-        titleLabel.textAlignment = NSTextAlignmentCenter;
-        [contentView addSubview:titleLabel];
-        
-        [self setupOptionButtonsInView:contentView];
-        
-        UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 15, 25, 25)];
-        if (@available(iOS 13.0, *)) {
-            [closeBtn setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
-        }
-        [closeBtn setTintColor:[UIColor grayColor]];
-        [closeBtn addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
-        [contentView addSubview:closeBtn];
-    }
-    return self;
-}
-
-- (void)setupOptionButtonsInView:(UIView *)containerView {
-    NSArray *options = _type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"剪刀", @"石头", @"布"];
-    CGFloat btnW = 80, btnH = 44;
-    CGFloat marginX = 50, marginY = 80;
-    CGFloat gapX = 100, gapY = 50;
-    
-    for (NSInteger i = 0; i < options.count; i++) {
-        CGFloat x = marginX + (i % 2) * gapX;
-        CGFloat y = marginY + (i / 2) * gapY;
-        UIButton *btn = [[UIButton alloc] initWithFrame:CGRectMake(x, y, btnW, btnH)];
-        [btn setTitle:options[i] forState:UIControlStateNormal];
-        [btn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-        btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-        btn.layer.cornerRadius = 8;
-        btn.tag = i + 1;
-        [btn addTarget:self action:@selector(onOptionSelected:) forControlEvents:UIControlEventTouchUpInside];
-        [containerView addSubview:btn];
-    }
-}
-
-- (void)onOptionSelected:(UIButton *)btn {
-    if (self.selectHandler) {
-        self.selectHandler(_type, btn.tag);
-    }
-    [self closePopup];
-}
-
-- (void)closePopup {
-    [self dismissViewControllerAnimated:YES completion:nil];
-}
-
 @end
 
 @interface MessageSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
@@ -308,103 +366,84 @@ static BOOL g_hasPluginsMgr = NO;
 - (id)getService:(Class)cls;
 @end
 
-static void setMessageTime(id self, NSString *time) {
-    objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+@implementation DDDiceRPSPopup {
+    NSInteger _type;
 }
 
-static NSString *getMessageTime(id self) {
-    return objc_getAssociatedObject(self, &kMessageTimeKey);
-}
-
-static void setTimeView(id self, UIView *view) {
-    objc_setAssociatedObject(self, &kTimeViewKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-static UIView *getTimeView(id self) {
-    return objc_getAssociatedObject(self, &kTimeViewKey);
-}
-
-static NSString* getDoubleLineTimeString(unsigned int timestamp) {
-    NSDate *date = [NSDate dateWithTimeIntervalSince1970:timestamp];
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    [formatter setDateFormat:@"yyyy-MM-dd\nHH:mm:ss"];
-    return [formatter stringFromDate:date];
-}
-
-static BOOL isPreventRevokeEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kPreventRevokeEnabledKey];
-}
-
-static BOOL isGameCheatEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kGameCheatEnabledKey];
-}
-
-static BOOL isMessageTimeBelowAvatarEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kMessageTimeBelowAvatarKey];
-}
-
-static BOOL isHideChatTimeLabelEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kHideChatTimeLabelKey];
-}
-
-static BOOL isFriendsCountEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kFriendsCountEnabledKey];
-}
-
-static BOOL isWalletBalanceEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];
-}
-
-static NSString* parseParam(NSString *content, NSString *begin, NSString *end) {
-    if (!content) return nil;
-    NSRange beginRange = [content rangeOfString:begin];
-    NSRange endRange = [content rangeOfString:end];
-    if (beginRange.location == NSNotFound || endRange.location == NSNotFound) return nil;
-    if (endRange.location <= beginRange.location + begin.length) return nil;
-    NSRange subRange = NSMakeRange(beginRange.location + begin.length, 
-                                  endRange.location - (beginRange.location + begin.length));
-    if (NSMaxRange(subRange) > content.length) return nil;
-    return [content substringWithRange:subRange];
-}
-
-static NSString* getDisplayName(CContact *contact, BOOL isGroupChat, NSString *revokeContent) {
-    if (isGroupChat) {
-        NSString *name = parseParam(revokeContent, @"<![CDATA[", @"撤回了一条消息");
-        if (name.length > 0) {
-            return [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+- (instancetype)initWithType:(NSInteger)type {
+    self = [super init];
+    if (self) {
+        _type = type;
+        self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
+        self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+        self.view.backgroundColor = [UIColor clearColor];
+        
+        UIView *backgroundView = [[UIView alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        backgroundView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+        [self.view addSubview:backgroundView];
+        
+        UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
+        [backgroundView addGestureRecognizer:tapGesture];
+        
+        UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 320)];
+        CGPoint screenCenter = self.view.center;
+        contentView.center = CGPointMake(screenCenter.x, screenCenter.y + 200);
+        contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
+        contentView.layer.cornerRadius = 12;
+        contentView.clipsToBounds = YES;
+        [self.view addSubview:contentView];
+        
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 280, 25)];
+        titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
+        titleLabel.font = [UIFont boldSystemFontOfSize:15];
+        titleLabel.textAlignment = NSTextAlignmentCenter;
+        [contentView addSubview:titleLabel];
+        
+        [self setupOptionButtonsInView:contentView];
+        
+        UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 15, 25, 25)];
+        if (@available(iOS 13.0, *)) {
+            [closeBtn setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
         }
-        return contact.m_nsNickName ?: contact.m_nsUsrName;
-    } else {
-        if (contact.m_nsRemark.length > 0) return contact.m_nsRemark;
-        if (contact.m_nsNickName.length > 0) return contact.m_nsNickName;
-        return contact.m_nsUsrName ?: @"对方";
+        [closeBtn setTintColor:[UIColor grayColor]];
+        [closeBtn addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
+        [contentView addSubview:closeBtn];
+    }
+    return self;
+}
+
+- (void)setupOptionButtonsInView:(UIView *)containerView {
+    NSArray *options = _type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"剪刀", @"石头", @"布"];
+    CGFloat btnW = 80, btnH = 44;
+    CGFloat marginX = 50, marginY = 80;
+    CGFloat gapX = 100, gapY = 50;
+    
+    for (NSInteger i = 0; i < options.count; i++) {
+        CGFloat x = marginX + (i % 2) * gapX;
+        CGFloat y = marginY + (i / 2) * gapY;
+        UIButton *btn = [[UIButton alloc] initWithFrame:CGRectMake(x, y, btnW, btnH)];
+        [btn setTitle:options[i] forState:UIControlStateNormal];
+        [btn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+        btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+        btn.layer.cornerRadius = 8;
+        btn.tag = i + 1;
+        [btn addTarget:self action:@selector(onOptionSelected:) forControlEvents:UIControlEventTouchUpInside];
+        [containerView addSubview:btn];
     }
 }
 
-static NSString* formatTimeString(unsigned int timestamp) {
-    NSDate *date = [NSDate dateWithTimeIntervalSince1970:timestamp];
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss";
-    return [formatter stringFromDate:date];
+- (void)onOptionSelected:(UIButton *)btn {
+    if (self.selectHandler) {
+        self.selectHandler(_type, btn.tag);
+    }
+    [self closePopup];
 }
 
-static void loadFriendsAndWalletSettings() {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    gFriendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
-    NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey];
-    if (friendsCountValue && [friendsCountValue length] > 0) {
-        gFriendsCountReplacement = friendsCountValue;
-    } else {
-        gFriendsCountReplacement = nil;
-    }
-    gWalletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
-    NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
-    if (walletBalanceValue && [walletBalanceValue length] > 0) {
-        gWalletBalanceReplacement = walletBalanceValue;
-    } else {
-        gWalletBalanceReplacement = nil;
-    }
+- (void)closePopup {
+    [self dismissViewControllerAnimated:YES completion:nil];
 }
+
+@end
 
 @implementation MessageSettingsViewController
 
@@ -1528,60 +1567,90 @@ static void loadFriendsAndWalletSettings() {
 %end
 
 %hook MessageRevokeMgr
+
 - (void)onRevokeMsg:(CMessageWrap *)msgWrap {
-    if (!isPreventRevokeEnabled() || !msgWrap || !msgWrap.m_nsContent) {
+    BOOL isEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:kPreventRevokeEnabledKey];
+    
+    if (!isEnabled) {
         %orig;
         return;
     }
+    
+    if (!msgWrap || !msgWrap.m_nsContent) {
+        %orig;
+        return;
+    }
+    
     NSString *msgContent = msgWrap.m_nsContent;
     NSString *session = parseParam(msgContent, @"<session>", @"</session>");
     NSString *newMsgID = parseParam(msgContent, @"<newmsgid>", @"</newmsgid>");
+    
     if (session.length == 0 || newMsgID.length == 0) {
         %orig;
         return;
     }
+    
     MMContext *context = [%c(MMContext) activeUserContext];
     if (!context) {
         %orig;
         return;
     }
+    
     MMServiceCenter *serviceCenter = context.serviceCenter;
     if (!serviceCenter) {
         %orig;
         return;
     }
+    
     CContactMgr *contactMgr = [serviceCenter getService:%c(CContactMgr)];
     CMessageMgr *messageMgr = [serviceCenter getService:%c(CMessageMgr)];
+    
     if (!contactMgr || !messageMgr) {
         %orig;
         return;
     }
+    
     CContact *contact = [contactMgr getContactByName:msgWrap.m_nsFromUsr];
     BOOL isGroupChat = [msgWrap.m_nsFromUsr hasSuffix:@"@chatroom"];
     NSString *displayName = getDisplayName(contact, isGroupChat, msgContent);
+    
     CMessageWrap *originalMsg = [messageMgr GetMsg:session n64SvrID:[newMsgID longLongValue]];
     if (!originalMsg) {
         %orig;
         return;
     }
+    
     NSString *currentUserName = context.userName;
     BOOL isSelfRevoke = [msgWrap.m_nsFromUsr isEqualToString:currentUserName] || 
                        [originalMsg.m_nsFromUsr isEqualToString:currentUserName];
+    
     if (isSelfRevoke) {
         %orig;
         return;
     }
-    unsigned int tipTime = originalMsg.m_uiCreateTime + 1;
+    
     NSString *timeString = formatTimeString(originalMsg.m_uiCreateTime);
-    NSString *tipContent = [NSString stringWithFormat:@"%@ 已拦截 %@ 撤回的消息", timeString, displayName];
-    CMessageWrap *tipMessage = [[%c(CMessageWrap) alloc] initWithMsgType:10000];
-    [tipMessage setM_nsFromUsr:originalMsg.m_nsFromUsr];
-    [tipMessage setM_nsToUsr:originalMsg.m_nsToUsr];
-    [tipMessage setM_nsContent:tipContent];
-    [tipMessage setM_uiStatus:4];
-    [tipMessage setM_uiCreateTime:tipTime];
-    [messageMgr AddLocalMsg:session MsgWrap:tipMessage fixTime:YES NewMsgArriveNotify:NO];
+    NSString *originalContent = getMessageContentAdapter(originalMsg);
+    
+    NSString *newContent;
+    if (isGroupChat) {
+        newContent = [NSString stringWithFormat:@"⚠️拦截通知⚠️\n时间: %@\n操作: %@ 撤回了一条消息\n内容: %@", 
+                     timeString, displayName, originalContent];
+    } else {
+        newContent = [NSString stringWithFormat:@"⚠️拦截通知⚠️\n时间: %@\n操作: %@ 撤回了一条消息\n内容: %@", 
+                     timeString, displayName, originalContent];
+    }
+    
+    CMessageWrap *newMsg = [[%c(CMessageWrap) alloc] initWithMsgType:10000];
+    [newMsg setM_nsFromUsr:msgWrap.m_nsFromUsr];
+    [newMsg setM_nsToUsr:msgWrap.m_nsToUsr];
+    [newMsg setM_nsContent:newContent];
+    [newMsg setM_uiStatus:4];
+    [newMsg setM_uiCreateTime:originalMsg.m_uiCreateTime];
+    
+    [messageMgr AddLocalMsg:session MsgWrap:newMsg fixTime:YES NewMsgArriveNotify:NO];
 }
+
 %end
 
 %hook MMUILabel
