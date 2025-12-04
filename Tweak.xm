@@ -35,6 +35,99 @@ static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
 
+// ------------------------------
+// 弹窗UI类（骰子/猜拳选择）
+// ------------------------------
+@interface DDDiceRPSPopup : UIViewController
+@property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value); // type:0=骰子 1=猜拳
+- (instancetype)initWithType:(NSInteger)type;
+@end
+
+@implementation DDDiceRPSPopup {
+    NSInteger _type; // 0=骰子 1=猜拳
+}
+
+- (instancetype)initWithType:(NSInteger)type {
+    self = [super init];
+    if (self) {
+        _type = type;
+        // 弹窗基础样式（匹配"DD助手"模态弹窗）
+        self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
+        self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+        self.view.backgroundColor = [UIColor clearColor];
+        
+        // 创建半透明背景
+        UIView *backgroundView = [[UIView alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        backgroundView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+        [self.view addSubview:backgroundView];
+        
+        // 添加点击背景关闭的手势
+        UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
+        [backgroundView addGestureRecognizer:tapGesture];
+        
+        // 内容容器
+        UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 320)];
+        contentView.center = self.view.center;
+        contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
+        contentView.layer.cornerRadius = 12;
+        contentView.clipsToBounds = YES;
+        [self.view addSubview:contentView];
+        
+        // 标题栏
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, 280, 30)];
+        titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
+        titleLabel.font = [UIFont boldSystemFontOfSize:18];
+        titleLabel.textAlignment = NSTextAlignmentCenter;
+        [contentView addSubview:titleLabel];
+        
+        // 选项按钮
+        [self setupOptionButtonsInView:contentView];
+        
+        // 右上角关闭按钮
+        UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 15, 25, 25)];
+        if (@available(iOS 13.0, *)) {
+            [closeBtn setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
+        }
+        [closeBtn setTintColor:[UIColor grayColor]];
+        [closeBtn addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
+        [contentView addSubview:closeBtn];
+    }
+    return self;
+}
+
+- (void)setupOptionButtonsInView:(UIView *)containerView {
+    NSArray *options = _type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"石头", @"剪刀", @"布"];
+    CGFloat btnW = 80, btnH = 44;
+    CGFloat marginX = 40, marginY = 80;
+    CGFloat gapX = 100, gapY = 60;
+    
+    for (NSInteger i = 0; i < options.count; i++) {
+        CGFloat x = marginX + (i % 2) * gapX;
+        CGFloat y = marginY + (i / 2) * gapY;
+        UIButton *btn = [[UIButton alloc] initWithFrame:CGRectMake(x, y, btnW, btnH)];
+        [btn setTitle:options[i] forState:UIControlStateNormal];
+        [btn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+        btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+        btn.layer.cornerRadius = 8;
+        btn.tag = i + 1; // 点数/结果（1~6或1~3）
+        [btn addTarget:self action:@selector(onOptionSelected:) forControlEvents:UIControlEventTouchUpInside];
+        [containerView addSubview:btn];
+    }
+}
+
+- (void)onOptionSelected:(UIButton *)btn {
+    if (self.selectHandler) {
+        self.selectHandler(_type, btn.tag);
+    }
+    [self closePopup];
+}
+
+- (void)closePopup {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+@end
+
 @interface MessageSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
     NSArray *_settings;
 }
@@ -1247,144 +1340,30 @@ static void loadFriendsAndWalletSettings() {
 }
 %end
 
-// ==================== 游戏作弊弹窗 ====================
-@interface DDAssistantGamePickerViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
-
-@property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) NSString *titleString;
-@property (nonatomic, strong) NSArray<NSString *> *options;
-@property (nonatomic, assign) BOOL isRockPaperScissors;
-@property (nonatomic, weak) CMessageWrap *msgWrap;
-@property (nonatomic, copy) NSString *originalMsg;
-
-@end
-
-@implementation DDAssistantGamePickerViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    
-    // 设置导航栏
-    self.title = self.titleString;
-    
-    // 添加取消按钮
-    UIBarButtonItem *cancelButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(dismiss)];
-    self.navigationItem.rightBarButtonItem = cancelButton;
-    
-    // 创建表格视图
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    [self.view addSubview:self.tableView];
-    
-    // 注册单元格
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"GameOptionCell"];
-}
-
-- (void)dismiss {
-    [self dismissViewControllerAnimated:YES completion:nil];
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.options.count;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"GameOptionCell" forIndexPath:indexPath];
-    cell.textLabel.text = self.options[indexPath.row];
-    cell.textLabel.font = [UIFont systemFontOfSize:18];
-    cell.textLabel.textAlignment = NSTextAlignmentCenter;
-    
-    if (@available(iOS 13.0, *)) {
-        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
-    } else {
-        cell.backgroundColor = [UIColor whiteColor];
-    }
-    
-    return cell;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return 60.0;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    
-    // 处理选择
-    unsigned int gameContent;
-    if (self.isRockPaperScissors) {
-        // 猜拳: 1=剪刀, 2=石头, 3=布
-        gameContent = (unsigned int)(indexPath.row + 1);
-    } else {
-        // 骰子: 4=1点, 5=2点, 6=3点, 7=4点, 8=5点, 9=6点
-        gameContent = (unsigned int)(indexPath.row + 4);
-    }
-    
-    NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
-    if (md5) {
-        [self.msgWrap setM_nsEmoticonMD5:md5];
-        [self.msgWrap setM_uiGameContent:gameContent];
-    }
-    
-    // 关闭弹窗
-    [self dismissViewControllerAnimated:YES completion:^{
-        // 发送消息
-        CMessageMgr *messageMgr = [[%c(MMContext) activeUserContext] getService:%c(CMessageMgr)];
-        if (messageMgr) {
-            [messageMgr AddEmoticonMsg:self.originalMsg MsgWrap:self.msgWrap];
-        }
-    }];
-}
-
-@end
-
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
+        // 创建自定义弹窗
+        DDDiceRPSPopup *popup = [[DDDiceRPSPopup alloc] initWithType:([msgWrap m_uiGameType] == 1 ? 1 : 0)];
         
-        // 创建选择器视图控制器
-        DDAssistantGamePickerViewController *pickerVC = [[DDAssistantGamePickerViewController alloc] init];
-        
-        // 设置数据
-        pickerVC.isRockPaperScissors = [msgWrap m_uiGameType] == 1;
-        
-        if (pickerVC.isRockPaperScissors) {
-            pickerVC.titleString = @"请选择猜拳";
-            pickerVC.options = @[@"✌️ 剪刀", @"✊ 石头", @"✋ 布"];
-        } else {
-            pickerVC.titleString = @"请选择骰子点数";
-            pickerVC.options = @[@"1️⃣", @"2️⃣", @"3️⃣", @"4️⃣", @"5️⃣", @"6️⃣"];
-        }
-        
-        pickerVC.msgWrap = msgWrap;
-        pickerVC.originalMsg = msg;
-        
-        // 嵌入导航控制器
-        UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:pickerVC];
-        
-        // 配置弹窗样式
-        if (@available(iOS 13.0, *)) {
-            navController.modalPresentationStyle = UIModalPresentationPageSheet;
-            
-            // iOS 15+ 设置弹窗样式
-            if (@available(iOS 15.0, *)) {
-                if ([navController.sheetPresentationController respondsToSelector:@selector(setDetents:)]) {
-                    // 设置中等高度
-                    NSArray *detents = @[[UISheetPresentationControllerDetent mediumDetent]];
-                    [navController.sheetPresentationController setDetents:detents];
-                    navController.sheetPresentationController.preferredCornerRadius = 16;
-                }
+        // 设置选择回调
+        popup.selectHandler = ^(NSInteger type, NSInteger value) {
+            unsigned int gameContent;
+            if (type == 1) { // 猜拳
+                gameContent = value; // value已经是1-3
+            } else { // 骰子
+                gameContent = value + 3; // 转换为4-9
             }
-        } else {
-            navController.modalPresentationStyle = UIModalPresentationFormSheet;
-        }
+            
+            NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+            if (md5) {
+                [msgWrap setM_nsEmoticonMD5:md5];
+                [msgWrap setM_uiGameContent:gameContent];
+            }
+            %orig(msg, msgWrap);
+        };
         
-        // 查找顶层控制器
-        UIViewController *topController = nil;
+        // 获取当前窗口和顶层控制器
         UIWindowScene *windowScene = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
@@ -1392,22 +1371,22 @@ static void loadFriendsAndWalletSettings() {
                 break;
             }
         }
+        
         if (windowScene) {
             UIWindow *window = windowScene.windows.firstObject;
-            topController = window.rootViewController;
+            UIViewController *topController = window.rootViewController;
             while (topController.presentedViewController) {
                 topController = topController.presentedViewController;
             }
             
-            [topController presentViewController:navController animated:YES completion:nil];
+            // 弹出自定义弹窗
+            [topController presentViewController:popup animated:YES completion:nil];
         }
-        
         return;
     }
     %orig(msg, msgWrap);
 }
 %end
-// ==================== 游戏作弊弹窗结束 ====================
 
 %hook CommonMessageCellView
 - (id)initWithViewModel:(id)arg1 {
