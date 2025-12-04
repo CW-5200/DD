@@ -1569,7 +1569,7 @@ static void loadFriendsAndWalletSettings() {
 %hook MessageRevokeMgr
 
 - (void)onRevokeMsg:(CMessageWrap *)msgWrap {
-    BOOL isEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:kPreventRevokeEnabledKey];
+    BOOL isEnabled = isPreventRevokeEnabled();
     
     if (!isEnabled) {
         %orig;
