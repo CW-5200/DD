@@ -224,6 +224,16 @@ static BOOL g_hasPluginsMgr = NO;
 - (id)getService:(Class)cls;
 @end
 
+@interface UIView (FindViewController)
+- (UIViewController *)findViewController;
+@end
+
+@interface GameCheatSelectionViewController : UIViewController
+@property (nonatomic, strong) CMessageWrap *msgWrap;
+@property (nonatomic, strong) NSString *msg;
+@property (nonatomic, copy) void (^selectionHandler)(unsigned int gameContent);
+@end
+
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -330,7 +340,11 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (void)setupTableView {
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
@@ -341,8 +355,12 @@ static void loadFriendsAndWalletSettings() {
     [super viewDidLoad];
     self.title = @"消息设置";
     
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     _settings = @[@"消息防撤提示", @"隐藏自带时间", @"头像时间标签"];
@@ -358,17 +376,24 @@ static void loadFriendsAndWalletSettings() {
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        }
     }
     
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *cellTitle = _settings[indexPath.row];
     cell.textLabel.text = cellTitle;
     
-    cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    if (@available(iOS 13.0, *)) {
+        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    }
     
     UISwitch *switchView = [[UISwitch alloc] init];
-    switchView.onTintColor = [UIColor systemBlueColor];
+    if (@available(iOS 13.0, *)) {
+        switchView.onTintColor = [UIColor systemBlueColor];
+    }
     
     if (indexPath.row == 0) {
         switchView.on = [defaults boolForKey:kPreventRevokeEnabledKey];
@@ -421,7 +446,11 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (void)setupTableView {
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
@@ -432,8 +461,12 @@ static void loadFriendsAndWalletSettings() {
     [super viewDidLoad];
     self.title = @"娱乐功能";
     
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"好友数量输入框", @"钱包余额自定义", @"钱包余额输入框"];
@@ -501,14 +534,20 @@ static void loadFriendsAndWalletSettings() {
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
         }
         cell.textLabel.text = @"骰子猜拳控制";
         
-        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
         
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.onTintColor = [UIColor systemBlueColor];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kGameCheatEnabledKey];
         [switchView addTarget:self action:@selector(gameCheatEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
@@ -522,14 +561,20 @@ static void loadFriendsAndWalletSettings() {
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
         }
         cell.textLabel.text = @"好友数量自定义";
         
-        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
         
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.onTintColor = [UIColor systemBlueColor];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = friendsCountEnabled;
         [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
@@ -543,7 +588,9 @@ static void loadFriendsAndWalletSettings() {
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
             
             UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
@@ -552,8 +599,10 @@ static void loadFriendsAndWalletSettings() {
             textField.delegate = self;
             textField.clearButtonMode = UITextFieldViewModeWhileEditing;
             
-            textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
-            textField.textColor = [UIColor labelColor];
+            if (@available(iOS 13.0, *)) {
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+                textField.textColor = [UIColor labelColor];
+            }
             
             [cell.contentView addSubview:textField];
             _friendsCountField = textField;
@@ -562,7 +611,9 @@ static void loadFriendsAndWalletSettings() {
             confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
             [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
             
-            confirmButton.tintColor = [UIColor systemBlueColor];
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
             
             [confirmButton addTarget:self action:@selector(friendsCountConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
             [cell.contentView addSubview:confirmButton];
@@ -586,14 +637,20 @@ static void loadFriendsAndWalletSettings() {
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
         }
         cell.textLabel.text = @"钱包余额自定义";
         
-        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
         
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.onTintColor = [UIColor systemBlueColor];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = walletBalanceEnabled;
         [switchView addTarget:self action:@selector(walletBalanceEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
@@ -607,7 +664,9 @@ static void loadFriendsAndWalletSettings() {
         if (!cell) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
             
             UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
             textField.borderStyle = UITextBorderStyleRoundedRect;
@@ -616,8 +675,10 @@ static void loadFriendsAndWalletSettings() {
             textField.delegate = self;
             textField.clearButtonMode = UITextFieldViewModeWhileEditing;
             
-            textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
-            textField.textColor = [UIColor labelColor];
+            if (@available(iOS 13.0, *)) {
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+                textField.textColor = [UIColor labelColor];
+            }
             
             [cell.contentView addSubview:textField];
             _walletBalanceField = textField;
@@ -626,7 +687,9 @@ static void loadFriendsAndWalletSettings() {
             confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
             [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
             
-            confirmButton.tintColor = [UIColor systemBlueColor];
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
             
             [confirmButton addTarget:self action:@selector(walletBalanceConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
             [cell.contentView addSubview:confirmButton];
@@ -769,7 +832,11 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (void)setupTableView {
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
@@ -781,8 +848,12 @@ static void loadFriendsAndWalletSettings() {
     
     self.title = @"触摸轨迹";
     
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     
@@ -830,31 +901,42 @@ static void loadFriendsAndWalletSettings() {
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        }
     }
     
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    if (@available(iOS 13.0, *)) {
+        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    }
     
     if (indexPath.row == 0) {
         cell.textLabel.text = @"启用触摸轨迹";
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.onTintColor = [UIColor systemBlueColor];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kTouchTrailKey];
         [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
     } else if (indexPath.row == 1) {
         cell.textLabel.text = @"仅在录屏显示";
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.onTintColor = [UIColor systemBlueColor];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
         [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
     } else if (indexPath.row == 2) {
         cell.textLabel.text = @"使用拖尾效果";
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.onTintColor = [UIColor systemBlueColor];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
         switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
         [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
@@ -925,7 +1007,11 @@ static void loadFriendsAndWalletSettings() {
 }
 
 - (void)setupTableView {
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
@@ -936,8 +1022,12 @@ static void loadFriendsAndWalletSettings() {
     [super viewDidLoad];
     self.title = PLUGIN_NAME;
     
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     _sections = @[
@@ -961,25 +1051,30 @@ static void loadFriendsAndWalletSettings() {
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
-        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
     }
     
     NSString *cellTitle = _sections[indexPath.section][indexPath.row];
     cell.textLabel.text = cellTitle;
     
-    UIImage *iconImage = nil;
-    if (indexPath.section == 0) {
-        iconImage = [UIImage systemImageNamed:@"message.fill"];
-    } else if (indexPath.section == 1) {
-        iconImage = [UIImage systemImageNamed:@"gamecontroller.fill"];
-    } else if (indexPath.section == 2) {
-        iconImage = [UIImage systemImageNamed:@"cursorarrow.motionlines"];
-    }
-    
-    if (iconImage) {
-        cell.imageView.image = iconImage;
-        cell.imageView.tintColor = [UIColor systemBlueColor];
+    if (@available(iOS 13.0, *)) {
+        UIImage *iconImage = nil;
+        if (indexPath.section == 0) {
+            iconImage = [UIImage systemImageNamed:@"message.fill"];
+        } else if (indexPath.section == 1) {
+            iconImage = [UIImage systemImageNamed:@"gamecontroller.fill"];
+        } else if (indexPath.section == 2) {
+            iconImage = [UIImage systemImageNamed:@"cursorarrow.motionlines"];
+        }
+        
+        if (iconImage) {
+            cell.imageView.image = iconImage;
+            cell.imageView.tintColor = [UIColor systemBlueColor];
+        }
     }
     
     return cell;
@@ -1107,6 +1202,152 @@ static void loadFriendsAndWalletSettings() {
 
 @end
 
+@implementation UIView (FindViewController)
+- (UIViewController *)findViewController {
+    UIResponder *responder = self;
+    while ((responder = [responder nextResponder])) {
+        if ([responder isKindOfClass:[UIViewController class]]) {
+            return (UIViewController *)responder;
+        }
+    }
+    return nil;
+}
+@end
+
+@implementation GameCheatSelectionViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = [UIColor clearColor];
+    
+    UIView *dimView = [[UIView alloc] initWithFrame:self.view.bounds];
+    dimView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+    dimView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:dimView];
+    
+    UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 0)];
+    contentView.backgroundColor = [UIColor whiteColor];
+    contentView.layer.cornerRadius = 16;
+    contentView.clipsToBounds = YES;
+    contentView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:contentView];
+    
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.text = [self.msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
+    titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    titleLabel.textColor = [UIColor darkTextColor];
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:titleLabel];
+    
+    UIButton *closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [closeButton setTitle:@"✕" forState:UIControlStateNormal];
+    [closeButton setTitleColor:[UIColor grayColor] forState:UIControlStateNormal];
+    closeButton.titleLabel.font = [UIFont systemFontOfSize:18];
+    closeButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [closeButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
+    [contentView addSubview:closeButton];
+    
+    UIView *separator = [[UIView alloc] init];
+    separator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1];
+    separator.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:separator];
+    
+    NSArray *actions;
+    if ([self.msgWrap m_uiGameType] == 1) {
+        actions = @[@"✌️ 剪刀", @"✊ 石头", @"✋ 布"];
+    } else {
+        actions = @[@"⚀ 1点", @"⚁ 2点", @"⚂ 3点", @"⚃ 4点", @"⚄ 5点", @"⚅ 6点"];
+    }
+    
+    UIStackView *stackView = [[UIStackView alloc] init];
+    stackView.axis = UILayoutConstraintAxisVertical;
+    stackView.distribution = UIStackViewDistributionFillEqually;
+    stackView.spacing = 1;
+    stackView.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:stackView];
+    
+    for (int i = 0; i < actions.count; i++) {
+        UIButton *actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [actionButton setTitle:actions[i] forState:UIControlStateNormal];
+        actionButton.titleLabel.font = [UIFont systemFontOfSize:16];
+        
+        if ([actions[i] containsString:@"剪刀"] || [actions[i] containsString:@"1"]) {
+            [actionButton setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
+        } else if ([actions[i] containsString:@"石头"] || [actions[i] containsString:@"2"]) {
+            [actionButton setTitleColor:[UIColor systemGreenColor] forState:UIControlStateNormal];
+        } else if ([actions[i] containsString:@"布"] || [actions[i] containsString:@"3"]) {
+            [actionButton setTitleColor:[UIColor systemOrangeColor] forState:UIControlStateNormal];
+        } else {
+            [actionButton setTitleColor:[UIColor systemPurpleColor] forState:UIControlStateNormal];
+        }
+        
+        actionButton.backgroundColor = [UIColor whiteColor];
+        actionButton.tag = i;
+        [actionButton addTarget:self action:@selector(handleSelection:) forControlEvents:UIControlEventTouchUpInside];
+        
+        if (i < actions.count - 1) {
+            UIView *buttonSeparator = [[UIView alloc] init];
+            buttonSeparator.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1];
+            [actionButton addSubview:buttonSeparator];
+            
+            buttonSeparator.translatesAutoresizingMaskIntoConstraints = NO;
+            [NSLayoutConstraint activateConstraints:@[
+                [buttonSeparator.leadingAnchor constraintEqualToAnchor:actionButton.leadingAnchor],
+                [buttonSeparator.trailingAnchor constraintEqualToAnchor:actionButton.trailingAnchor],
+                [buttonSeparator.bottomAnchor constraintEqualToAnchor:actionButton.bottomAnchor],
+                [buttonSeparator.heightAnchor constraintEqualToConstant:1]
+            ]];
+        }
+        
+        [stackView addArrangedSubview:actionButton];
+    }
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [contentView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [contentView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+        [contentView.widthAnchor constraintEqualToConstant:280],
+        
+        [titleLabel.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:15],
+        [titleLabel.centerXAnchor constraintEqualToAnchor:contentView.centerXAnchor],
+        
+        [closeButton.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:10],
+        [closeButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-15],
+        
+        [separator.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:15],
+        [separator.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
+        [separator.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
+        [separator.heightAnchor constraintEqualToConstant:1],
+        
+        [stackView.topAnchor constraintEqualToAnchor:separator.bottomAnchor],
+        [stackView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
+        [stackView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
+        [stackView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor],
+        [stackView.heightAnchor constraintEqualToConstant:actions.count * 44]
+    ]];
+}
+
+- (void)handleSelection:(UIButton *)sender {
+    unsigned int gameContent;
+    if ([self.msgWrap m_uiGameType] == 1) {
+        gameContent = (unsigned int)sender.tag + 1;
+    } else {
+        gameContent = (unsigned int)sender.tag + 4;
+    }
+    
+    if (self.selectionHandler) {
+        self.selectionHandler(gameContent);
+    }
+    
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)dismiss {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+@end
+
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
@@ -1134,7 +1375,11 @@ static void loadFriendsAndWalletSettings() {
 - (void)onDDAssistantClicked {
     DDAssistantSettingsViewController *settingsVC = [[DDAssistantSettingsViewController alloc] init];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
-    nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    if (@available(iOS 13.0, *)) {
+        nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    } else {
+        nav.modalPresentationStyle = UIModalPresentationFullScreen;
+    }
     [self presentViewController:nav animated:YES completion:nil];
 }
 %end
@@ -1161,259 +1406,41 @@ static void loadFriendsAndWalletSettings() {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
-        
-        BOOL isRockPaperScissors = [msgWrap m_uiGameType] == 1;
-        NSString *title = isRockPaperScissors ? @"请选择石头/剪刀/布" : @"请选择点数";
-        
-        // 获取主窗口
-        UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow ?: [[UIApplication sharedApplication].windows firstObject];
-        
-        // 创建半透明背景
-        UIView *containerView = [[UIView alloc] initWithFrame:keyWindow.bounds];
-        containerView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.4];
-        containerView.tag = 9999;
-        containerView.userInteractionEnabled = YES;
-        
-        // 内容容器
-        UIView *contentView = [[UIView alloc] init];
-        contentView.backgroundColor = [UIColor colorWithRed:0.95 green:0.95 blue:0.96 alpha:1.0];
-        contentView.layer.cornerRadius = 14;
-        contentView.layer.masksToBounds = YES;
-        contentView.layer.shadowColor = [UIColor blackColor].CGColor;
-        contentView.layer.shadowOffset = CGSizeMake(0, 2);
-        contentView.layer.shadowOpacity = 0.2;
-        contentView.layer.shadowRadius = 10;
-        contentView.translatesAutoresizingMaskIntoConstraints = NO;
-        [containerView addSubview:contentView];
-        
-        // 标题标签
-        UILabel *titleLabel = [[UILabel alloc] init];
-        titleLabel.text = title;
-        titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-        titleLabel.textColor = [UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0];
-        titleLabel.textAlignment = NSTextAlignmentCenter;
-        titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [contentView addSubview:titleLabel];
-        
-        // 按钮容器
-        UIView *buttonsContainer = [[UIView alloc] init];
-        buttonsContainer.backgroundColor = [UIColor colorWithRed:0.98 green:0.98 blue:0.98 alpha:1.0];
-        buttonsContainer.layer.cornerRadius = 12;
-        buttonsContainer.translatesAutoresizingMaskIntoConstraints = NO;
-        [contentView addSubview:buttonsContainer];
-        
-        // 创建按钮
-        NSArray *actions;
-        if (isRockPaperScissors) {
-            actions = @[@"✌️ 剪刀", @"✊ 石头", @"✋ 布"];
-        } else {
-            actions = @[@"⚀ 1", @"⚁ 2", @"⚂ 3", @"⚃ 4", @"⚄ 5", @"⚅ 6"];
+        UIViewController *topController = nil;
+        UIWindowScene *windowScene = nil;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+                windowScene = (UIWindowScene *)scene;
+                break;
+            }
         }
-        
-        NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
-        NSMutableArray<NSLayoutConstraint *> *buttonConstraints = [NSMutableArray array];
-        
-        UIButton *lastButton = nil;
-        
-        for (int i = 0; i < actions.count; i++) {
-            UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-            button.tag = i;
-            button.backgroundColor = [UIColor whiteColor];
-            button.layer.cornerRadius = 10;
-            button.layer.masksToBounds = YES;
-            button.layer.borderWidth = 0.5;
-            button.layer.borderColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0].CGColor;
-            button.translatesAutoresizingMaskIntoConstraints = NO;
-            
-            // 设置按钮内容
-            NSString *buttonTitle = actions[i];
-            NSMutableAttributedString *attributedString = [[NSMutableAttributedString alloc] initWithString:buttonTitle];
-            [attributedString addAttribute:NSFontAttributeName 
-                                     value:[UIFont systemFontOfSize:17 weight:UIFontWeightMedium] 
-                                     range:NSMakeRange(0, buttonTitle.length)];
-            [attributedString addAttribute:NSForegroundColorAttributeName 
-                                     value:[UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0] 
-                                     range:NSMakeRange(0, buttonTitle.length)];
-            
-            [button setAttributedTitle:attributedString forState:UIControlStateNormal];
-            
-            // 高亮效果
-            [button addTarget:self action:@selector(gameButtonTouchDown:) forControlEvents:UIControlEventTouchDown];
-            [button addTarget:self action:@selector(gameButtonTouchUp:) forControlEvents:UIControlEventTouchUpOutside|UIControlEventTouchUpInside|UIControlEventTouchCancel];
-            
-            // 按钮点击事件
-            [button addTarget:self action:@selector(gameButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
-            
-            [buttonsContainer addSubview:button];
-            [buttons addObject:button];
-            
-            // 按钮约束
-            NSLayoutConstraint *topConstraint = nil;
-            if (lastButton) {
-                topConstraint = [button.topAnchor constraintEqualToAnchor:lastButton.bottomAnchor constant:10];
-            } else {
-                topConstraint = [button.topAnchor constraintEqualToAnchor:buttonsContainer.topAnchor constant:15];
+        if (windowScene) {
+            UIWindow *window = windowScene.windows.firstObject;
+            topController = window.rootViewController;
+            while (topController.presentedViewController) {
+                topController = topController.presentedViewController;
             }
             
-            [NSLayoutConstraint activateConstraints:@[
-                [button.leadingAnchor constraintEqualToAnchor:buttonsContainer.leadingAnchor constant:15],
-                [button.trailingAnchor constraintEqualToAnchor:buttonsContainer.trailingAnchor constant:-15],
-                [button.heightAnchor constraintEqualToConstant:44],
-                topConstraint
-            ]];
+            GameCheatSelectionViewController *selectionVC = [[GameCheatSelectionViewController alloc] init];
+            selectionVC.msgWrap = msgWrap;
+            selectionVC.msg = msg;
             
-            lastButton = button;
-            [buttonConstraints addObject:topConstraint];
+            selectionVC.selectionHandler = ^(unsigned int gameContent) {
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            };
+            
+            selectionVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
+            selectionVC.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+            [topController presentViewController:selectionVC animated:YES completion:nil];
         }
-        
-        // 取消按钮
-        UIButton *cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        cancelButton.backgroundColor = [UIColor whiteColor];
-        cancelButton.layer.cornerRadius = 10;
-        cancelButton.layer.masksToBounds = YES;
-        cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
-        
-        NSMutableAttributedString *cancelAttributedString = [[NSMutableAttributedString alloc] initWithString:@"取消"];
-        [cancelAttributedString addAttribute:NSFontAttributeName 
-                                       value:[UIFont systemFontOfSize:17 weight:UIFontWeightMedium] 
-                                       range:NSMakeRange(0, 2)];
-        [cancelAttributedString addAttribute:NSForegroundColorAttributeName 
-                                       value:[UIColor colorWithRed:0.0 green:0.48 blue:1.0 alpha:1.0] 
-                                       range:NSMakeRange(0, 2)];
-        
-        [cancelButton setAttributedTitle:cancelAttributedString forState:UIControlStateNormal];
-        
-        [cancelButton addTarget:self action:@selector(cancelButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
-        
-        [contentView addSubview:cancelButton];
-        
-        // 分隔线
-        UIView *separatorView = [[UIView alloc] init];
-        separatorView.backgroundColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0];
-        separatorView.translatesAutoresizingMaskIntoConstraints = NO;
-        [contentView addSubview:separatorView];
-        
-        // 设置约束
-        [NSLayoutConstraint activateConstraints:@[
-            // 内容容器居中
-            [contentView.centerXAnchor constraintEqualToAnchor:containerView.centerXAnchor],
-            [contentView.centerYAnchor constraintEqualToAnchor:containerView.centerYAnchor],
-            [contentView.widthAnchor constraintEqualToConstant:300],
-            
-            // 标题
-            [titleLabel.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:20],
-            [titleLabel.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
-            [titleLabel.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-            
-            // 按钮容器
-            [buttonsContainer.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:20],
-            [buttonsContainer.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:15],
-            [buttonsContainer.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-15],
-            
-            // 分隔线
-            [separatorView.topAnchor constraintEqualToAnchor:buttonsContainer.bottomAnchor constant:15],
-            [separatorView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
-            [separatorView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
-            [separatorView.heightAnchor constraintEqualToConstant:0.5],
-            
-            // 取消按钮
-            [cancelButton.topAnchor constraintEqualToAnchor:separatorView.bottomAnchor],
-            [cancelButton.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
-            [cancelButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
-            [cancelButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor],
-            [cancelButton.heightAnchor constraintEqualToConstant:50]
-        ]];
-        
-        // 动态计算按钮容器高度
-        CGFloat buttonContainerHeight = (actions.count * 44) + ((actions.count - 1) * 10) + 30;
-        [buttonsContainer.heightAnchor constraintEqualToConstant:buttonContainerHeight].active = YES;
-        
-        // 保存数据以便后续使用
-        objc_setAssociatedObject(containerView, @"msgWrap", msgWrap, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(containerView, @"msg", msg, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(containerView, @"buttons", buttons, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        
-        // 添加到窗口
-        [keyWindow addSubview:containerView];
-        
-        // 动画效果
-        contentView.transform = CGAffineTransformMakeScale(1.1, 1.1);
-        contentView.alpha = 0;
-        
-        [UIView animateWithDuration:0.25 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-            contentView.transform = CGAffineTransformIdentity;
-            contentView.alpha = 1;
-        } completion:nil];
-        
         return;
     }
     %orig(msg, msgWrap);
-}
-
-%new
-- (void)gameButtonTouchDown:(UIButton *)sender {
-    sender.backgroundColor = [UIColor colorWithRed:0.95 green:0.95 blue:0.95 alpha:1.0];
-}
-
-%new
-- (void)gameButtonTouchUp:(UIButton *)sender {
-    sender.backgroundColor = [UIColor whiteColor];
-}
-
-%new
-- (void)gameButtonTapped:(UIButton *)sender {
-    // 找到containerView
-    UIView *containerView = sender;
-    while (containerView && containerView.tag != 9999) {
-        containerView = containerView.superview;
-    }
-    
-    if (!containerView) return;
-    
-    CMessageWrap *msgWrap = objc_getAssociatedObject(containerView, @"msgWrap");
-    NSString *msg = objc_getAssociatedObject(containerView, @"msg");
-    
-    // 动画效果
-    [UIView animateWithDuration:0.2 animations:^{
-        containerView.alpha = 0;
-        containerView.transform = CGAffineTransformMakeScale(0.9, 0.9);
-    } completion:^(BOOL finished) {
-        [containerView removeFromSuperview];
-        
-        // 处理选择
-        unsigned int gameContent;
-        if ([msgWrap m_uiGameType] == 1) { // 石头剪刀布
-            gameContent = (unsigned int)sender.tag + 1;
-        } else { // 骰子
-            gameContent = (unsigned int)sender.tag + 4;
-        }
-        
-        NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
-        if (md5) {
-            [msgWrap setM_nsEmoticonMD5:md5];
-            [msgWrap setM_uiGameContent:gameContent];
-        }
-        
-        %orig(msg, msgWrap);
-    }];
-}
-
-%new
-- (void)cancelButtonTapped:(UIButton *)sender {
-    // 找到containerView
-    UIView *containerView = sender;
-    while (containerView && containerView.tag != 9999) {
-        containerView = containerView.superview;
-    }
-    
-    if (!containerView) return;
-    
-    [UIView animateWithDuration:0.2 animations:^{
-        containerView.alpha = 0;
-        containerView.transform = CGAffineTransformMakeScale(0.9, 0.9);
-    } completion:^(BOOL finished) {
-        [containerView removeFromSuperview];
-    }];
 }
 %end
 
