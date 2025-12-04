@@ -224,28 +224,6 @@ static BOOL g_hasPluginsMgr = NO;
 - (id)getService:(Class)cls;
 @end
 
-// 新增接口声明
-@interface GameSelectionViewController : UIViewController <UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout>
-@property (nonatomic, assign) unsigned int gameType;
-@property (nonatomic, strong) CMessageWrap *msgWrap;
-@property (nonatomic, copy) NSString *session;
-@property (nonatomic, copy) void (^completionHandler)(unsigned int selectedGameContent);
-- (void)handleTapGesture:(UITapGestureRecognizer *)gesture;
-- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture;
-- (void)closeButtonTapped;
-@end
-
-@interface GameSelectionCell : UICollectionViewCell
-@property (nonatomic, strong) UILabel *titleLabel;
-@property (nonatomic, strong) UIImageView *iconImageView;
-- (void)handleHoverGesture:(UIHoverGestureRecognizer *)gesture;
-@end
-
-@interface GameSelectionHeaderView : UICollectionReusableView
-@property (nonatomic, strong) UIButton *closeButton;
-@property (nonatomic, strong) UIView *handleView;
-@end
-
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -1214,323 +1192,29 @@ static void loadFriendsAndWalletSettings() {
 
 @end
 
-// ==================== 新增：游戏选择抽屉弹窗实现 ====================
+// ==================== UIButton Block Support ====================
+@interface UIButton (DDBlock)
+- (void)addActionBlock:(void(^)(id sender))block forControlEvents:(UIControlEvents)event;
+@end
 
-@implementation GameSelectionCell
+@implementation UIButton (DDBlock)
 
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        [self setupView];
-    }
-    return self;
+static char kActionBlockKey;
+
+- (void)addActionBlock:(void(^)(id sender))block forControlEvents:(UIControlEvents)event {
+    objc_setAssociatedObject(self, &kActionBlockKey, block, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    [self addTarget:self action:@selector(blockAction:) forControlEvents:event];
 }
 
-- (void)setupView {
-    self.contentView.layer.cornerRadius = 12;
-    self.contentView.layer.masksToBounds = YES;
-    
-    if (@available(iOS 13.0, *)) {
-        self.contentView.backgroundColor = [UIColor tertiarySystemBackgroundColor];
-    }
-    
-    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 60, 60)];
-    self.titleLabel.center = self.contentView.center;
-    self.titleLabel.font = [UIFont systemFontOfSize:32];
-    self.titleLabel.textAlignment = NSTextAlignmentCenter;
-    [self.contentView addSubview:self.titleLabel];
-    
-    // 添加触摸反馈
-    if (@available(iOS 13.0, *)) {
-        UIImpactFeedbackGenerator *feedbackGenerator = [[UIImpactFeedbackGenerator alloc] 
-            initWithStyle:UIImpactFeedbackStyleLight];
-        [feedbackGenerator prepare];
-        
-        UIHoverGestureRecognizer *hoverGesture = [[UIHoverGestureRecognizer alloc] 
-            initWithTarget:self 
-                    action:@selector(handleHoverGesture:)];
-        [self.contentView addGestureRecognizer:hoverGesture];
-    }
-}
-
-- (void)handleHoverGesture:(UIHoverGestureRecognizer *)gesture {
-    if (@available(iOS 13.0, *)) {
-        if (gesture.state == UIGestureRecognizerStateBegan) {
-            [UIView animateWithDuration:0.1 animations:^{
-                self.transform = CGAffineTransformMakeScale(0.95, 0.95);
-            }];
-        } else if (gesture.state == UIGestureRecognizerStateEnded) {
-            [UIView animateWithDuration:0.1 animations:^{
-                self.transform = CGAffineTransformIdentity;
-            }];
-        }
+- (void)blockAction:(UIButton *)sender {
+    void(^block)(id) = objc_getAssociatedObject(self, &kActionBlockKey);
+    if (block) {
+        block(sender);
     }
 }
 
 @end
-
-@implementation GameSelectionHeaderView
-
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        [self setupView];
-    }
-    return self;
-}
-
-- (void)setupView {
-    // 添加把手视图
-    self.handleView = [[UIView alloc] initWithFrame:CGRectMake((self.bounds.size.width - 40)/2, 8, 40, 4)];
-    self.handleView.backgroundColor = [UIColor colorWithWhite:0.6 alpha:0.3];
-    self.handleView.layer.cornerRadius = 2;
-    self.handleView.layer.masksToBounds = YES;
-    [self addSubview:self.handleView];
-    
-    // 添加关闭按钮
-    self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.closeButton.frame = CGRectMake(self.bounds.size.width - 50, 10, 40, 40);
-    
-    if (@available(iOS 13.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:20];
-        UIImage *xmarkImage = [UIImage systemImageNamed:@"xmark.circle.fill" withConfiguration:config];
-        [self.closeButton setImage:xmarkImage forState:UIControlStateNormal];
-        self.closeButton.tintColor = [UIColor secondaryLabelColor];
-    }
-    
-    [self addSubview:self.closeButton];
-}
-
-@end
-
-@implementation GameSelectionViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    [self setupView];
-    [self setupBlurBackground];
-}
-
-- (void)setupBlurBackground {
-    if (@available(iOS 13.0, *)) {
-        UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
-        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-        blurView.frame = self.view.bounds;
-        blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [self.view addSubview:blurView];
-    }
-}
-
-- (void)setupView {
-    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-    CGFloat containerHeight = 400;
-    CGFloat containerWidth = screenWidth - 40;
-    
-    // 创建主容器
-    UIView *containerView = [[UIView alloc] initWithFrame:CGRectMake(20, screenHeight, containerWidth, containerHeight)];
-    containerView.center = CGPointMake(screenWidth / 2, screenHeight + containerHeight / 2);
-    containerView.backgroundColor = [UIColor clearColor];
-    containerView.tag = 1001;
-    [self.view addSubview:containerView];
-    
-    // 创建内容视图
-    UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
-    layout.minimumLineSpacing = 12;
-    layout.minimumInteritemSpacing = 12;
-    layout.sectionInset = UIEdgeInsetsMake(20, 20, 20, 20);
-    
-    UICollectionView *collectionView = [[UICollectionView alloc] initWithFrame:containerView.bounds
-                                                          collectionViewLayout:layout];
-    collectionView.backgroundColor = [UIColor clearColor];
-    collectionView.showsVerticalScrollIndicator = NO;
-    collectionView.showsHorizontalScrollIndicator = NO;
-    collectionView.delegate = self;
-    collectionView.dataSource = self;
-    
-    [collectionView registerClass:[GameSelectionCell class] forCellWithReuseIdentifier:@"GameSelectionCell"];
-    [collectionView registerClass:[GameSelectionHeaderView class]
-       forSupplementaryViewOfKind:UICollectionElementKindSectionHeader
-              withReuseIdentifier:@"GameSelectionHeaderView"];
-    
-    [containerView addSubview:collectionView];
-    
-    // 添加模糊背景效果
-    if (@available(iOS 13.0, *)) {
-        UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
-        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-        blurView.frame = collectionView.bounds;
-        blurView.layer.cornerRadius = 16;
-        blurView.layer.masksToBounds = YES;
-        [containerView insertSubview:blurView atIndex:0];
-    }
-    
-    // 添加阴影
-    containerView.layer.shadowColor = [UIColor blackColor].CGColor;
-    containerView.layer.shadowOffset = CGSizeMake(0, 8);
-    containerView.layer.shadowRadius = 16;
-    containerView.layer.shadowOpacity = 0.15;
-    containerView.layer.cornerRadius = 16;
-    
-    // 动画显示
-    [UIView animateWithDuration:0.4
-                          delay:0
-         usingSpringWithDamping:0.7
-          initialSpringVelocity:0
-                        options:UIViewAnimationOptionCurveEaseOut
-                     animations:^{
-        containerView.center = CGPointMake(screenWidth / 2, screenHeight - containerHeight / 2 - 20);
-    } completion:nil];
-}
-
-- (void)handleTapGesture:(UITapGestureRecognizer *)gesture {
-    if (gesture.state == UIGestureRecognizerStateEnded) {
-        CGPoint location = [gesture locationInView:self.view];
-        UIView *containerView = [self.view viewWithTag:1001];
-        
-        if (!CGRectContainsPoint(containerView.frame, location)) {
-            [self dismissWithAnimation];
-        }
-    }
-}
-
-- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture {
-    UIView *containerView = [self.view viewWithTag:1001];
-    CGPoint translation = [gesture translationInView:self.view];
-    
-    if (gesture.state == UIGestureRecognizerStateChanged) {
-        CGFloat newY = MAX(0, translation.y);
-        containerView.transform = CGAffineTransformMakeTranslation(0, newY);
-        
-        CGFloat progress = MIN(1.0, newY / 200);
-        if (@available(iOS 13.0, *)) {
-            self.view.subviews.firstObject.alpha = 1.0 - progress;
-        }
-    }
-    else if (gesture.state == UIGestureRecognizerStateEnded) {
-        CGFloat velocity = [gesture velocityInView:self.view].y;
-        
-        if (velocity > 500 || translation.y > 100) {
-            [self dismissWithAnimation];
-        } else {
-            [UIView animateWithDuration:0.4
-                                  delay:0
-                 usingSpringWithDamping:0.7
-                  initialSpringVelocity:0
-                                options:UIViewAnimationOptionCurveEaseOut
-                             animations:^{
-                containerView.transform = CGAffineTransformIdentity;
-                if (@available(iOS 13.0, *)) {
-                    self.view.subviews.firstObject.alpha = 1.0;
-                }
-            } completion:nil];
-        }
-    }
-}
-
-- (void)dismissWithAnimation {
-    UIView *containerView = [self.view viewWithTag:1001];
-    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-    
-    [UIView animateWithDuration:0.3 animations:^{
-        containerView.transform = CGAffineTransformMakeTranslation(0, 400);
-        if (@available(iOS 13.0, *)) {
-            self.view.subviews.firstObject.alpha = 0;
-        }
-    } completion:^(BOOL finished) {
-        [self dismissViewControllerAnimated:NO completion:nil];
-    }];
-}
-
-- (void)closeButtonTapped {
-    [self dismissWithAnimation];
-}
-
-- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
-    return (self.gameType == 1) ? 3 : 6;
-}
-
-- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
-    GameSelectionCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"GameSelectionCell" 
-                                                                       forIndexPath:indexPath];
-    
-    if (self.gameType == 1) { // 猜拳
-        NSArray *titles = @[@"✌️", @"✊", @"✋"];
-        cell.titleLabel.text = titles[indexPath.item];
-    } else { // 骰子
-        NSArray *diceEmojis = @[@"⚀", @"⚁", @"⚂", @"⚃", @"⚄", @"⚅"];
-        cell.titleLabel.text = diceEmojis[indexPath.item];
-    }
-    
-    return cell;
-}
-
-- (UICollectionReusableView *)collectionView:(UICollectionView *)collectionView 
-           viewForSupplementaryElementOfKind:(NSString *)kind 
-                                 atIndexPath:(NSIndexPath *)indexPath {
-    
-    if (kind == UICollectionElementKindSectionHeader) {
-        GameSelectionHeaderView *headerView = [collectionView 
-            dequeueReusableSupplementaryViewOfKind:kind
-                               withReuseIdentifier:@"GameSelectionHeaderView" 
-                                      forIndexPath:indexPath];
-        
-        [headerView.closeButton addTarget:self 
-                                   action:@selector(closeButtonTapped) 
-                         forControlEvents:UIControlEventTouchUpInside];
-        
-        return headerView;
-    }
-    
-    return nil;
-}
-
-- (CGSize)collectionView:(UICollectionView *)collectionView 
-                  layout:(UICollectionViewLayout *)collectionViewLayout 
-  sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
-    
-    CGFloat width = (collectionView.bounds.size.width - 68) / 3; // 20*2 + 12*2 + 4
-    return CGSizeMake(width, width);
-}
-
-- (CGSize)collectionView:(UICollectionView *)collectionView 
-                  layout:(UICollectionViewLayout *)collectionViewLayout 
-referenceSizeForHeaderInSection:(NSInteger)section {
-    
-    return CGSizeMake(collectionView.bounds.size.width, 60);
-}
-
-- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
-    [collectionView deselectItemAtIndexPath:indexPath animated:YES];
-    
-    unsigned int gameContent;
-    if (self.gameType == 1) {
-        gameContent = (unsigned int)indexPath.item + 1; // 猜拳: 1-3
-    } else {
-        gameContent = (unsigned int)indexPath.item + 4; // 骰子: 4-9
-    }
-    
-    NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
-    if (md5) {
-        [self.msgWrap setM_nsEmoticonMD5:md5];
-        [self.msgWrap setM_uiGameContent:gameContent];
-        
-        // 执行原始方法
-        MMServiceCenter *serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
-        if (serviceCenter) {
-            CMessageMgr *messageMgr = [serviceCenter getService:objc_getClass("CMessageMgr")];
-            if (messageMgr) {
-                [messageMgr AddEmoticonMsg:self.session MsgWrap:self.msgWrap];
-            }
-        }
-    }
-    
-    [self dismissWithAnimation];
-}
-
-@end
-
-// ==================== 钩子方法实现 ====================
+// ==================== End UIButton Block Support ====================
 
 %hook NewSettingViewController
 - (void)reloadTableData {
@@ -1590,59 +1274,206 @@ referenceSizeForHeaderInSection:(NSInteger)section {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
+        NSString *title = [msgWrap m_uiGameType] == 1 ? @"请选择石头/剪刀/布" : @"请选择点数";
         
-        // 获取顶层控制器
+        // 创建自定义弹窗控制器
+        UIViewController *customAlertController = [[UIViewController alloc] init];
+        customAlertController.modalPresentationStyle = UIModalPresentationPageSheet;
+        customAlertController.modalTransitionStyle = UIModalTransitionStyleCoverVertical;
+        
+        // 设置弹窗大小
+        CGFloat contentWidth = 300;
+        CGFloat contentHeight = 400;
+        
+        UIView *containerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, contentWidth, contentHeight)];
+        containerView.backgroundColor = [UIColor whiteColor];
+        containerView.layer.cornerRadius = 16;
+        containerView.layer.masksToBounds = YES;
+        customAlertController.view = containerView;
+        
+        // 添加顶部把手
+        UIView *handleView = [[UIView alloc] initWithFrame:CGRectMake((contentWidth - 40) / 2, 8, 40, 4)];
+        handleView.backgroundColor = [UIColor colorWithWhite:0.8 alpha:1.0];
+        handleView.layer.cornerRadius = 2;
+        [containerView addSubview:handleView];
+        
+        // 添加标题
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 30, contentWidth, 30)];
+        titleLabel.text = title;
+        titleLabel.font = [UIFont boldSystemFontOfSize:18];
+        titleLabel.textAlignment = NSTextAlignmentCenter;
+        titleLabel.textColor = [UIColor blackColor];
+        [containerView addSubview:titleLabel];
+        
+        // 添加右上角取消按钮
+        UIButton *cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        cancelButton.frame = CGRectMake(contentWidth - 50, 10, 40, 30);
+        [cancelButton setTitle:@"✕" forState:UIControlStateNormal];
+        [cancelButton setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
+        cancelButton.titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightRegular];
+        [cancelButton addTarget:self action:@selector(dismissCustomAlert) forControlEvents:UIControlEventTouchUpInside];
+        [containerView addSubview:cancelButton];
+        
+        // 添加分割线
+        UIView *separatorLine = [[UIView alloc] initWithFrame:CGRectMake(20, 65, contentWidth - 40, 0.5)];
+        separatorLine.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+        [containerView addSubview:separatorLine];
+        
+        // 创建选项按钮
+        NSArray *actions;
+        if ([msgWrap m_uiGameType] == 1) {
+            actions = @[@"✌️ 剪刀", @"✊ 石头", @"✋ 布"];
+        } else {
+            actions = @[@"1️⃣", @"2️⃣", @"3️⃣", @"4️⃣", @"5️⃣", @"6️⃣"];
+        }
+        
+        CGFloat buttonWidth = 80;
+        CGFloat buttonHeight = 80;
+        CGFloat horizontalSpacing = (contentWidth - (3 * buttonWidth)) / 4;
+        CGFloat startY = 90;
+        
+        for (int i = 0; i < actions.count; i++) {
+            int row = i / 3;
+            int col = i % 3;
+            
+            CGFloat x = horizontalSpacing + col * (buttonWidth + horizontalSpacing);
+            CGFloat y = startY + row * (buttonHeight + 20);
+            
+            UIButton *actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            actionButton.frame = CGRectMake(x, y, buttonWidth, buttonHeight);
+            actionButton.backgroundColor = [UIColor colorWithRed:0.1 green:0.5 blue:0.9 alpha:1.0];
+            actionButton.layer.cornerRadius = buttonWidth / 2;
+            actionButton.tag = i;
+            
+            // 设置按钮文字
+            NSString *buttonTitle = actions[i];
+            [actionButton setTitle:buttonTitle forState:UIControlStateNormal];
+            actionButton.titleLabel.font = [UIFont systemFontOfSize:24];
+            [actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+            
+            // 添加阴影效果
+            actionButton.layer.shadowColor = [UIColor blackColor].CGColor;
+            actionButton.layer.shadowOffset = CGSizeMake(0, 2);
+            actionButton.layer.shadowOpacity = 0.2;
+            actionButton.layer.shadowRadius = 4;
+            
+            // 添加点击效果
+            [actionButton addTarget:self action:@selector(buttonTouchDown:) forControlEvents:UIControlEventTouchDown];
+            [actionButton addTarget:self action:@selector(buttonTouchUp:) forControlEvents:UIControlEventTouchUpOutside|UIControlEventTouchUpInside|UIControlEventTouchCancel];
+            
+            __weak typeof(self) weakSelf = self;
+            __weak typeof(msgWrap) weakMsgWrap = msgWrap;
+            __weak typeof(msg) weakMsg = msg;
+            __weak typeof(customAlertController) weakCustomAlertController = customAlertController;
+            
+            [actionButton addActionBlock:^(id sender) {
+                unsigned int gameContent;
+                if ([weakMsgWrap m_uiGameType] == 1) {
+                    gameContent = i + 1;
+                } else {
+                    gameContent = i + 4;
+                }
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [weakMsgWrap setM_nsEmoticonMD5:md5];
+                    [weakMsgWrap setM_uiGameContent:gameContent];
+                }
+                
+                [weakCustomAlertController dismissViewControllerAnimated:YES completion:^{
+                    [weakSelf AddEmoticonMsg:weakMsg MsgWrap:weakMsgWrap];
+                }];
+            } forControlEvents:UIControlEventTouchUpInside];
+            
+            [containerView addSubview:actionButton];
+        }
+        
+        // 添加说明文本
+        UILabel *descriptionLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, startY + ((actions.count + 2) / 3) * (buttonHeight + 20) + 20, contentWidth - 40, 40)];
+        descriptionLabel.text = @"点击选择后会自动发送";
+        descriptionLabel.font = [UIFont systemFontOfSize:14];
+        descriptionLabel.textAlignment = NSTextAlignmentCenter;
+        descriptionLabel.textColor = [UIColor colorWithWhite:0.5 alpha:1.0];
+        descriptionLabel.numberOfLines = 2;
+        [containerView addSubview:descriptionLabel];
+        
+        // 适配弹窗高度
+        CGFloat totalHeight = descriptionLabel.frame.origin.y + descriptionLabel.frame.size.height + 20;
+        containerView.frame = CGRectMake(0, 0, contentWidth, totalHeight);
+        
+        // 查找顶层控制器并显示
         UIViewController *topController = nil;
         UIWindowScene *windowScene = nil;
-        
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
                 windowScene = (UIWindowScene *)scene;
                 break;
             }
         }
-        
-        if (!windowScene) {
-            %orig(msg, msgWrap);
-            return;
+        if (windowScene) {
+            UIWindow *window = windowScene.windows.firstObject;
+            topController = window.rootViewController;
+            while (topController.presentedViewController) {
+                topController = topController.presentedViewController;
+            }
+            
+            // 配置page sheet样式
+            if (@available(iOS 15.0, *)) {
+                if ([customAlertController.sheetPresentationController respondsToSelector:@selector(setDetents:)]) {
+                    NSArray *detents = @[[UISheetPresentationControllerDetent mediumDetent]];
+                    [customAlertController.sheetPresentationController setDetents:detents];
+                    customAlertController.sheetPresentationController.preferredCornerRadius = 16;
+                    customAlertController.sheetPresentationController.prefersGrabberVisible = YES;
+                }
+            }
+            
+            [topController presentViewController:customAlertController animated:YES completion:nil];
         }
-        
+        return;
+    }
+    %orig(msg, msgWrap);
+}
+
+// 按钮按下效果
+%new
+- (void)buttonTouchDown:(UIButton *)button {
+    [UIView animateWithDuration:0.1 animations:^{
+        button.transform = CGAffineTransformMakeScale(0.95, 0.95);
+        button.backgroundColor = [UIColor colorWithRed:0.1 green:0.4 blue:0.8 alpha:1.0];
+    }];
+}
+
+// 按钮抬起效果
+%new
+- (void)buttonTouchUp:(UIButton *)button {
+    [UIView animateWithDuration:0.1 animations:^{
+        button.transform = CGAffineTransformIdentity;
+        button.backgroundColor = [UIColor colorWithRed:0.1 green:0.5 blue:0.9 alpha:1.0];
+    }];
+}
+
+// 取消按钮点击
+%new
+- (void)dismissCustomAlert {
+    // 查找当前显示的弹窗并关闭
+    UIWindowScene *windowScene = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+            windowScene = (UIWindowScene *)scene;
+            break;
+        }
+    }
+    if (windowScene) {
         UIWindow *window = windowScene.windows.firstObject;
-        topController = window.rootViewController;
-        
+        UIViewController *topController = window.rootViewController;
         while (topController.presentedViewController) {
             topController = topController.presentedViewController;
         }
         
-        // 创建抽屉式弹窗
-        GameSelectionViewController *selectionVC = [[GameSelectionViewController alloc] init];
-        selectionVC.gameType = msgWrap.m_uiGameType;
-        selectionVC.msgWrap = msgWrap;
-        selectionVC.session = msg;
-        
-        // 设置模态样式
-        selectionVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
-        selectionVC.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
-        
-        // 显示弹窗
-        [topController presentViewController:selectionVC animated:YES completion:^{
-            // 添加手势
-            UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] 
-                initWithTarget:selectionVC 
-                        action:@selector(handleTapGesture:)];
-            tapGesture.cancelsTouchesInView = NO;
-            [selectionVC.view addGestureRecognizer:tapGesture];
-            
-            UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] 
-                initWithTarget:selectionVC 
-                        action:@selector(handlePanGesture:)];
-            [selectionVC.view viewWithTag:1001].userInteractionEnabled = YES;
-            [[selectionVC.view viewWithTag:1001] addGestureRecognizer:panGesture];
-        }];
-        
-        return;
+        if ([topController isKindOfClass:[UIViewController class]] && 
+            topController.modalPresentationStyle == UIModalPresentationPageSheet) {
+            [topController dismissViewControllerAnimated:YES completion:nil];
+        }
     }
-    %orig(msg, msgWrap);
 }
 %end
 
