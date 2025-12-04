@@ -69,8 +69,8 @@ static BOOL g_hasPluginsMgr = NO;
         UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 320)];
         // 获取屏幕中心坐标
         CGPoint screenCenter = self.view.center;
-        // 将y坐标下移100点
-        contentView.center = CGPointMake(screenCenter.x, screenCenter.y + 100);
+        // 将y坐标下移200点
+        contentView.center = CGPointMake(screenCenter.x, screenCenter.y + 200);
         contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
         contentView.layer.cornerRadius = 12;
         contentView.clipsToBounds = YES;
