@@ -74,7 +74,7 @@ static BOOL g_hasPluginsMgr = NO;
         [self.view addSubview:contentView];
         
         // 标题栏
-        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, 280, 30)];
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 280, 25)];
         titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
         titleLabel.font = [UIFont boldSystemFontOfSize:15];
         titleLabel.textAlignment = NSTextAlignmentCenter;
@@ -84,7 +84,7 @@ static BOOL g_hasPluginsMgr = NO;
         [self setupOptionButtonsInView:contentView];
         
         // 右上角关闭按钮
-        UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 20, 25, 25)];
+        UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 15, 25, 25)];
         if (@available(iOS 13.0, *)) {
             [closeBtn setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
         }
