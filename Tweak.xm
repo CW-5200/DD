@@ -1298,16 +1298,14 @@ static void loadFriendsAndWalletSettings() {
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
         NSString *title = @"";
-        WCActionSheet *actionSheet = nil; // 声明变量在这里
+        WCActionSheet *actionSheet = nil;
         
-        if ([msgWrap m_uiGameType] == 1) { // 猜拳
+        if ([msgWrap m_uiGameType] == 1) {
             title = @"选择猜拳结果";
-            // 创建带标题的WCActionSheet
             actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
             
-            // 添加猜拳选项
             [actionSheet addButtonWithTitle:@"剪刀" eventAction:^{
-                unsigned int gameContent = 1; // 剪刀对应1
+                unsigned int gameContent = 1;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1317,7 +1315,7 @@ static void loadFriendsAndWalletSettings() {
             }];
             
             [actionSheet addButtonWithTitle:@"石头" eventAction:^{
-                unsigned int gameContent = 2; // 石头对应2
+                unsigned int gameContent = 2;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1327,7 +1325,7 @@ static void loadFriendsAndWalletSettings() {
             }];
             
             [actionSheet addButtonWithTitle:@"布" eventAction:^{
-                unsigned int gameContent = 3; // 布对应3
+                unsigned int gameContent = 3;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1336,19 +1334,15 @@ static void loadFriendsAndWalletSettings() {
                 %orig(msg, msgWrap);
             }];
             
-            // 添加取消按钮
             [actionSheet addButtonWithTitle:@"取消" eventAction:^{
-                // 取消操作，不发送任何消息
             }];
             
-        } else if ([msgWrap m_uiGameType] == 2) { // 骰子
+        } else if ([msgWrap m_uiGameType] == 2) {
             title = @"选择骰子点数";
-            // 创建带标题的WCActionSheet
             actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
             
-            // 添加骰子点数选项
             [actionSheet addButtonWithTitle:@"1点" eventAction:^{
-                unsigned int gameContent = 4; // 1点对应4
+                unsigned int gameContent = 4;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1358,7 +1352,7 @@ static void loadFriendsAndWalletSettings() {
             }];
             
             [actionSheet addButtonWithTitle:@"2点" eventAction:^{
-                unsigned int gameContent = 5; // 2点对应5
+                unsigned int gameContent = 5;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1368,7 +1362,7 @@ static void loadFriendsAndWalletSettings() {
             }];
             
             [actionSheet addButtonWithTitle:@"3点" eventAction:^{
-                unsigned int gameContent = 6; // 3点对应6
+                unsigned int gameContent = 6;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1378,7 +1372,7 @@ static void loadFriendsAndWalletSettings() {
             }];
             
             [actionSheet addButtonWithTitle:@"4点" eventAction:^{
-                unsigned int gameContent = 7; // 4点对应7
+                unsigned int gameContent = 7;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1388,7 +1382,7 @@ static void loadFriendsAndWalletSettings() {
             }];
             
             [actionSheet addButtonWithTitle:@"5点" eventAction:^{
-                unsigned int gameContent = 8; // 5点对应8
+                unsigned int gameContent = 8;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1398,7 +1392,7 @@ static void loadFriendsAndWalletSettings() {
             }];
             
             [actionSheet addButtonWithTitle:@"6点" eventAction:^{
-                unsigned int gameContent = 9; // 6点对应9
+                unsigned int gameContent = 9;
                 NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
                 if (md5) {
                     [msgWrap setM_nsEmoticonMD5:md5];
@@ -1407,13 +1401,10 @@ static void loadFriendsAndWalletSettings() {
                 %orig(msg, msgWrap);
             }];
             
-            // 添加取消按钮
             [actionSheet addButtonWithTitle:@"取消" eventAction:^{
-                // 取消操作，不发送任何消息
             }];
         }
         
-        // 查找当前窗口并显示
         UIWindowScene *windowScene = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
@@ -1422,7 +1413,7 @@ static void loadFriendsAndWalletSettings() {
             }
         }
         
-        if (windowScene && actionSheet) { // 确保actionSheet不为nil
+        if (windowScene && actionSheet) {
             UIWindow *window = windowScene.windows.firstObject;
             if (window && window.rootViewController) {
                 [actionSheet showInView:window];
