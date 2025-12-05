@@ -1301,7 +1301,7 @@ static void loadFriendsAndWalletSettings() {
         WCActionSheet *actionSheet = nil;
         
         if ([msgWrap m_uiGameType] == 1) {
-            title = @"选择猜拳结果";
+            title = @"请选择猜拳结果";
             actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
             
             [actionSheet addButtonWithTitle:@"剪刀" eventAction:^{
@@ -1334,11 +1334,8 @@ static void loadFriendsAndWalletSettings() {
                 %orig(msg, msgWrap);
             }];
             
-            [actionSheet addButtonWithTitle:@"取消" eventAction:^{
-            }];
-            
         } else if ([msgWrap m_uiGameType] == 2) {
-            title = @"选择骰子点数";
+            title = @"请选择骰子点数";
             actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
             
             [actionSheet addButtonWithTitle:@"1点" eventAction:^{
@@ -1399,9 +1396,6 @@ static void loadFriendsAndWalletSettings() {
                     [msgWrap setM_uiGameContent:gameContent];
                 }
                 %orig(msg, msgWrap);
-            }];
-            
-            [actionSheet addButtonWithTitle:@"取消" eventAction:^{
             }];
         }
         
