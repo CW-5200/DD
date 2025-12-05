@@ -196,9 +196,12 @@ static void loadFriendsAndWalletSettings() {
     }
 }
 
-@interface DDDiceRPSPopup : UIViewController
-@property (nonatomic, copy) void(^selectHandler)(NSInteger type, NSInteger value);
-- (instancetype)initWithType:(NSInteger)type;
+@interface WCActionSheet : NSObject
+- (id)initWithTitle:(NSString *)title cancelButtonTitle:(NSString *)cancelButtonTitle;
+- (id)initWithTitle:(NSString *)title;
+- (id)init;
+- (void)addButtonWithTitle:(NSString *)title eventAction:(void(^)(void))eventAction;
+- (void)showInView:(UIView *)view;
 @end
 
 @interface MessageSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
@@ -364,85 +367,6 @@ static void loadFriendsAndWalletSettings() {
 @property(readonly, nonatomic) NSString *userName;
 + (id)activeUserContext;
 - (id)getService:(Class)cls;
-@end
-
-@implementation DDDiceRPSPopup {
-    NSInteger _type;
-}
-
-- (instancetype)initWithType:(NSInteger)type {
-    self = [super init];
-    if (self) {
-        _type = type;
-        self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
-        self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
-        self.view.backgroundColor = [UIColor clearColor];
-        
-        UIView *backgroundView = [[UIView alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        backgroundView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
-        [self.view addSubview:backgroundView];
-        
-        UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closePopup)];
-        [backgroundView addGestureRecognizer:tapGesture];
-        
-        UIView *contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 320)];
-        CGPoint screenCenter = self.view.center;
-        contentView.center = CGPointMake(screenCenter.x, screenCenter.y + 200);
-        contentView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
-        contentView.layer.cornerRadius = 12;
-        contentView.clipsToBounds = YES;
-        [self.view addSubview:contentView];
-        
-        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 280, 25)];
-        titleLabel.text = _type == 0 ? @"选择骰子点数" : @"选择猜拳结果";
-        titleLabel.font = [UIFont boldSystemFontOfSize:15];
-        titleLabel.textAlignment = NSTextAlignmentCenter;
-        [contentView addSubview:titleLabel];
-        
-        [self setupOptionButtonsInView:contentView];
-        
-        UIButton *closeBtn = [[UIButton alloc] initWithFrame:CGRectMake(280 - 40, 15, 25, 25)];
-        if (@available(iOS 13.0, *)) {
-            [closeBtn setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
-        }
-        [closeBtn setTintColor:[UIColor grayColor]];
-        [closeBtn addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];
-        [contentView addSubview:closeBtn];
-    }
-    return self;
-}
-
-- (void)setupOptionButtonsInView:(UIView *)containerView {
-    NSArray *options = _type == 0 ? @[@"1点", @"2点", @"3点", @"4点", @"5点", @"6点"] : @[@"剪刀", @"石头", @"布"];
-    CGFloat btnW = 80, btnH = 44;
-    CGFloat marginX = 50, marginY = 80;
-    CGFloat gapX = 100, gapY = 50;
-    
-    for (NSInteger i = 0; i < options.count; i++) {
-        CGFloat x = marginX + (i % 2) * gapX;
-        CGFloat y = marginY + (i / 2) * gapY;
-        UIButton *btn = [[UIButton alloc] initWithFrame:CGRectMake(x, y, btnW, btnH)];
-        [btn setTitle:options[i] forState:UIControlStateNormal];
-        [btn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-        btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-        btn.layer.cornerRadius = 8;
-        btn.tag = i + 1;
-        [btn addTarget:self action:@selector(onOptionSelected:) forControlEvents:UIControlEventTouchUpInside];
-        [containerView addSubview:btn];
-    }
-}
-
-- (void)onOptionSelected:(UIButton *)btn {
-    if (self.selectHandler) {
-        self.selectHandler(_type, btn.tag);
-    }
-    [self closePopup];
-}
-
-- (void)closePopup {
-    [self dismissViewControllerAnimated:YES completion:nil];
-}
-
 @end
 
 @implementation MessageSettingsViewController
@@ -1373,24 +1297,104 @@ static void loadFriendsAndWalletSettings() {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
-        DDDiceRPSPopup *popup = [[DDDiceRPSPopup alloc] initWithType:([msgWrap m_uiGameType] == 1 ? 1 : 0)];
+        // 创建WCActionSheet
+        WCActionSheet *actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:@""];
         
-        popup.selectHandler = ^(NSInteger type, NSInteger value) {
-            unsigned int gameContent;
-            if (type == 1) {
-                gameContent = value;
-            } else {
-                gameContent = value + 3;
-            }
+        if ([msgWrap m_uiGameType] == 1) { // 猜拳
+            // 添加猜拳选项
+            [actionSheet addButtonWithTitle:@"剪刀" eventAction:^{
+                unsigned int gameContent = 1; // 剪刀对应1
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
             
-            NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
-            if (md5) {
-                [msgWrap setM_nsEmoticonMD5:md5];
-                [msgWrap setM_uiGameContent:gameContent];
-            }
-            %orig(msg, msgWrap);
-        };
+            [actionSheet addButtonWithTitle:@"石头" eventAction:^{
+                unsigned int gameContent = 2; // 石头对应2
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+            
+            [actionSheet addButtonWithTitle:@"布" eventAction:^{
+                unsigned int gameContent = 3; // 布对应3
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+        } else if ([msgWrap m_uiGameType] == 2) { // 骰子
+            // 添加骰子点数选项
+            [actionSheet addButtonWithTitle:@"1点" eventAction:^{
+                unsigned int gameContent = 4; // 1点对应4
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+            
+            [actionSheet addButtonWithTitle:@"2点" eventAction:^{
+                unsigned int gameContent = 5; // 2点对应5
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+            
+            [actionSheet addButtonWithTitle:@"3点" eventAction:^{
+                unsigned int gameContent = 6; // 3点对应6
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+            
+            [actionSheet addButtonWithTitle:@"4点" eventAction:^{
+                unsigned int gameContent = 7; // 4点对应7
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+            
+            [actionSheet addButtonWithTitle:@"5点" eventAction:^{
+                unsigned int gameContent = 8; // 5点对应8
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+            
+            [actionSheet addButtonWithTitle:@"6点" eventAction:^{
+                unsigned int gameContent = 9; // 6点对应9
+                NSString *md5 = [objc_getClass("GameController") getMD5ByGameContent:gameContent];
+                if (md5) {
+                    [msgWrap setM_nsEmoticonMD5:md5];
+                    [msgWrap setM_uiGameContent:gameContent];
+                }
+                %orig(msg, msgWrap);
+            }];
+        }
         
+        // 查找当前窗口并显示
         UIWindowScene *windowScene = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
@@ -1401,13 +1405,11 @@ static void loadFriendsAndWalletSettings() {
         
         if (windowScene) {
             UIWindow *window = windowScene.windows.firstObject;
-            UIViewController *topController = window.rootViewController;
-            while (topController.presentedViewController) {
-                topController = topController.presentedViewController;
+            if (window && window.rootViewController) {
+                [actionSheet showInView:window];
             }
-            
-            [topController presentViewController:popup animated:YES completion:nil];
         }
+        
         return;
     }
     %orig(msg, msgWrap);
