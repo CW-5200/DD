@@ -1298,11 +1298,12 @@ static void loadFriendsAndWalletSettings() {
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
         NSString *title = @"";
+        WCActionSheet *actionSheet = nil; // 声明变量在这里
         
         if ([msgWrap m_uiGameType] == 1) { // 猜拳
             title = @"选择猜拳结果";
             // 创建带标题的WCActionSheet
-            WCActionSheet *actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
+            actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
             
             // 添加猜拳选项
             [actionSheet addButtonWithTitle:@"剪刀" eventAction:^{
@@ -1343,7 +1344,7 @@ static void loadFriendsAndWalletSettings() {
         } else if ([msgWrap m_uiGameType] == 2) { // 骰子
             title = @"选择骰子点数";
             // 创建带标题的WCActionSheet
-            WCActionSheet *actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
+            actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
             
             // 添加骰子点数选项
             [actionSheet addButtonWithTitle:@"1点" eventAction:^{
@@ -1421,7 +1422,7 @@ static void loadFriendsAndWalletSettings() {
             }
         }
         
-        if (windowScene) {
+        if (windowScene && actionSheet) { // 确保actionSheet不为nil
             UIWindow *window = windowScene.windows.firstObject;
             if (window && window.rootViewController) {
                 [actionSheet showInView:window];
