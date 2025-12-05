@@ -204,6 +204,32 @@ static void loadFriendsAndWalletSettings() {
 - (void)showInView:(UIView *)view;
 @end
 
+@interface MessageSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
+    NSArray *_settings;
+}
+@property (nonatomic, strong) UITableView *tableView;
+@end
+
+@interface GameSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate> {
+    NSArray *_settings;
+    UITextField *_friendsCountField;
+    UITextField *_walletBalanceField;
+    UIButton *_friendsCountConfirmButton;
+    UIButton *_walletBalanceConfirmButton;
+}
+@property (nonatomic, strong) UITableView *tableView;
+@end
+
+@interface CSTouchTrailViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+@property (nonatomic, strong) UITableView *tableView;
+@end
+
+@interface DDAssistantSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
+    NSArray *_sections;
+}
+@property (nonatomic, strong) UITableView *tableView;
+@end
+
 @interface WBTouchTrailView : UIView
 @property (nonatomic, strong) UIColor *trailColor;
 @property (nonatomic, assign) CGFloat trailSize;
@@ -254,8 +280,6 @@ static void loadFriendsAndWalletSettings() {
 @interface WCTableViewCellManager : NSObject
 + (instancetype)normalCellForSel:(SEL)sel target:(id)target title:(NSString *)title;
 + (instancetype)switchCellForSel:(SEL)sel target:(id)target title:(NSString *)title isOn:(BOOL)isOn;
-+ (instancetype)editorCellForSel:(SEL)sel target:(id)target title:(NSString *)title tip:(NSString *)tip focus:(BOOL)focus text:(NSString *)text;
-+ (instancetype)normalCellForSel:(SEL)sel target:(id)target title:(NSString *)title rightValue:(NSString *)rightValue accessoryType:(long long)accessoryType;
 @end
 
 @interface WCTableViewSectionManager : NSObject
@@ -267,7 +291,6 @@ static void loadFriendsAndWalletSettings() {
 @interface WCTableViewManager : NSObject
 - (void)insertSection:(id)section At:(NSInteger)index;
 - (id)getTableView;
-- (void)reloadData;
 @end
 
 @interface MMTableView : UITableView
@@ -346,7 +369,788 @@ static void loadFriendsAndWalletSettings() {
 - (id)getService:(Class)cls;
 @end
 
-@interface DDAssistantSettingsViewController : UIViewController
+@implementation MessageSettingsViewController
+
+- (void)loadView {
+    [super loadView];
+    [self setupTableView];
+}
+
+- (void)setupTableView {
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"消息设置";
+    
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
+    
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    _settings = @[@"消息防撤提示", @"隐藏自带时间", @"头像时间标签"];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return _settings.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *cellIdentifier = @"MessageSettingsCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        }
+    }
+    
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *cellTitle = _settings[indexPath.row];
+    cell.textLabel.text = cellTitle;
+    
+    if (@available(iOS 13.0, *)) {
+        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    }
+    
+    UISwitch *switchView = [[UISwitch alloc] init];
+    if (@available(iOS 13.0, *)) {
+        switchView.onTintColor = [UIColor systemBlueColor];
+    }
+    
+    if (indexPath.row == 0) {
+        switchView.on = [defaults boolForKey:kPreventRevokeEnabledKey];
+        [switchView addTarget:self action:@selector(preventRevokeChanged:) forControlEvents:UIControlEventValueChanged];
+    } else if (indexPath.row == 1) {
+        switchView.on = [defaults boolForKey:kHideChatTimeLabelKey];
+        [switchView addTarget:self action:@selector(hideChatTimeLabelChanged:) forControlEvents:UIControlEventValueChanged];
+    } else if (indexPath.row == 2) {
+        switchView.on = [defaults boolForKey:kMessageTimeBelowAvatarKey];
+        [switchView addTarget:self action:@selector(messageTimeBelowAvatarChanged:) forControlEvents:UIControlEventValueChanged];
+    }
+    
+    cell.accessoryView = switchView;
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 50.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 10.0;
+}
+
+- (void)preventRevokeChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kPreventRevokeEnabledKey];
+}
+
+- (void)hideChatTimeLabelChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kHideChatTimeLabelKey];
+}
+
+- (void)messageTimeBelowAvatarChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kMessageTimeBelowAvatarKey];
+}
+
+@end
+
+@implementation GameSettingsViewController
+
+- (void)loadView {
+    [super loadView];
+    [self setupTableView];
+}
+
+- (void)setupTableView {
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"娱乐功能";
+    
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
+    
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"好友数量输入框", @"钱包余额自定义", @"钱包余额输入框"];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
+    BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    int rowCount = 1;
+    rowCount += 1;
+    if (friendsCountEnabled) {
+        rowCount += 1;
+    }
+    rowCount += 1;
+    if (walletBalanceEnabled) {
+        rowCount += 1;
+    }
+    return rowCount;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if ([self isInputCellAtIndexPath:indexPath]) {
+        return 60.0;
+    }
+    return 50.0;
+}
+
+- (BOOL)isInputCellAtIndexPath:(NSIndexPath *)indexPath {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
+    BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    
+    int rowIndex = indexPath.row;
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    if (friendsCountEnabled && rowIndex == 0) return YES;
+    if (friendsCountEnabled) {
+        rowIndex -= 1;
+    }
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    if (walletBalanceEnabled && rowIndex == 0) return YES;
+    return NO;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
+    BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    int rowIndex = indexPath.row;
+    
+    if (rowIndex == 0) {
+        NSString *cellIdentifier = @"GameCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+        }
+        cell.textLabel.text = @"骰子猜拳控制";
+        
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
+        
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = [defaults boolForKey:kGameCheatEnabledKey];
+        [switchView addTarget:self action:@selector(gameCheatEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+        return cell;
+    }
+    
+    rowIndex -= 1;
+    if (rowIndex == 0) {
+        NSString *cellIdentifier = @"FriendsCountSwitchCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+        }
+        cell.textLabel.text = @"好友数量自定义";
+        
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
+        
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = friendsCountEnabled;
+        [switchView addTarget:self action:@selector(friendsCountEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+        return cell;
+    }
+    
+    rowIndex -= 1;
+    if (friendsCountEnabled && rowIndex == 0) {
+        NSString *cellIdentifier = @"FriendsCountInputCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+            
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
+            textField.borderStyle = UITextBorderStyleRoundedRect;
+            textField.placeholder = @"输入好友数量（如：999）";
+            textField.keyboardType = UIKeyboardTypeNumberPad;
+            textField.delegate = self;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            
+            if (@available(iOS 13.0, *)) {
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+                textField.textColor = [UIColor labelColor];
+            }
+            
+            [cell.contentView addSubview:textField];
+            _friendsCountField = textField;
+            
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
+            
+            [confirmButton addTarget:self action:@selector(friendsCountConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _friendsCountConfirmButton = confirmButton;
+            
+            NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey];
+            if (friendsCountValue && [friendsCountValue length] > 0) {
+                textField.text = friendsCountValue;
+            }
+        }
+        return cell;
+    }
+    
+    if (friendsCountEnabled) {
+        rowIndex -= 1;
+    }
+    
+    if (rowIndex == 0) {
+        NSString *cellIdentifier = @"WalletBalanceSwitchCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+        }
+        cell.textLabel.text = @"钱包余额自定义";
+        
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
+        
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = walletBalanceEnabled;
+        [switchView addTarget:self action:@selector(walletBalanceEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+        return cell;
+    }
+    
+    rowIndex -= 1;
+    if (walletBalanceEnabled && rowIndex == 0) {
+        NSString *cellIdentifier = @"WalletBalanceInputCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+            
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
+            textField.borderStyle = UITextBorderStyleRoundedRect;
+            textField.placeholder = @"输入余额（如：9999.99）";
+            textField.keyboardType = UIKeyboardTypeDecimalPad;
+            textField.delegate = self;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            
+            if (@available(iOS 13.0, *)) {
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+                textField.textColor = [UIColor labelColor];
+            }
+            
+            [cell.contentView addSubview:textField];
+            _walletBalanceField = textField;
+            
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
+            
+            [confirmButton addTarget:self action:@selector(walletBalanceConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _walletBalanceConfirmButton = confirmButton;
+            
+            NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
+            if (walletBalanceValue && [walletBalanceValue length] > 0) {
+                textField.text = walletBalanceValue;
+            }
+        }
+        return cell;
+    }
+    
+    return [[UITableViewCell alloc] init];
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 10.0;
+}
+
+- (void)gameCheatEnabledChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kGameCheatEnabledKey];
+}
+
+- (void)friendsCountEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kFriendsCountEnabledKey];
+    [defaults synchronize];
+    [self.tableView reloadData];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)walletBalanceEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kWalletBalanceEnabledKey];
+    [defaults synchronize];
+    [self.tableView reloadData];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)friendsCountConfirmTapped:(UIButton *)sender {
+    if (_friendsCountField) {
+        [_friendsCountField resignFirstResponder];
+        [self saveFriendsCountValue];
+    }
+}
+
+- (void)walletBalanceConfirmTapped:(UIButton *)sender {
+    if (_walletBalanceField) {
+        [_walletBalanceField resignFirstResponder];
+        [self saveWalletBalanceValue];
+    }
+}
+
+- (void)saveFriendsCountValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _friendsCountField.text;
+    if (text && [text length] > 0) {
+        [defaults setObject:text forKey:kFriendsCountValueKey];
+        [defaults setObject:text forKey:kWCFriendsCountReplacementKey];
+    } else {
+        [defaults removeObjectForKey:kFriendsCountValueKey];
+        [defaults removeObjectForKey:kWCFriendsCountReplacementKey];
+    }
+    [defaults synchronize];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)saveWalletBalanceValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _walletBalanceField.text;
+    if (text && [text length] > 0) {
+        [defaults setObject:text forKey:kWalletBalanceValueKey];
+        [defaults setObject:text forKey:kWCWalletBalanceReplacementKey];
+    } else {
+        [defaults removeObjectForKey:kWalletBalanceValueKey];
+        [defaults removeObjectForKey:kWCWalletBalanceReplacementKey];
+    }
+    [defaults synchronize];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    return YES;
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+    if (textField == _friendsCountField) {
+        [self saveFriendsCountValue];
+    } 
+    else if (textField == _walletBalanceField) {
+        [self saveWalletBalanceValue];
+    }
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification {
+    CGRect keyboardFrame = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGFloat keyboardHeight = keyboardFrame.size.height;
+    UIEdgeInsets contentInsets = UIEdgeInsetsMake(0, 0, keyboardHeight, 0);
+    self.tableView.contentInset = contentInsets;
+    self.tableView.scrollIndicatorInsets = contentInsets;
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification {
+    UIEdgeInsets contentInsets = UIEdgeInsetsZero;
+    self.tableView.contentInset = contentInsets;
+    self.tableView.scrollIndicatorInsets = contentInsets;
+}
+
+@end
+
+@implementation CSTouchTrailViewController
+
+- (void)loadView {
+    [super loadView];
+    [self setupTableView];
+}
+
+- (void)setupTableView {
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    self.title = @"触摸轨迹";
+    
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
+    
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(screenCaptureDidChange)
+                                               name:UIScreenCapturedDidChangeNotification
+                                             object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)screenCaptureDidChange {
+    BOOL isRecording = UIScreen.mainScreen.isCaptured;
+    
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL onlyWhenRecording = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
+    BOOL trailEnabled = [defaults boolForKey:kTouchTrailKey];
+    
+    if (onlyWhenRecording) {
+        BOOL shouldDisplay = isRecording && trailEnabled;
+        [defaults setBool:shouldDisplay forKey:kTouchTrailDisplayStateKey];
+        [defaults synchronize];
+    } else if (trailEnabled) {
+        [defaults setBool:YES forKey:kTouchTrailDisplayStateKey];
+        [defaults synchronize];
+    }
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL isTrailEnabled = [defaults boolForKey:kTouchTrailKey];
+    
+    return isTrailEnabled ? 3 : 1;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *cellIdentifier = @"CSTouchTrailCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        }
+    }
+    
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    if (@available(iOS 13.0, *)) {
+        cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    }
+    
+    if (indexPath.row == 0) {
+        cell.textLabel.text = @"启用触摸轨迹";
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = [defaults boolForKey:kTouchTrailKey];
+        [switchView addTarget:self action:@selector(trailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+    } else if (indexPath.row == 1) {
+        cell.textLabel.text = @"仅在录屏显示";
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
+        [switchView addTarget:self action:@selector(onlyWhenRecordingChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+    } else if (indexPath.row == 2) {
+        cell.textLabel.text = @"使用拖尾效果";
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = [defaults boolForKey:kTouchTrailTailEnabledKey];
+        [switchView addTarget:self action:@selector(tailEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+    }
+    
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 50.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, 30)];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 10.0;
+}
+
+- (void)trailEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kTouchTrailKey];
+    
+    BOOL onlyWhenRecording = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
+    if (onlyWhenRecording) {
+        BOOL isRecording = UIScreen.mainScreen.isCaptured;
+        [defaults setBool:(sender.isOn && isRecording) forKey:kTouchTrailDisplayStateKey];
+    } else {
+        [defaults setBool:sender.isOn forKey:kTouchTrailDisplayStateKey];
+    }
+    
+    [defaults synchronize];
+    
+    [self.tableView reloadData];
+}
+
+- (void)onlyWhenRecordingChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kTouchTrailOnlyWhenRecordingKey];
+    
+    BOOL trailEnabled = [defaults boolForKey:kTouchTrailKey];
+    if (sender.isOn) {
+        BOOL isRecording = UIScreen.mainScreen.isCaptured;
+        [defaults setBool:(trailEnabled && isRecording) forKey:kTouchTrailDisplayStateKey];
+    } else {
+        [defaults setBool:trailEnabled forKey:kTouchTrailDisplayStateKey];
+    }
+    
+    [defaults synchronize];
+}
+
+- (void)tailEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kTouchTrailTailEnabledKey];
+    [defaults synchronize];
+}
+
+@end
+
+@implementation DDAssistantSettingsViewController
+
+- (void)loadView {
+    [super loadView];
+    [self setupTableView];
+}
+
+- (void)setupTableView {
+    if (@available(iOS 13.0, *)) {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    } else {
+        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    }
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = PLUGIN_NAME;
+    
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemBackgroundColor];
+        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
+    } else {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
+    
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    _sections = @[
+        @[@"消息设置"],
+        @[@"娱乐功能"],
+        @[@"触摸轨迹"]
+    ];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return _sections.count;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return [_sections[section] count];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *cellIdentifier = @"DDAssistantCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
+    }
+    
+    NSString *cellTitle = _sections[indexPath.section][indexPath.row];
+    cell.textLabel.text = cellTitle;
+    
+    if (@available(iOS 13.0, *)) {
+        UIImage *iconImage = nil;
+        if (indexPath.section == 0) {
+            iconImage = [UIImage systemImageNamed:@"message.fill"];
+        } else if (indexPath.section == 1) {
+            iconImage = [UIImage systemImageNamed:@"gamecontroller.fill"];
+        } else if (indexPath.section == 2) {
+            iconImage = [UIImage systemImageNamed:@"cursorarrow.motionlines"];
+        }
+        
+        if (iconImage) {
+            cell.imageView.image = iconImage;
+            cell.imageView.tintColor = [UIColor systemBlueColor];
+        }
+    }
+    
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 55.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    if (section == 0) {
+        return 20.0;
+    }
+    return 10.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, [self tableView:tableView heightForHeaderInSection:section])];
+    headerView.backgroundColor = [UIColor clearColor];
+    return headerView;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    UIViewController *targetVC = nil;
+    if (indexPath.section == 0) {
+        targetVC = [[MessageSettingsViewController alloc] init];
+    } else if (indexPath.section == 1) {
+        targetVC = [[GameSettingsViewController alloc] init];
+    } else if (indexPath.section == 2) {
+        targetVC = [[CSTouchTrailViewController alloc] init];
+    }
+    
+    if (targetVC) {
+        [self.navigationController pushViewController:targetVC animated:YES];
+    }
+}
+
 @end
 
 @implementation WBTouchTrailDotView
@@ -435,424 +1239,6 @@ static void loadFriendsAndWalletSettings() {
 
 @end
 
-@interface MessageSettingsViewController : UIViewController {
-    WCTableViewManager *_tableViewMgr;
-}
-@end
-
-@implementation MessageSettingsViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    self.title = @"消息设置";
-    
-    if (@available(iOS 13.0, *)) {
-        self.view.backgroundColor = [UIColor systemBackgroundColor];
-        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
-    } else {
-        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    }
-    
-    // 创建表格管理器
-    _tableViewMgr = [[objc_getClass("WCTableViewManager") alloc] init];
-    UIView *tableView = [_tableViewMgr getTableView];
-    tableView.frame = self.view.bounds;
-    tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:tableView];
-    
-    [self reloadTableData];
-}
-
-- (void)reloadTableData {
-    // 清空所有section
-    while ([_tableViewMgr numberOfSections] > 0) {
-        [_tableViewMgr deleteSection:0];
-    }
-    
-    // 消息防撤回设置
-    WCTableViewSectionManager *revokeSection = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"消息防撤回"];
-    WCTableViewCellManager *preventRevokeCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(togglePreventRevoke:) target:self title:@"防撤回提示" isOn:isPreventRevokeEnabled()];
-    [revokeSection addCell:preventRevokeCell];
-    [_tableViewMgr addSection:revokeSection];
-    
-    // 时间显示设置
-    WCTableViewSectionManager *timeSection = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"时间显示"];
-    WCTableViewCellManager *hideTimeCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleHideChatTime:) target:self title:@"隐藏自带时间" isOn:isHideChatTimeLabelEnabled()];
-    [timeSection addCell:hideTimeCell];
-    
-    WCTableViewCellManager *avatarTimeCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleAvatarTime:) target:self title:@"头像时间标签" isOn:isMessageTimeBelowAvatarEnabled()];
-    [timeSection addCell:avatarTimeCell];
-    [_tableViewMgr addSection:timeSection];
-    
-    // 提示信息
-    WCTableViewSectionManager *tipSection = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
-    WCTableViewCellManager *tipCell = [objc_getClass("WCTableViewCellManager") normalCellForSel:nil target:nil title:@"开启后，消息防撤回功能会在对方撤回消息时显示提示" rightValue:nil accessoryType:0];
-    [tipSection addCell:tipCell];
-    [_tableViewMgr addSection:tipSection];
-    
-    [_tableViewMgr reloadData];
-}
-
-- (void)togglePreventRevoke:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kPreventRevokeEnabledKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
-- (void)toggleHideChatTime:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kHideChatTimeLabelKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
-- (void)toggleAvatarTime:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kMessageTimeBelowAvatarKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
-@end
-
-@interface GameSettingsViewController : UIViewController {
-    WCTableViewManager *_tableViewMgr;
-}
-@end
-
-@implementation GameSettingsViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    self.title = @"娱乐功能";
-    
-    if (@available(iOS 13.0, *)) {
-        self.view.backgroundColor = [UIColor systemBackgroundColor];
-        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
-    } else {
-        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    }
-    
-    // 创建表格管理器
-    _tableViewMgr = [[objc_getClass("WCTableViewManager") alloc] init];
-    UIView *tableView = [_tableViewMgr getTableView];
-    tableView.frame = self.view.bounds;
-    tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:tableView];
-    
-    [self reloadTableData];
-}
-
-- (void)reloadTableData {
-    // 清空所有section
-    while ([_tableViewMgr numberOfSections] > 0) {
-        [_tableViewMgr deleteSection:0];
-    }
-    
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL friendsCountEnabled = isFriendsCountEnabled();
-    BOOL walletBalanceEnabled = isWalletBalanceEnabled();
-    
-    // 游戏控制设置
-    WCTableViewSectionManager *gameSection = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"游戏控制"];
-    WCTableViewCellManager *gameCheatCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleGameCheat:) target:self title:@"骰子猜拳控制" isOn:isGameCheatEnabled()];
-    [gameSection addCell:gameCheatCell];
-    [_tableViewMgr addSection:gameSection];
-    
-    // 好友数量设置
-    WCTableViewSectionManager *friendsSection = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"好友数量"];
-    WCTableViewCellManager *friendsSwitchCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleFriendsCount:) target:self title:@"自定义好友数量" isOn:friendsCountEnabled];
-    [friendsSection addCell:friendsSwitchCell];
-    
-    if (friendsCountEnabled) {
-        NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey] ?: @"";
-        WCTableViewCellManager *friendsInputCell = [objc_getClass("WCTableViewCellManager") editorCellForSel:@selector(friendsCountChanged:) target:self title:@"好友数量" tip:@"输入好友数量（如：999）" focus:NO text:friendsCountValue];
-        [friendsSection addCell:friendsInputCell];
-    }
-    [_tableViewMgr addSection:friendsSection];
-    
-    // 钱包余额设置
-    WCTableViewSectionManager *walletSection = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"钱包余额"];
-    WCTableViewCellManager *walletSwitchCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleWalletBalance:) target:self title:@"自定义钱包余额" isOn:walletBalanceEnabled];
-    [walletSection addCell:walletSwitchCell];
-    
-    if (walletBalanceEnabled) {
-        NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey] ?: @"";
-        WCTableViewCellManager *walletInputCell = [objc_getClass("WCTableViewCellManager") editorCellForSel:@selector(walletBalanceChanged:) target:self title:@"余额数值" tip:@"输入余额（如：9999.99）" focus:NO text:walletBalanceValue];
-        [walletSection addCell:walletInputCell];
-    }
-    [_tableViewMgr addSection:walletSection];
-    
-    // 提示信息
-    WCTableViewSectionManager *tipSection = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
-    WCTableViewCellManager *tipCell = [objc_getClass("WCTableViewCellManager") normalCellForSel:nil target:nil title:@"开启游戏控制后，发送骰子或猜拳时会弹出选择窗口" rightValue:nil accessoryType:0];
-    [tipSection addCell:tipCell];
-    [_tableViewMgr addSection:tipSection];
-    
-    [_tableViewMgr reloadData];
-}
-
-- (void)toggleGameCheat:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kGameCheatEnabledKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
-- (void)toggleFriendsCount:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kFriendsCountEnabledKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    // 重新加载表格以显示/隐藏输入框
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self reloadTableData];
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                            CFSTR("com.dd.assistant.settings_changed"),
-                                            NULL,
-                                            NULL,
-                                            YES);
-    });
-}
-
-- (void)toggleWalletBalance:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kWalletBalanceEnabledKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    // 重新加载表格以显示/隐藏输入框
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self reloadTableData];
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                            CFSTR("com.dd.assistant.settings_changed"),
-                                            NULL,
-                                            NULL,
-                                            YES);
-    });
-}
-
-- (void)friendsCountChanged:(UITextField *)sender {
-    NSString *text = sender.text;
-    if (text && [text length] > 0) {
-        [[NSUserDefaults standardUserDefaults] setObject:text forKey:kFriendsCountValueKey];
-        [[NSUserDefaults standardUserDefaults] setObject:text forKey:kWCFriendsCountReplacementKey];
-    } else {
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:kFriendsCountValueKey];
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:kWCFriendsCountReplacementKey];
-    }
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                        CFSTR("com.dd.assistant.settings_changed"),
-                                        NULL,
-                                        NULL,
-                                        YES);
-}
-
-- (void)walletBalanceChanged:(UITextField *)sender {
-    NSString *text = sender.text;
-    if (text && [text length] > 0) {
-        [[NSUserDefaults standardUserDefaults] setObject:text forKey:kWalletBalanceValueKey];
-        [[NSUserDefaults standardUserDefaults] setObject:text forKey:kWCWalletBalanceReplacementKey];
-    } else {
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:kWalletBalanceValueKey];
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:kWCWalletBalanceReplacementKey];
-    }
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                        CFSTR("com.dd.assistant.settings_changed"),
-                                        NULL,
-                                        NULL,
-                                        YES);
-}
-
-@end
-
-@interface CSTouchTrailViewController : UIViewController {
-    WCTableViewManager *_tableViewMgr;
-}
-@end
-
-@implementation CSTouchTrailViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    self.title = @"触摸轨迹";
-    
-    if (@available(iOS 13.0, *)) {
-        self.view.backgroundColor = [UIColor systemBackgroundColor];
-        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
-    } else {
-        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    }
-    
-    // 创建表格管理器
-    _tableViewMgr = [[objc_getClass("WCTableViewManager") alloc] init];
-    UIView *tableView = [_tableViewMgr getTableView];
-    tableView.frame = self.view.bounds;
-    tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:tableView];
-    
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                           selector:@selector(screenCaptureDidChange)
-                                               name:UIScreenCapturedDidChangeNotification
-                                             object:nil];
-    
-    [self reloadTableData];
-}
-
-- (void)dealloc {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-}
-
-- (void)screenCaptureDidChange {
-    BOOL isRecording = UIScreen.mainScreen.isCaptured;
-    
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL onlyWhenRecording = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
-    BOOL trailEnabled = [defaults boolForKey:kTouchTrailKey];
-    
-    if (onlyWhenRecording) {
-        BOOL shouldDisplay = isRecording && trailEnabled;
-        [defaults setBool:shouldDisplay forKey:kTouchTrailDisplayStateKey];
-        [defaults synchronize];
-    } else if (trailEnabled) {
-        [defaults setBool:YES forKey:kTouchTrailDisplayStateKey];
-        [defaults synchronize];
-    }
-}
-
-- (void)reloadTableData {
-    // 清空所有section
-    while ([_tableViewMgr numberOfSections] > 0) {
-        [_tableViewMgr deleteSection:0];
-    }
-    
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL isTrailEnabled = [defaults boolForKey:kTouchTrailKey];
-    
-    // 主要设置
-    WCTableViewSectionManager *mainSection = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"触摸轨迹设置"];
-    WCTableViewCellManager *trailSwitchCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleTrailEnabled:) target:self title:@"启用触摸轨迹" isOn:isTrailEnabled];
-    [mainSection addCell:trailSwitchCell];
-    [_tableViewMgr addSection:mainSection];
-    
-    if (isTrailEnabled) {
-        // 高级设置
-        WCTableViewSectionManager *advancedSection = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"高级设置"];
-        
-        WCTableViewCellManager *onlyRecordingCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleOnlyWhenRecording:) target:self title:@"仅在录屏显示" isOn:[defaults boolForKey:kTouchTrailOnlyWhenRecordingKey]];
-        [advancedSection addCell:onlyRecordingCell];
-        
-        WCTableViewCellManager *tailEffectCell = [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(toggleTailEnabled:) target:self title:@"使用拖尾效果" isOn:[defaults boolForKey:kTouchTrailTailEnabledKey]];
-        [advancedSection addCell:tailEffectCell];
-        [_tableViewMgr addSection:advancedSection];
-    }
-    
-    // 提示信息
-    WCTableViewSectionManager *tipSection = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
-    NSString *tipText = @"开启后会在屏幕上显示触摸轨迹，便于录屏演示或教学";
-    if (isTrailEnabled && [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey]) {
-        tipText = @"已开启仅录屏显示模式，当检测到屏幕录制时会自动显示触摸轨迹";
-    }
-    WCTableViewCellManager *tipCell = [objc_getClass("WCTableViewCellManager") normalCellForSel:nil target:nil title:tipText rightValue:nil accessoryType:0];
-    [tipSection addCell:tipCell];
-    [_tableViewMgr addSection:tipSection];
-    
-    [_tableViewMgr reloadData];
-}
-
-- (void)toggleTrailEnabled:(UISwitch *)sender {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setBool:sender.isOn forKey:kTouchTrailKey];
-    
-    BOOL onlyWhenRecording = [defaults boolForKey:kTouchTrailOnlyWhenRecordingKey];
-    if (onlyWhenRecording) {
-        BOOL isRecording = UIScreen.mainScreen.isCaptured;
-        [defaults setBool:(sender.isOn && isRecording) forKey:kTouchTrailDisplayStateKey];
-    } else {
-        [defaults setBool:sender.isOn forKey:kTouchTrailDisplayStateKey];
-    }
-    
-    [defaults synchronize];
-    
-    // 重新加载表格以显示/隐藏高级设置
-    [self reloadTableData];
-}
-
-- (void)toggleOnlyWhenRecording:(UISwitch *)sender {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setBool:sender.isOn forKey:kTouchTrailOnlyWhenRecordingKey];
-    
-    BOOL trailEnabled = [defaults boolForKey:kTouchTrailKey];
-    if (sender.isOn) {
-        BOOL isRecording = UIScreen.mainScreen.isCaptured;
-        [defaults setBool:(trailEnabled && isRecording) forKey:kTouchTrailDisplayStateKey];
-    } else {
-        [defaults setBool:trailEnabled forKey:kTouchTrailDisplayStateKey];
-    }
-    
-    [defaults synchronize];
-    [self reloadTableData];
-}
-
-- (void)toggleTailEnabled:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:kTouchTrailTailEnabledKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
-@end
-
-@implementation DDAssistantSettingsViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    self.title = PLUGIN_NAME;
-    
-    if (@available(iOS 13.0, *)) {
-        self.view.backgroundColor = [UIColor systemBackgroundColor];
-        self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAutomatic;
-    } else {
-        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    }
-    
-    // 创建表格管理器
-    WCTableViewManager *tableViewMgr = [[objc_getClass("WCTableViewManager") alloc] init];
-    UIView *tableView = [tableViewMgr getTableView];
-    tableView.frame = self.view.bounds;
-    tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:tableView];
-    
-    // 创建section
-    WCTableViewSectionManager *section = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
-    
-    // 消息设置
-    WCTableViewCellManager *messageCell = [objc_getClass("WCTableViewCellManager") normalCellForSel:@selector(openMessageSettings) target:self title:@"消息设置" rightValue:nil accessoryType:1];
-    [section addCell:messageCell];
-    
-    // 娱乐功能
-    WCTableViewCellManager *gameCell = [objc_getClass("WCTableViewCellManager") normalCellForSel:@selector(openGameSettings) target:self title:@"娱乐功能" rightValue:nil accessoryType:1];
-    [section addCell:gameCell];
-    
-    // 触摸轨迹
-    WCTableViewCellManager *touchCell = [objc_getClass("WCTableViewCellManager") normalCellForSel:@selector(openTouchTrailSettings) target:self title:@"触摸轨迹" rightValue:nil accessoryType:1];
-    [section addCell:touchCell];
-    
-    [tableViewMgr addSection:section];
-    [tableViewMgr reloadData];
-}
-
-- (void)openMessageSettings {
-    MessageSettingsViewController *vc = [[MessageSettingsViewController alloc] init];
-    [self.navigationController pushViewController:vc animated:YES];
-}
-
-- (void)openGameSettings {
-    GameSettingsViewController *vc = [[GameSettingsViewController alloc] init];
-    [self.navigationController pushViewController:vc animated:YES];
-}
-
-- (void)openTouchTrailSettings {
-    CSTouchTrailViewController *vc = [[CSTouchTrailViewController alloc] init];
-    [self.navigationController pushViewController:vc animated:YES];
-}
-
-@end
-
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
@@ -911,10 +1297,13 @@ static void loadFriendsAndWalletSettings() {
 %hook CMessageMgr
 - (void)AddEmoticonMsg:(NSString *)msg MsgWrap:(CMessageWrap *)msgWrap {
     if (isGameCheatEnabled() && [msgWrap m_uiMessageType] == 47 && ([msgWrap m_uiGameType] == 2 || [msgWrap m_uiGameType] == 1)) {
-        // 创建WCActionSheet
-        WCActionSheet *actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:@""];
+        NSString *title = @"";
         
         if ([msgWrap m_uiGameType] == 1) { // 猜拳
+            title = @"选择猜拳结果";
+            // 创建带标题的WCActionSheet
+            WCActionSheet *actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
+            
             // 添加猜拳选项
             [actionSheet addButtonWithTitle:@"剪刀" eventAction:^{
                 unsigned int gameContent = 1; // 剪刀对应1
@@ -945,7 +1334,17 @@ static void loadFriendsAndWalletSettings() {
                 }
                 %orig(msg, msgWrap);
             }];
+            
+            // 添加取消按钮
+            [actionSheet addButtonWithTitle:@"取消" eventAction:^{
+                // 取消操作，不发送任何消息
+            }];
+            
         } else if ([msgWrap m_uiGameType] == 2) { // 骰子
+            title = @"选择骰子点数";
+            // 创建带标题的WCActionSheet
+            WCActionSheet *actionSheet = [[%c(WCActionSheet) alloc] initWithTitle:title];
+            
             // 添加骰子点数选项
             [actionSheet addButtonWithTitle:@"1点" eventAction:^{
                 unsigned int gameContent = 4; // 1点对应4
@@ -1005,6 +1404,11 @@ static void loadFriendsAndWalletSettings() {
                     [msgWrap setM_uiGameContent:gameContent];
                 }
                 %orig(msg, msgWrap);
+            }];
+            
+            // 添加取消按钮
+            [actionSheet addButtonWithTitle:@"取消" eventAction:^{
+                // 取消操作，不发送任何消息
             }];
         }
         
