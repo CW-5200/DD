@@ -473,7 +473,7 @@ static void loadAllSettings() {
     [self.view addSubview:searchContainer];
     
     UILabel *hintLabel = [[UILabel alloc] init];
-    hintLabel.text = @"长按地图选择位置";
+    hintLabel.text = @"长按地图可选择位置";
     hintLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     hintLabel.textAlignment = NSTextAlignmentCenter;
     hintLabel.textColor = [UIColor secondaryLabelColor];
