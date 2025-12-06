@@ -427,7 +427,7 @@ static void loadAllSettings() {
 }
 
 - (void)setupNavigationBar {
-    UIBarButtonItem *cancelButton = [[UIBarButtonItem alloc] initWithTitle:@"取消" style:UIBarButtonItemStylePlain target:self action:@selector(closeMapSelection)];
+    UIBarButtonItem *cancelButton = [[UIBarButtonItem alloc] initWithTitle:@"返回" style:UIBarButtonItemStylePlain target:self action:@selector(closeMapSelection)];
     self.navigationItem.leftBarButtonItem = cancelButton;
     
     UIBarButtonItem *confirmButton = [[UIBarButtonItem alloc] initWithTitle:@"确认" style:UIBarButtonItemStyleDone target:self action:@selector(confirmMapSelection)];
