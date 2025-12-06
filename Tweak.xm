@@ -1,10 +1,13 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <CoreLocation/CoreLocation.h>
+#import <MapKit/MapKit.h>
 
 #define PLUGIN_NAME @"DD助手"
 #define PLUGIN_VERSION @"1.0.0"
 
+// MARK: - 原有常量定义
 static NSString * const kPreventRevokeEnabledKey = @"com.dd.assistant.prevent.revoke.enabled";
 static NSString * const kGameCheatEnabledKey = @"com.dd.assistant.game.cheat.enabled";
 static NSString * const kMessageTimeBelowAvatarKey = @"com.dd.assistant.message.time.below.avatar";
@@ -15,6 +18,14 @@ static NSString * const kWCFriendsCountReplacementKey = @"com.wechat.tweak.frien
 static NSString * const kWalletBalanceEnabledKey = @"com.dd.assistant.wallet.balance.enabled";
 static NSString * const kWalletBalanceValueKey = @"com.dd.assistant.wallet.balance.value";
 static NSString * const kWCWalletBalanceReplacementKey = @"com.wechat.tweak.wallet_balance_replacement";
+
+// MARK: - 新增常量定义
+static NSString * const kFakeLocationEnabledKey = @"com.dd.assistant.fake.location.enabled";
+static NSString * const kFakeLatitudeKey = @"com.dd.assistant.fake.latitude";
+static NSString * const kFakeLongitudeKey = @"com.dd.assistant.fake.longitude";
+static NSString * const kCustomStepsEnabledKey = @"com.dd.assistant.custom.steps.enabled";
+static NSString * const kCustomStepsValueKey = @"com.dd.assistant.custom.steps.value";
+static NSString * const kLastStepsUpdateDateKey = @"com.dd.assistant.last.steps.update.date";
 
 static NSString * const kTouchTrailKey = @"com.wechat.tweak.touch.trail.enabled";
 static NSString * const kTouchTrailOnlyWhenRecordingKey = @"com.wechat.tweak.touch.trail.only.when.recording";
@@ -34,6 +45,14 @@ static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
+
+// MARK: - 新增配置管理
+static BOOL gFakeLocationEnabled = NO;
+static double gFakeLatitude = 39.9035;
+static double gFakeLongitude = 116.3976;
+static BOOL gCustomStepsEnabled = NO;
+static NSInteger gCustomStepsValue = 8888;
+static NSDate *gLastStepsUpdateDate = nil;
 
 @interface CContact : NSObject
 @property(copy, nonatomic) NSString *m_nsUsrName;
@@ -162,6 +181,27 @@ static BOOL isWalletBalanceEnabled() {
     return [[NSUserDefaults standardUserDefaults] boolForKey:kWalletBalanceEnabledKey];
 }
 
+static BOOL isFakeLocationEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kFakeLocationEnabledKey];
+}
+
+static BOOL isCustomStepsEnabled() {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:kCustomStepsEnabledKey];
+}
+
+static double getFakeLatitude() {
+    return [[NSUserDefaults standardUserDefaults] doubleForKey:kFakeLatitudeKey];
+}
+
+static double getFakeLongitude() {
+    return [[NSUserDefaults standardUserDefaults] doubleForKey:kFakeLongitudeKey];
+}
+
+static NSInteger getCustomStepsValue() {
+    NSInteger value = [[NSUserDefaults standardUserDefaults] integerForKey:kCustomStepsValueKey];
+    return value > 0 ? value : 8888;
+}
+
 static void setMessageTime(id self, NSString *time) {
     objc_setAssociatedObject(self, &kMessageTimeKey, time, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -178,8 +218,10 @@ static UIView *getTimeView(id self) {
     return objc_getAssociatedObject(self, &kTimeViewKey);
 }
 
-static void loadFriendsAndWalletSettings() {
+static void loadAllSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // 加载好友和钱包设置
     gFriendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
     NSString *friendsCountValue = [defaults objectForKey:kFriendsCountValueKey];
     if (friendsCountValue && [friendsCountValue length] > 0) {
@@ -187,6 +229,7 @@ static void loadFriendsAndWalletSettings() {
     } else {
         gFriendsCountReplacement = nil;
     }
+    
     gWalletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
     NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
     if (walletBalanceValue && [walletBalanceValue length] > 0) {
@@ -194,6 +237,49 @@ static void loadFriendsAndWalletSettings() {
     } else {
         gWalletBalanceReplacement = nil;
     }
+    
+    // 加载位置和步数设置
+    gFakeLocationEnabled = [defaults boolForKey:kFakeLocationEnabledKey];
+    gFakeLatitude = [defaults doubleForKey:kFakeLatitudeKey];
+    gFakeLongitude = [defaults doubleForKey:kFakeLongitudeKey];
+    
+    // 默认位置设为北京天安门
+    if (gFakeLatitude == 0 && gFakeLongitude == 0) {
+        gFakeLatitude = 39.9035;
+        gFakeLongitude = 116.3976;
+        [defaults setDouble:gFakeLatitude forKey:kFakeLatitudeKey];
+        [defaults setDouble:gFakeLongitude forKey:kFakeLongitudeKey];
+        [defaults synchronize];
+    }
+    
+    gCustomStepsEnabled = [defaults boolForKey:kCustomStepsEnabledKey];
+    NSInteger stepsValue = [defaults integerForKey:kCustomStepsValueKey];
+    if (stepsValue == 0) {
+        stepsValue = 8888;
+        [defaults setInteger:stepsValue forKey:kCustomStepsValueKey];
+        [defaults synchronize];
+    }
+    gCustomStepsValue = stepsValue;
+    
+    gLastStepsUpdateDate = [defaults objectForKey:kLastStepsUpdateDateKey];
+    if (!gLastStepsUpdateDate) {
+        gLastStepsUpdateDate = [NSDate date];
+        [defaults setObject:gLastStepsUpdateDate forKey:kLastStepsUpdateDateKey];
+        [defaults synchronize];
+    }
+}
+
+// MARK: - 辅助函数
+static BOOL isToday(NSDate *date) {
+    if (!date) return NO;
+    
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *dateComponents = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay fromDate:date];
+    NSDateComponents *todayComponents = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay fromDate:[NSDate date]];
+    
+    return (dateComponents.year == todayComponents.year &&
+            dateComponents.month == todayComponents.month &&
+            dateComponents.day == todayComponents.day);
 }
 
 @interface WCActionSheet : NSObject
@@ -214,8 +300,10 @@ static void loadFriendsAndWalletSettings() {
     NSArray *_settings;
     UITextField *_friendsCountField;
     UITextField *_walletBalanceField;
+    UITextField *_customStepsField;
     UIButton *_friendsCountConfirmButton;
     UIButton *_walletBalanceConfirmButton;
+    UIButton *_customStepsConfirmButton;
 }
 @property (nonatomic, strong) UITableView *tableView;
 @end
@@ -369,6 +457,30 @@ static void loadFriendsAndWalletSettings() {
 - (id)getService:(Class)cls;
 @end
 
+// MARK: - 新增类声明
+@interface MMLocationMgr : NSObject
+- (void)locationManager:(id)arg1 didUpdateToLocation:(id)arg2 fromLocation:(id)arg3;
+- (void)locationManager:(id)arg1 didUpdateLocations:(NSArray *)arg2;
+@end
+
+@interface WCDeviceStepObject : NSObject
+- (unsigned int)m7StepCount;
+- (unsigned int)hkStepCount;
+@end
+
+@interface WCDataItem : NSObject
+- (unsigned int)stepCount;
+@end
+
+@interface WCLocationInfo : NSObject
+- (double)latitude;
+- (double)longitude;
+@end
+
+@interface MicroMessengerAppDelegate : NSObject
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions;
+@end
+
 @implementation MessageSettingsViewController
 
 - (void)loadView {
@@ -506,7 +618,7 @@ static void loadFriendsAndWalletSettings() {
     }
     
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"好友数量输入框", @"钱包余额自定义", @"钱包余额输入框"];
+    _settings = @[@"骰子猜拳控制", @"好友数量自定义", @"好友数量输入框", @"钱包余额自定义", @"钱包余额输入框", @"虚拟位置开关", @"虚拟位置输入框", @"自定义步数开关", @"自定义步数输入框"];
     
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
@@ -520,15 +632,27 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
     BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
-    int rowCount = 1;
-    rowCount += 1;
+    BOOL fakeLocationEnabled = [defaults boolForKey:kFakeLocationEnabledKey];
+    BOOL customStepsEnabled = [defaults boolForKey:kCustomStepsEnabledKey];
+    
+    int rowCount = 1; // 骰子猜拳控制
+    rowCount += 1; // 好友数量自定义开关
     if (friendsCountEnabled) {
-        rowCount += 1;
+        rowCount += 1; // 好友数量输入框
     }
-    rowCount += 1;
+    rowCount += 1; // 钱包余额自定义开关
     if (walletBalanceEnabled) {
-        rowCount += 1;
+        rowCount += 1; // 钱包余额输入框
     }
+    rowCount += 1; // 虚拟位置开关
+    if (fakeLocationEnabled) {
+        rowCount += 1; // 虚拟位置输入框
+    }
+    rowCount += 1; // 自定义步数开关
+    if (customStepsEnabled) {
+        rowCount += 1; // 自定义步数输入框
+    }
+    
     return rowCount;
 }
 
@@ -543,19 +667,52 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
     BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    BOOL fakeLocationEnabled = [defaults boolForKey:kFakeLocationEnabledKey];
+    BOOL customStepsEnabled = [defaults boolForKey:kCustomStepsEnabledKey];
     
     int rowIndex = indexPath.row;
+    
+    // 骰子猜拳控制
     if (rowIndex == 0) return NO;
     rowIndex -= 1;
+    
+    // 好友数量自定义开关
     if (rowIndex == 0) return NO;
     rowIndex -= 1;
+    
+    // 好友数量输入框
     if (friendsCountEnabled && rowIndex == 0) return YES;
     if (friendsCountEnabled) {
         rowIndex -= 1;
     }
+    
+    // 钱包余额自定义开关
     if (rowIndex == 0) return NO;
     rowIndex -= 1;
+    
+    // 钱包余额输入框
     if (walletBalanceEnabled && rowIndex == 0) return YES;
+    if (walletBalanceEnabled) {
+        rowIndex -= 1;
+    }
+    
+    // 虚拟位置开关
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    
+    // 虚拟位置输入框
+    if (fakeLocationEnabled && rowIndex == 0) return YES;
+    if (fakeLocationEnabled) {
+        rowIndex -= 1;
+    }
+    
+    // 自定义步数开关
+    if (rowIndex == 0) return NO;
+    rowIndex -= 1;
+    
+    // 自定义步数输入框
+    if (customStepsEnabled && rowIndex == 0) return YES;
+    
     return NO;
 }
 
@@ -563,8 +720,12 @@ static void loadFriendsAndWalletSettings() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL friendsCountEnabled = [defaults boolForKey:kFriendsCountEnabledKey];
     BOOL walletBalanceEnabled = [defaults boolForKey:kWalletBalanceEnabledKey];
+    BOOL fakeLocationEnabled = [defaults boolForKey:kFakeLocationEnabledKey];
+    BOOL customStepsEnabled = [defaults boolForKey:kCustomStepsEnabledKey];
+    
     int rowIndex = indexPath.row;
     
+    // 骰子猜拳控制
     if (rowIndex == 0) {
         NSString *cellIdentifier = @"GameCell";
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
@@ -592,6 +753,8 @@ static void loadFriendsAndWalletSettings() {
     }
     
     rowIndex -= 1;
+    
+    // 好友数量自定义开关
     if (rowIndex == 0) {
         NSString *cellIdentifier = @"FriendsCountSwitchCell";
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
@@ -619,6 +782,8 @@ static void loadFriendsAndWalletSettings() {
     }
     
     rowIndex -= 1;
+    
+    // 好友数量输入框
     if (friendsCountEnabled && rowIndex == 0) {
         NSString *cellIdentifier = @"FriendsCountInputCell";
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
@@ -668,6 +833,7 @@ static void loadFriendsAndWalletSettings() {
         rowIndex -= 1;
     }
     
+    // 钱包余额自定义开关
     if (rowIndex == 0) {
         NSString *cellIdentifier = @"WalletBalanceSwitchCell";
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
@@ -695,6 +861,8 @@ static void loadFriendsAndWalletSettings() {
     }
     
     rowIndex -= 1;
+    
+    // 钱包余额输入框
     if (walletBalanceEnabled && rowIndex == 0) {
         NSString *cellIdentifier = @"WalletBalanceInputCell";
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
@@ -735,6 +903,161 @@ static void loadFriendsAndWalletSettings() {
             NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
             if (walletBalanceValue && [walletBalanceValue length] > 0) {
                 textField.text = walletBalanceValue;
+            }
+        }
+        return cell;
+    }
+    
+    if (walletBalanceEnabled) {
+        rowIndex -= 1;
+    }
+    
+    // 虚拟位置开关
+    if (rowIndex == 0) {
+        NSString *cellIdentifier = @"FakeLocationSwitchCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+        }
+        cell.textLabel.text = @"虚拟位置开关";
+        
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
+        
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = fakeLocationEnabled;
+        [switchView addTarget:self action:@selector(fakeLocationEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+        return cell;
+    }
+    
+    rowIndex -= 1;
+    
+    // 虚拟位置输入框
+    if (fakeLocationEnabled && rowIndex == 0) {
+        NSString *cellIdentifier = @"FakeLocationInputCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+            
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
+            textField.borderStyle = UITextBorderStyleRoundedRect;
+            textField.placeholder = @"纬度,经度（如：39.9035,116.3976）";
+            textField.keyboardType = UIKeyboardTypeDecimalPad;
+            textField.delegate = self;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            
+            if (@available(iOS 13.0, *)) {
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+                textField.textColor = [UIColor labelColor];
+            }
+            
+            [cell.contentView addSubview:textField];
+            
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
+            
+            [confirmButton addTarget:self action:@selector(fakeLocationConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            
+            double latitude = [defaults doubleForKey:kFakeLatitudeKey];
+            double longitude = [defaults doubleForKey:kFakeLongitudeKey];
+            textField.text = [NSString stringWithFormat:@"%.4f,%.4f", latitude, longitude];
+        }
+        return cell;
+    }
+    
+    if (fakeLocationEnabled) {
+        rowIndex -= 1;
+    }
+    
+    // 自定义步数开关
+    if (rowIndex == 0) {
+        NSString *cellIdentifier = @"CustomStepsSwitchCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+        }
+        cell.textLabel.text = @"自定义步数开关";
+        
+        if (@available(iOS 13.0, *)) {
+            cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        }
+        
+        UISwitch *switchView = [[UISwitch alloc] init];
+        if (@available(iOS 13.0, *)) {
+            switchView.onTintColor = [UIColor systemBlueColor];
+        }
+        switchView.on = customStepsEnabled;
+        [switchView addTarget:self action:@selector(customStepsEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = switchView;
+        return cell;
+    }
+    
+    rowIndex -= 1;
+    
+    // 自定义步数输入框
+    if (customStepsEnabled && rowIndex == 0) {
+        NSString *cellIdentifier = @"CustomStepsInputCell";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            if (@available(iOS 13.0, *)) {
+                cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+            }
+            
+            UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(20, 10, self.view.frame.size.width - 140, 40)];
+            textField.borderStyle = UITextBorderStyleRoundedRect;
+            textField.placeholder = @"输入步数（如：8888）";
+            textField.keyboardType = UIKeyboardTypeNumberPad;
+            textField.delegate = self;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            
+            if (@available(iOS 13.0, *)) {
+                textField.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+                textField.textColor = [UIColor labelColor];
+            }
+            
+            [cell.contentView addSubview:textField];
+            _customStepsField = textField;
+            
+            UIButton *confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            confirmButton.frame = CGRectMake(self.view.frame.size.width - 110, 10, 80, 40);
+            [confirmButton setTitle:@"确认" forState:UIControlStateNormal];
+            
+            if (@available(iOS 13.0, *)) {
+                confirmButton.tintColor = [UIColor systemBlueColor];
+            }
+            
+            [confirmButton addTarget:self action:@selector(customStepsConfirmTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [cell.contentView addSubview:confirmButton];
+            _customStepsConfirmButton = confirmButton;
+            
+            NSInteger stepsValue = [defaults integerForKey:kCustomStepsValueKey];
+            if (stepsValue > 0) {
+                textField.text = [NSString stringWithFormat:@"%ld", (long)stepsValue];
             }
         }
         return cell;
@@ -781,6 +1104,30 @@ static void loadFriendsAndWalletSettings() {
                                         YES);
 }
 
+- (void)fakeLocationEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kFakeLocationEnabledKey];
+    [defaults synchronize];
+    [self.tableView reloadData];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)customStepsEnabledChanged:(UISwitch *)sender {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:sender.isOn forKey:kCustomStepsEnabledKey];
+    [defaults synchronize];
+    [self.tableView reloadData];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
 - (void)friendsCountConfirmTapped:(UIButton *)sender {
     if (_friendsCountField) {
         [_friendsCountField resignFirstResponder];
@@ -792,6 +1139,28 @@ static void loadFriendsAndWalletSettings() {
     if (_walletBalanceField) {
         [_walletBalanceField resignFirstResponder];
         [self saveWalletBalanceValue];
+    }
+}
+
+- (void)fakeLocationConfirmTapped:(UIButton *)sender {
+    UITextField *textField = nil;
+    for (UIView *subview in sender.superview.subviews) {
+        if ([subview isKindOfClass:[UITextField class]]) {
+            textField = (UITextField *)subview;
+            break;
+        }
+    }
+    
+    if (textField) {
+        [textField resignFirstResponder];
+        [self saveFakeLocationValue:textField.text];
+    }
+}
+
+- (void)customStepsConfirmTapped:(UIButton *)sender {
+    if (_customStepsField) {
+        [_customStepsField resignFirstResponder];
+        [self saveCustomStepsValue];
     }
 }
 
@@ -831,6 +1200,77 @@ static void loadFriendsAndWalletSettings() {
                                         YES);
 }
 
+- (void)saveFakeLocationValue:(NSString *)text {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    if (text && [text length] > 0) {
+        // 解析纬度经度格式：39.9035,116.3976
+        NSArray *components = [text componentsSeparatedByString:@","];
+        if (components.count == 2) {
+            NSString *latStr = [components[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            NSString *lngStr = [components[1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            
+            double latitude = [latStr doubleValue];
+            double longitude = [lngStr doubleValue];
+            
+            if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+                [defaults setDouble:latitude forKey:kFakeLatitudeKey];
+                [defaults setDouble:longitude forKey:kFakeLongitudeKey];
+                [defaults synchronize];
+                
+                CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                                    CFSTR("com.dd.assistant.settings_changed"),
+                                                    NULL,
+                                                    NULL,
+                                                    YES);
+                return;
+            }
+        }
+    }
+    
+    // 如果输入无效，恢复默认值
+    [defaults setDouble:39.9035 forKey:kFakeLatitudeKey];
+    [defaults setDouble:116.3976 forKey:kFakeLongitudeKey];
+    [defaults synchronize];
+    
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
+- (void)saveCustomStepsValue {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *text = _customStepsField.text;
+    
+    if (text && [text length] > 0) {
+        NSInteger steps = [text integerValue];
+        if (steps >= 0 && steps <= 100000) {
+            [defaults setInteger:steps forKey:kCustomStepsValueKey];
+            [defaults setObject:[NSDate date] forKey:kLastStepsUpdateDateKey];
+            [defaults synchronize];
+            
+            CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                                CFSTR("com.dd.assistant.settings_changed"),
+                                                NULL,
+                                                NULL,
+                                                YES);
+            return;
+        }
+    }
+    
+    // 如果输入无效，恢复默认值
+    [defaults setInteger:8888 forKey:kCustomStepsValueKey];
+    [defaults synchronize];
+    
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        CFSTR("com.dd.assistant.settings_changed"),
+                                        NULL,
+                                        NULL,
+                                        YES);
+}
+
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
     return YES;
@@ -842,6 +1282,9 @@ static void loadFriendsAndWalletSettings() {
     } 
     else if (textField == _walletBalanceField) {
         [self saveWalletBalanceValue];
+    }
+    else if (textField == _customStepsField) {
+        [self saveCustomStepsValue];
     }
 }
 
@@ -1238,6 +1681,8 @@ static void loadFriendsAndWalletSettings() {
 }
 
 @end
+
+// MARK: - Hook 实现
 
 %hook NewSettingViewController
 - (void)reloadTableData {
@@ -1874,6 +2319,94 @@ static void loadFriendsAndWalletSettings() {
 }
 %end
 
+// MARK: - 新增 Hook 实现
+
+%hook MMLocationMgr
+
+- (void)locationManager:(id)arg1 didUpdateToLocation:(id)arg2 fromLocation:(id)arg3 {
+    if (isFakeLocationEnabled()) {
+        CLLocation *fakeLocation = [[CLLocation alloc] initWithLatitude:getFakeLatitude() 
+                                                              longitude:getFakeLongitude()];
+        %orig(arg1, fakeLocation, arg3);
+    } else {
+        %orig(arg1, arg2, arg3);
+    }
+}
+
+- (void)locationManager:(id)arg1 didUpdateLocations:(NSArray *)arg2 {
+    if (isFakeLocationEnabled()) {
+        CLLocation *fakeLocation = [[CLLocation alloc] initWithLatitude:getFakeLatitude() 
+                                                              longitude:getFakeLongitude()];
+        %orig(arg1, @[fakeLocation]);
+    } else {
+        %orig(arg1, arg2);
+    }
+}
+
+%end
+
+%hook WCDeviceStepObject
+
+- (unsigned int)m7StepCount {
+    if (isCustomStepsEnabled()) {
+        NSDate *lastUpdateDate = [[NSUserDefaults standardUserDefaults] objectForKey:kLastStepsUpdateDateKey];
+        if (!lastUpdateDate || !isToday(lastUpdateDate)) {
+            [[NSUserDefaults standardUserDefaults] setObject:[NSDate date] forKey:kLastStepsUpdateDateKey];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
+        return (unsigned int)getCustomStepsValue();
+    }
+    
+    return %orig;
+}
+
+- (unsigned int)hkStepCount {
+    if (isCustomStepsEnabled()) {
+        NSDate *lastUpdateDate = [[NSUserDefaults standardUserDefaults] objectForKey:kLastStepsUpdateDateKey];
+        if (!lastUpdateDate || !isToday(lastUpdateDate)) {
+            [[NSUserDefaults standardUserDefaults] setObject:[NSDate date] forKey:kLastStepsUpdateDateKey];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
+        return (unsigned int)getCustomStepsValue();
+    }
+    
+    return %orig;
+}
+
+%end
+
+%hook WCDataItem
+
+- (unsigned int)stepCount {
+    if (isCustomStepsEnabled()) {
+        return (unsigned int)getCustomStepsValue();
+    }
+    
+    return %orig;
+}
+
+%end
+
+%hook WCLocationInfo
+
+- (double)latitude {
+    if (isFakeLocationEnabled()) {
+        return getFakeLatitude();
+    }
+    
+    return %orig;
+}
+
+- (double)longitude {
+    if (isFakeLocationEnabled()) {
+        return getFakeLongitude();
+    }
+    
+    return %orig;
+}
+
+%end
+
 %hook UIApplication
 
 + (void)load {
@@ -1995,6 +2528,8 @@ static void loadFriendsAndWalletSettings() {
             kHideChatTimeLabelKey: @NO,
             kFriendsCountEnabledKey: @NO,
             kWalletBalanceEnabledKey: @NO,
+            kFakeLocationEnabledKey: @NO,
+            kCustomStepsEnabledKey: @NO,
             kTouchTrailKey: @NO,
             kTouchTrailOnlyWhenRecordingKey: @NO,
             kTouchTrailDisplayStateKey: @NO,
@@ -2009,14 +2544,34 @@ static void loadFriendsAndWalletSettings() {
                 }
             }
         }
+        
+        // 设置默认位置
+        if ([defaults doubleForKey:kFakeLatitudeKey] == 0 && [defaults doubleForKey:kFakeLongitudeKey] == 0) {
+            [defaults setDouble:39.9035 forKey:kFakeLatitudeKey];
+            [defaults setDouble:116.3976 forKey:kFakeLongitudeKey];
+        }
+        
+        // 设置默认步数
+        if ([defaults integerForKey:kCustomStepsValueKey] == 0) {
+            [defaults setInteger:8888 forKey:kCustomStepsValueKey];
+        }
+        
+        // 设置默认最后更新时间
+        if (![defaults objectForKey:kLastStepsUpdateDateKey]) {
+            [defaults setObject:[NSDate date] forKey:kLastStepsUpdateDateKey];
+        }
+        
         [defaults synchronize];
-        loadFriendsAndWalletSettings();
+        
+        loadAllSettings();
+        
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL,
-                                        (CFNotificationCallback)loadFriendsAndWalletSettings,
+                                        (CFNotificationCallback)loadAllSettings,
                                         CFSTR("com.dd.assistant.settings_changed"),
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
+        
         Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
         if (pluginsMgrClass && [pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
             g_hasPluginsMgr = YES;
