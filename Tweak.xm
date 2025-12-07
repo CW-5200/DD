@@ -440,7 +440,9 @@ static void loadAllSettings() {
         NSForegroundColorAttributeName: [UIColor labelColor],
         NSFontAttributeName: [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]
     };
-    appearance.shadowColor = [UIColor separatorColor];
+    
+    appearance.shadowColor = [UIColor clearColor];
+    appearance.shadowImage = [[UIImage alloc] init];
     
     self.navigationController.navigationBar.standardAppearance = appearance;
     self.navigationController.navigationBar.scrollEdgeAppearance = appearance;
