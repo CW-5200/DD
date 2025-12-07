@@ -427,11 +427,23 @@ static void loadAllSettings() {
 }
 
 - (void)setupNavigationBar {
-    UIBarButtonItem *cancelButton = [[UIBarButtonItem alloc] initWithTitle:@"返回" style:UIBarButtonItemStylePlain target:self action:@selector(closeMapSelection)];
+    UIBarButtonItemStyle buttonStyle = UIBarButtonItemStyleDone;
+    
+    UIBarButtonItem *cancelButton = [[UIBarButtonItem alloc] initWithTitle:@"返回" 
+                                                                     style:buttonStyle 
+                                                                    target:self 
+                                                                    action:@selector(closeMapSelection)];
     self.navigationItem.leftBarButtonItem = cancelButton;
     
-    UIBarButtonItem *confirmButton = [[UIBarButtonItem alloc] initWithTitle:@"确认" style:UIBarButtonItemStyleDone target:self action:@selector(confirmMapSelection)];
+    UIBarButtonItem *confirmButton = [[UIBarButtonItem alloc] initWithTitle:@"确认" 
+                                                                      style:buttonStyle 
+                                                                     target:self 
+                                                                     action:@selector(confirmMapSelection)];
     self.navigationItem.rightBarButtonItem = confirmButton;
+    
+    UIColor *buttonColor = [UIColor systemBlueColor];
+    cancelButton.tintColor = buttonColor;
+    confirmButton.tintColor = buttonColor;
     
     UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
     [appearance configureWithOpaqueBackground];
@@ -444,6 +456,8 @@ static void loadAllSettings() {
     
     self.navigationController.navigationBar.standardAppearance = appearance;
     self.navigationController.navigationBar.scrollEdgeAppearance = appearance;
+    
+    self.navigationController.navigationBar.tintColor = buttonColor;
 }
 
 - (void)setupUI {
