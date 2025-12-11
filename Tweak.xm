@@ -206,11 +206,6 @@ static NSDate *gLastStepsUpdateDate = nil;
 - (unsigned int)stepCount;
 @end
 
-@interface WCLocationInfo : NSObject
-- (double)latitude;
-- (double)longitude;
-@end
-
 // MARK: - 虚拟定位管理器
 @interface VirtualLocationManager : NSObject
 + (instancetype)sharedManager;
@@ -261,7 +256,6 @@ static NSDate *gLastStepsUpdateDate = nil;
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     _isEnabled = [defaults boolForKey:kFakeLocationEnabledKey];
     
-    // 读取经纬度，如果为0则使用默认值
     _latitude = [defaults doubleForKey:kFakeLatitudeKey];
     _longitude = [defaults doubleForKey:kFakeLongitudeKey];
     
@@ -2340,7 +2334,6 @@ static void loadAllSettings() {
 }
 %end
 
-// MARK: - 新的虚拟定位Hook
 %hook CLLocationManager
 
 - (void)startUpdatingLocation {
@@ -2521,7 +2514,7 @@ static void loadAllSettings() {
         }
         
         // 虚拟定位经纬度默认值
-        if ([defaults doubleForKey:kFakeLatitudeKey] == 0 && [defaults doubleForKey:kLongitudeKey] == 0) {
+        if ([defaults doubleForKey:kFakeLatitudeKey] == 0 && [defaults doubleForKey:kFakeLongitudeKey] == 0) {
             [defaults setDouble:39.9042 forKey:kFakeLatitudeKey];
             [defaults setDouble:116.4074 forKey:kFakeLongitudeKey];
         }
