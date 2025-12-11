@@ -7,7 +7,6 @@
 #define PLUGIN_NAME @"DD助手"
 #define PLUGIN_VERSION @"1.0.0"
 
-// MARK: - 设置键名（新增虚拟定位相关键）
 static NSString * const kPreventRevokeEnabledKey = @"com.dd.assistant.prevent.revoke.enabled";
 static NSString * const kGameCheatEnabledKey = @"com.dd.assistant.game.cheat.enabled";
 static NSString * const kMessageTimeBelowAvatarKey = @"com.dd.assistant.message.time.below.avatar";
@@ -29,7 +28,6 @@ static NSString * const kLocationSpoofingEnabledKey = @"com.dd.assistant.locatio
 static NSString * const kLatitudeKey = @"com.dd.assistant.location.latitude";
 static NSString * const kLongitudeKey = @"com.dd.assistant.location.longitude";
 
-// MARK: - 全局变量（新增）
 static NSMutableDictionary *touchViews = nil;
 static NSMutableDictionary *touchTailViews = nil;
 static NSMutableDictionary *touchLastPointTimes = nil;
@@ -45,14 +43,12 @@ static BOOL g_hasPluginsMgr = NO;
 static BOOL gCustomStepsEnabled = NO;
 static NSInteger gCustomStepsValue = 8888;
 static NSDate *gLastStepsUpdateDate = nil;
-// 虚拟定位相关
 static BOOL gLocationSpoofingEnabled = NO;
 static double gLatitude = 39.9042;
 static double gLongitude = 116.4074;
 static BOOL gLocationTemporarilyDisabled = NO;
 static BOOL gLocationOriginalEnabledState = NO;
 
-// MARK: - 微信类声明（已有）
 @interface CContact : NSObject
 @property (copy, nonatomic) NSString *m_nsUsrName;
 @property (copy, nonatomic) NSString *m_nsNickName;
@@ -212,7 +208,6 @@ static BOOL gLocationOriginalEnabledState = NO;
 - (unsigned int)stepCount;
 @end
 
-// MARK: - 工具函数（已有）
 static NSString *parseParam(NSString *content, NSString *begin, NSString *end) {
     if (!content) return nil;
     
@@ -294,7 +289,6 @@ static BOOL isToday(NSDate *date) {
             dateComponents.day == todayComponents.day);
 }
 
-// MARK: - 设置状态检查函数（新增虚拟定位函数）
 static BOOL isPreventRevokeEnabled() {
     return [[NSUserDefaults standardUserDefaults] boolForKey:kPreventRevokeEnabledKey];
 }
@@ -403,7 +397,6 @@ static void loadAllSettings() {
         [defaults synchronize];
     }
     
-    // 加载虚拟定位设置
     gLocationSpoofingEnabled = [defaults boolForKey:kLocationSpoofingEnabledKey];
     gLatitude = [defaults doubleForKey:kLatitudeKey];
     gLongitude = [defaults doubleForKey:kLongitudeKey];
@@ -414,7 +407,6 @@ static void loadAllSettings() {
     }
 }
 
-// MARK: - 地图选择控制器
 @interface LocationMapViewController : UIViewController <UISearchBarDelegate, MKMapViewDelegate>
 @property (strong, nonatomic) MKMapView *mapView;
 @property (strong, nonatomic) UISearchBar *searchBar;
@@ -750,7 +742,6 @@ static void loadAllSettings() {
 
 @end
 
-// MARK: - 设置视图控制器（新增虚拟定位设置）
 @interface MessageSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
 @end
@@ -955,7 +946,7 @@ static void loadAllSettings() {
     return cell;
 }
 
-  - (UITableViewCell *)createWalletBalanceInputCell:(NSUserDefaults *)defaults {
+- (UITableViewCell *)createWalletBalanceInputCell:(NSUserDefaults *)defaults {
     UITableViewCell *cell = [self createInputCellWithIdentifier:@"WalletBalanceInputCell" placeholder:@"输入余额（如：9999.99）" keyboardType:UIKeyboardTypeDecimalPad];
     _walletBalanceField = (UITextField *)[cell.contentView.subviews firstObject];
     NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
@@ -1195,7 +1186,6 @@ static void loadAllSettings() {
 
 @end
 
-// MARK: - 新增虚拟定位设置控制器
 @interface LocationSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
 @end
@@ -1436,7 +1426,6 @@ static void loadAllSettings() {
 
 @end
 
-// MARK: - 主设置控制器（新增虚拟定位模块）
 @interface DDAssistantSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
 @end
@@ -1457,7 +1446,7 @@ static void loadAllSettings() {
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4; // 新增虚拟定位模块
+    return 4;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -1530,7 +1519,6 @@ static void loadAllSettings() {
 
 @end
 
-// MARK: - 触摸轨迹视图（已有）
 @interface WBTouchTrailDotView : UIView
 @property (nonatomic, strong) UIColor *dotColor;
 @property (nonatomic, assign) CGFloat dotSize;
@@ -1615,12 +1603,10 @@ static void loadAllSettings() {
 
 @end
 
-// MARK: - Hook实现（新增虚拟定位Hook）
 %hook CLLocationManager
 
 - (void)startUpdatingLocation {
     if (isLocationSpoofingEnabled()) {
-        NSLog(@"[DDGPS] 拦截位置更新请求（虚拟定位启用）");
         dispatch_async(dispatch_get_main_queue(), ^{
             CLLocation *fakeLocation = getCurrentFakeLocation();
             if (fakeLocation && self.delegate && [self.delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
@@ -1628,14 +1614,12 @@ static void loadAllSettings() {
             }
         });
     } else {
-        NSLog(@"[DDGPS] 允许真实位置更新");
         %orig;
     }
 }
 
 - (void)stopUpdatingLocation {
     %orig;
-    NSLog(@"[DDGPS] 停止位置更新");
 }
 
 - (CLAuthorizationStatus)authorizationStatus {
@@ -1665,7 +1649,6 @@ static void loadAllSettings() {
 
 %end
 
-// MARK: - 原有Hook实现（保持不变）
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
