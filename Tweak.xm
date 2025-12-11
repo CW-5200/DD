@@ -1,5 +1,3 @@
-// WeChatHelper.xm
-// 微信小助手插件 - 简化版
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -341,31 +339,3 @@ static void forwardButtonTapped(id self, SEL _cmd) {
 }
 
 @end
-
-#pragma mark - 简化的控制文件
-
-// Makefile 内容：
-// ARCHS = arm64 arm64e
-// TARGET = iphone:clang:latest:13.0
-// INSTALL_TARGET_PROCESSES = WeChat
-// 
-// include $(THEOS)/makefiles/common.mk
-// 
-// TWEAK_NAME = WeChatHelper
-// 
-// WeChatHelper_FILES = Tweak.xm
-// WeChatHelper_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
-// WeChatHelper_FRAMEWORKS = UIKit Foundation
-// 
-// include $(THEOS_MAKE_PATH)/tweak.mk
-
-// control 文件内容：
-// Package: com.yourcompany.wechelper
-// Name: WeChat Helper
-// Version: 1.0
-// Architecture: iphoneos-arm
-// Description: 微信小助手 - 自动抢红包、朋友圈转发、集赞助手
-// Author: Your Name
-// Maintainer: Your Name
-// Depends: mobilesubstrate
-// Section: Tweaks
