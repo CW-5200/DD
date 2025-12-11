@@ -42,9 +42,6 @@ static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
 static BOOL g_hasPluginsMgr = NO;
-static BOOL gFakeLocationEnabled = NO;
-static double gFakeLatitude = 39.9035;
-static double gFakeLongitude = 116.3976;
 static BOOL gCustomStepsEnabled = NO;
 static NSInteger gCustomStepsValue = 8888;
 static NSDate *gLastStepsUpdateDate = nil;
@@ -200,11 +197,6 @@ static NSDate *gLastStepsUpdateDate = nil;
 - (void)updateTitleView:(unsigned int)arg1 title:(NSString *)title;
 @end
 
-@interface MMLocationMgr : NSObject
-- (void)locationManager:(id)arg1 didUpdateToLocation:(id)arg2 fromLocation:(id)arg3;
-- (void)locationManager:(id)arg1 didUpdateLocations:(NSArray *)arg2;
-@end
-
 @interface WCDeviceStepObject : NSObject
 - (unsigned int)m7StepCount;
 - (unsigned int)hkStepCount;
@@ -217,6 +209,173 @@ static NSDate *gLastStepsUpdateDate = nil;
 @interface WCLocationInfo : NSObject
 - (double)latitude;
 - (double)longitude;
+@end
+
+// MARK: - 虚拟定位管理器
+@interface VirtualLocationManager : NSObject
++ (instancetype)sharedManager;
+@property (nonatomic, assign) BOOL isEnabled;
+@property (nonatomic, assign) double latitude;
+@property (nonatomic, assign) double longitude;
+@property (nonatomic, strong) dispatch_source_t locationUpdateTimer;
+@property (nonatomic, assign) BOOL isTimerActive;
+@property (nonatomic, assign) BOOL temporarilyDisabled;
+@property (nonatomic, assign) BOOL originalEnabledState;
+
+- (CLLocation *)getCurrentFakeLocation;
+- (void)setLocationWithLatitude:(double)lat longitude:(double)lng;
+- (void)loadSettings;
+- (void)startFakeLocationUpdatesForManager:(CLLocationManager *)manager;
+- (void)stopFakeLocationUpdates;
+- (void)enableTemporaryDisable;
+- (void)disableTemporaryDisable;
+- (BOOL)isVirtualLocationEnabled;
+@end
+
+@implementation VirtualLocationManager
+
++ (instancetype)sharedManager {
+    static VirtualLocationManager *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[VirtualLocationManager alloc] init];
+    });
+    return instance;
+}
+
+- (instancetype)init {
+    if (self = [super init]) {
+        _temporarilyDisabled = NO;
+        _originalEnabledState = NO;
+        _isTimerActive = NO;
+        [self loadSettings];
+    }
+    return self;
+}
+
+- (void)dealloc {
+    [self stopFakeLocationUpdates];
+}
+
+- (void)loadSettings {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    _isEnabled = [defaults boolForKey:kFakeLocationEnabledKey];
+    
+    // 读取经纬度，如果为0则使用默认值
+    _latitude = [defaults doubleForKey:kFakeLatitudeKey];
+    _longitude = [defaults doubleForKey:kFakeLongitudeKey];
+    
+    if (_latitude == 0 && _longitude == 0) {
+        _latitude = 39.9042;
+        _longitude = 116.4074;
+        [defaults setDouble:_latitude forKey:kFakeLatitudeKey];
+        [defaults setDouble:_longitude forKey:kFakeLongitudeKey];
+        [defaults synchronize];
+    }
+    
+    NSLog(@"[DDGPS] 设置已加载: 启用=%d, 纬度=%.6f, 经度=%.6f", _isEnabled, _latitude, _longitude);
+}
+
+- (void)setLocationWithLatitude:(double)lat longitude:(double)lng {
+    _latitude = lat;
+    _longitude = lng;
+    _isEnabled = YES;
+    
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setDouble:lat forKey:kFakeLatitudeKey];
+    [defaults setDouble:lng forKey:kFakeLongitudeKey];
+    [defaults setBool:YES forKey:kFakeLocationEnabledKey];
+    [defaults synchronize];
+    
+    NSLog(@"[DDGPS] 位置已设置: %.6f, %.6f", lat, lng);
+}
+
+- (CLLocation *)getCurrentFakeLocation {
+    if (self.temporarilyDisabled) {
+        return nil;
+    }
+    
+    return [[CLLocation alloc]
+        initWithCoordinate:CLLocationCoordinate2DMake(_latitude, _longitude)
+        altitude:0
+        horizontalAccuracy:5.0
+        verticalAccuracy:3.0
+        course:0.0
+        speed:0.0
+        timestamp:[NSDate date]];
+}
+
+- (void)startFakeLocationUpdatesForManager:(CLLocationManager *)manager {
+    if (![self isVirtualLocationEnabled] || _isTimerActive) {
+        return;
+    }
+    
+    NSLog(@"[DDGPS] 启动虚拟位置更新");
+    _isTimerActive = YES;
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CLLocation *fakeLocation = [self getCurrentFakeLocation];
+        if (fakeLocation && manager.delegate && [manager.delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
+            [manager.delegate locationManager:manager didUpdateLocations:@[fakeLocation]];
+        }
+    });
+    
+    _locationUpdateTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(_locationUpdateTimer,
+                             dispatch_time(DISPATCH_TIME_NOW, 1.0 * NSEC_PER_SEC),
+                             1.0 * NSEC_PER_SEC,
+                             0.1 * NSEC_PER_SEC);
+    
+    __weak typeof(self) weakSelf = self;
+    __weak typeof(manager) weakManager = manager;
+    
+    dispatch_source_set_event_handler(_locationUpdateTimer, ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        __strong typeof(weakManager) strongManager = weakManager;
+        
+        if ([strongSelf isVirtualLocationEnabled] && strongSelf.isTimerActive) {
+            CLLocation *fakeLocation = [strongSelf getCurrentFakeLocation];
+            if (fakeLocation && strongManager.delegate && [strongManager.delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
+                [strongManager.delegate locationManager:strongManager didUpdateLocations:@[fakeLocation]];
+            }
+        } else {
+            [strongSelf stopFakeLocationUpdates];
+        }
+    });
+    
+    dispatch_resume(_locationUpdateTimer);
+}
+
+- (void)stopFakeLocationUpdates {
+    if (_locationUpdateTimer) {
+        if (_isTimerActive) {
+            NSLog(@"[DDGPS] 停止虚拟位置更新");
+            dispatch_source_cancel(_locationUpdateTimer);
+        }
+        _locationUpdateTimer = nil;
+        _isTimerActive = NO;
+    }
+}
+
+- (void)enableTemporaryDisable {
+    if (!self.temporarilyDisabled) {
+        self.originalEnabledState = self.isEnabled;
+        self.temporarilyDisabled = YES;
+        NSLog(@"[DDGPS] 虚拟定位已临时禁用");
+    }
+}
+
+- (void)disableTemporaryDisable {
+    if (self.temporarilyDisabled) {
+        self.temporarilyDisabled = NO;
+        NSLog(@"[DDGPS] 虚拟定位已恢复");
+    }
+}
+
+- (BOOL)isVirtualLocationEnabled {
+    return !self.temporarilyDisabled && self.isEnabled;
+}
+
 @end
 
 // MARK: - 工具函数
@@ -327,7 +486,7 @@ static BOOL isWalletBalanceEnabled() {
 }
 
 static BOOL isFakeLocationEnabled() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:kFakeLocationEnabledKey];
+    return [[VirtualLocationManager sharedManager] isVirtualLocationEnabled];
 }
 
 static BOOL isCustomStepsEnabled() {
@@ -335,11 +494,11 @@ static BOOL isCustomStepsEnabled() {
 }
 
 static double getFakeLatitude() {
-    return [[NSUserDefaults standardUserDefaults] doubleForKey:kFakeLatitudeKey];
+    return [VirtualLocationManager sharedManager].latitude;
 }
 
 static double getFakeLongitude() {
-    return [[NSUserDefaults standardUserDefaults] doubleForKey:kFakeLongitudeKey];
+    return [VirtualLocationManager sharedManager].longitude;
 }
 
 static NSInteger getCustomStepsValue() {
@@ -374,18 +533,6 @@ static void loadAllSettings() {
     NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
     gWalletBalanceReplacement = (walletBalanceValue && walletBalanceValue.length > 0) ? walletBalanceValue : nil;
     
-    gFakeLocationEnabled = [defaults boolForKey:kFakeLocationEnabledKey];
-    gFakeLatitude = [defaults doubleForKey:kFakeLatitudeKey];
-    gFakeLongitude = [defaults doubleForKey:kFakeLongitudeKey];
-    
-    if (gFakeLatitude == 0 && gFakeLongitude == 0) {
-        gFakeLatitude = 39.9035;
-        gFakeLongitude = 116.3976;
-        [defaults setDouble:gFakeLatitude forKey:kFakeLatitudeKey];
-        [defaults setDouble:gFakeLongitude forKey:kFakeLongitudeKey];
-        [defaults synchronize];
-    }
-    
     gCustomStepsEnabled = [defaults boolForKey:kCustomStepsEnabledKey];
     NSInteger stepsValue = [defaults integerForKey:kCustomStepsValueKey];
     if (stepsValue == 0) {
@@ -401,6 +548,8 @@ static void loadAllSettings() {
         [defaults setObject:gLastStepsUpdateDate forKey:kLastStepsUpdateDateKey];
         [defaults synchronize];
     }
+    
+    [[VirtualLocationManager sharedManager] loadSettings];
 }
 
 // MARK: - 地图选择视图控制器
@@ -419,6 +568,8 @@ static void loadAllSettings() {
     self.title = @"选择位置";
     self.view.backgroundColor = [UIColor systemBackgroundColor];
     
+    [[VirtualLocationManager sharedManager] enableTemporaryDisable];
+    
     [self setupNavigationBar];
     [self setupUI];
     [self setupMap];
@@ -426,12 +577,18 @@ static void loadAllSettings() {
     self.geocoder = [[CLGeocoder alloc] init];
 }
 
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [[VirtualLocationManager sharedManager] disableTemporaryDisable];
+}
+
+- (void)dealloc {
+    [[VirtualLocationManager sharedManager] disableTemporaryDisable];
+}
+
 - (void)setupNavigationBar {
-    UIBarButtonItem *cancelButton = [[UIBarButtonItem alloc] initWithTitle:@"返回" style:UIBarButtonItemStyleDone target:self action:@selector(closeMapSelection)];
-    self.navigationItem.leftBarButtonItem = cancelButton;
-    
-    UIBarButtonItem *confirmButton = [[UIBarButtonItem alloc] initWithTitle:@"确认" style:UIBarButtonItemStyleDone target:self action:@selector(confirmMapSelection)];
-    self.navigationItem.rightBarButtonItem = confirmButton;
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"返回" style:UIBarButtonItemStyleDone target:self action:@selector(closeMapSelection)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"确认" style:UIBarButtonItemStyleDone target:self action:@selector(confirmMapSelection)];
     
     UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
     [appearance configureWithOpaqueBackground];
@@ -459,7 +616,7 @@ static void loadAllSettings() {
     
     self.searchBar = [[UISearchBar alloc] init];
     self.searchBar.delegate = self;
-    self.searchBar.placeholder = @"搜索地点或输入坐标";
+    self.searchBar.placeholder = @"搜索地点或输入坐标（格式：纬度,经度）";
     self.searchBar.searchBarStyle = UISearchBarStyleDefault;
     self.searchBar.barTintColor = [UIColor clearColor];
     self.searchBar.backgroundImage = [[UIImage alloc] init];
@@ -492,14 +649,17 @@ static void loadAllSettings() {
         [searchContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
         [searchContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
         [searchContainer.heightAnchor constraintEqualToConstant:52],
+        
         [blurView.leadingAnchor constraintEqualToAnchor:searchContainer.leadingAnchor],
         [blurView.trailingAnchor constraintEqualToAnchor:searchContainer.trailingAnchor],
         [blurView.topAnchor constraintEqualToAnchor:searchContainer.topAnchor],
         [blurView.bottomAnchor constraintEqualToAnchor:searchContainer.bottomAnchor],
+        
         [self.searchBar.leadingAnchor constraintEqualToAnchor:blurView.leadingAnchor],
         [self.searchBar.trailingAnchor constraintEqualToAnchor:blurView.trailingAnchor],
         [self.searchBar.topAnchor constraintEqualToAnchor:blurView.topAnchor],
         [self.searchBar.bottomAnchor constraintEqualToAnchor:blurView.bottomAnchor],
+        
         [hintLabel.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-12],
         [hintLabel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [hintLabel.heightAnchor constraintEqualToConstant:20]
@@ -509,7 +669,7 @@ static void loadAllSettings() {
 - (void)setupMap {
     self.mapView = [[MKMapView alloc] init];
     self.mapView.delegate = self;
-    self.mapView.showsUserLocation = YES;
+    self.mapView.showsUserLocation = NO;
     self.mapView.showsCompass = YES;
     self.mapView.showsScale = YES;
     self.mapView.pointOfInterestFilter = [MKPointOfInterestFilter filterIncludingAllCategories];
@@ -529,13 +689,14 @@ static void loadAllSettings() {
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleMapLongPress:)];
     [self.mapView addGestureRecognizer:longPress];
     
-    CLLocationCoordinate2D initialCoord = CLLocationCoordinate2DMake(getFakeLatitude(), getFakeLongitude());
+    CLLocationCoordinate2D initialCoord = CLLocationCoordinate2DMake([VirtualLocationManager sharedManager].latitude, 
+                                                                     [VirtualLocationManager sharedManager].longitude);
     MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(initialCoord, 1000, 1000);
     [self.mapView setRegion:region animated:YES];
     
     MKPointAnnotation *existingAnnotation = [[MKPointAnnotation alloc] init];
     existingAnnotation.coordinate = initialCoord;
-    existingAnnotation.title = @"当前位置";
+    existingAnnotation.title = @"虚拟位置";
     [self.mapView addAnnotation:existingAnnotation];
 }
 
@@ -544,44 +705,44 @@ static void loadAllSettings() {
 }
 
 - (void)handleMapLongPress:(UILongPressGestureRecognizer *)gesture {
-    if (gesture.state == UIGestureRecognizerStateBegan) {
-        UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-        [feedback impactOccurred];
-        
-        NSMutableArray *annotationsToRemove = [NSMutableArray array];
-        for (id<MKAnnotation> annotation in self.mapView.annotations) {
-            if ([annotation.title isEqualToString:@"选择的位置"]) {
-                [annotationsToRemove addObject:annotation];
-            }
+    if (gesture.state != UIGestureRecognizerStateBegan) return;
+    
+    UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [feedback impactOccurred];
+    
+    NSMutableArray *annotationsToRemove = [NSMutableArray array];
+    for (id<MKAnnotation> annotation in self.mapView.annotations) {
+        if ([annotation.title isEqualToString:@"选择的位置"]) {
+            [annotationsToRemove addObject:annotation];
         }
-        [self.mapView removeAnnotations:annotationsToRemove];
-        
-        CGPoint touchPoint = [gesture locationInView:self.mapView];
-        CLLocationCoordinate2D coordinate = [self.mapView convertPoint:touchPoint toCoordinateFromView:self.mapView];
-        
-        MKPointAnnotation *annotation = [[MKPointAnnotation alloc] init];
-        annotation.coordinate = coordinate;
-        annotation.title = @"选择的位置";
-        
-        CLLocation *location = [[CLLocation alloc] initWithLatitude:coordinate.latitude longitude:coordinate.longitude];
-        [self.geocoder reverseGeocodeLocation:location completionHandler:^(NSArray<CLPlacemark *> *placemarks, NSError *error) {
-            if (!error && placemarks.count > 0) {
-                CLPlacemark *placemark = placemarks.firstObject;
-                NSString *address = [self formatPlacemarkAddress:placemark];
-                annotation.subtitle = address;
-                self.searchBar.text = address;
-            } else {
-                annotation.subtitle = [NSString stringWithFormat:@"%.4f, %.4f", coordinate.latitude, coordinate.longitude];
-                self.searchBar.text = [NSString stringWithFormat:@"%.4f, %.4f", coordinate.latitude, coordinate.longitude];
-            }
-        }];
-        
-        [self.mapView addAnnotation:annotation];
-        
-        MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(coordinate, 500, 500);
-        [self.mapView setRegion:region animated:YES];
-        [self.mapView selectAnnotation:annotation animated:YES];
     }
+    [self.mapView removeAnnotations:annotationsToRemove];
+    
+    CGPoint touchPoint = [gesture locationInView:self.mapView];
+    CLLocationCoordinate2D coordinate = [self.mapView convertPoint:touchPoint toCoordinateFromView:self.mapView];
+    
+    MKPointAnnotation *annotation = [[MKPointAnnotation alloc] init];
+    annotation.coordinate = coordinate;
+    annotation.title = @"选择的位置";
+    
+    CLLocation *location = [[CLLocation alloc] initWithLatitude:coordinate.latitude longitude:coordinate.longitude];
+    [self.geocoder reverseGeocodeLocation:location completionHandler:^(NSArray<CLPlacemark *> *placemarks, NSError *error) {
+        if (!error && placemarks.count > 0) {
+            CLPlacemark *placemark = placemarks.firstObject;
+            NSString *address = [self formatPlacemarkAddress:placemark];
+            annotation.subtitle = address;
+            self.searchBar.text = address;
+        } else {
+            annotation.subtitle = [NSString stringWithFormat:@"%.6f, %.6f", coordinate.latitude, coordinate.longitude];
+            self.searchBar.text = [NSString stringWithFormat:@"%.6f, %.6f", coordinate.latitude, coordinate.longitude];
+        }
+    }];
+    
+    [self.mapView addAnnotation:annotation];
+    
+    MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(coordinate, 500, 500);
+    [self.mapView setRegion:region animated:YES];
+    [self.mapView selectAnnotation:annotation animated:YES];
 }
 
 - (NSString *)formatPlacemarkAddress:(CLPlacemark *)placemark {
@@ -611,36 +772,47 @@ static void loadAllSettings() {
         }
     }
     
-    if (selectedAnnotation) {
-        CLLocationCoordinate2D coordinate = selectedAnnotation.coordinate;
-        
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setDouble:coordinate.latitude forKey:kFakeLatitudeKey];
-        [defaults setDouble:coordinate.longitude forKey:kFakeLongitudeKey];
-        [defaults synchronize];
-        
-        UINotificationFeedbackGenerator *feedback = [[UINotificationFeedbackGenerator alloc] init];
-        [feedback notificationOccurred:UINotificationFeedbackTypeSuccess];
-        
-        if (self.completionHandler) {
-            self.completionHandler(coordinate);
-        }
-        
-        [self.navigationController dismissViewControllerAnimated:YES completion:^{
-            CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                                CFSTR("com.dd.assistant.settings_changed"),
-                                                NULL,
-                                                NULL,
-                                                YES);
-        }];
-    } else {
-        [self showAlertWithTitle:@"提示" message:@"请先在地图上选择一个位置"];
+    if (!selectedAnnotation) {
+        [self showAlertWithTitle:@"提示" message:@"请先在地图上选择一个位置" showSettingsButton:NO];
+        return;
     }
+    
+    CLLocationCoordinate2D coordinate = selectedAnnotation.coordinate;
+    
+    [[VirtualLocationManager sharedManager] setLocationWithLatitude:coordinate.latitude 
+                                                          longitude:coordinate.longitude];
+    
+    UINotificationFeedbackGenerator *feedback = [[UINotificationFeedbackGenerator alloc] init];
+    [feedback notificationOccurred:UINotificationFeedbackTypeSuccess];
+    
+    if (self.completionHandler) {
+        self.completionHandler(coordinate);
+    }
+    
+    [self.navigationController dismissViewControllerAnimated:YES completion:^{
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                            CFSTR("com.dd.assistant.settings_changed"),
+                                            NULL,
+                                            NULL,
+                                            YES);
+    }];
 }
 
-- (void)showAlertWithTitle:(NSString *)title message:(NSString *)message {
+- (void)showAlertWithTitle:(NSString *)title message:(NSString *)message showSettingsButton:(BOOL)showSettings {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    
+    if (showSettings) {
+        [alert addAction:[UIAlertAction actionWithTitle:@"去设置" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            NSURL *settingsURL = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
+            if ([[UIApplication sharedApplication] canOpenURL:settingsURL]) {
+                [[UIApplication sharedApplication] openURL:settingsURL options:@{} completionHandler:nil];
+            }
+        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    } else {
+        [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    }
+    
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -661,7 +833,7 @@ static void loadAllSettings() {
         markerView.annotation = annotation;
     }
     
-    if ([annotation.title isEqualToString:@"当前位置"]) {
+    if ([annotation.title isEqualToString:@"虚拟位置"]) {
         markerView.markerTintColor = [UIColor systemGreenColor];
         markerView.glyphImage = [UIImage systemImageNamed:@"mappin.circle.fill"];
     } else if ([annotation.title isEqualToString:@"选择的位置"]) {
@@ -675,7 +847,7 @@ static void loadAllSettings() {
 - (void)mapView:(MKMapView *)mapView annotationView:(MKAnnotationView *)view calloutAccessoryControlTapped:(UIControl *)control {
     if ([view.annotation isKindOfClass:[MKPointAnnotation class]]) {
         MKPointAnnotation *annotation = (MKPointAnnotation *)view.annotation;
-        self.searchBar.text = [NSString stringWithFormat:@"%.4f, %.4f", annotation.coordinate.latitude, annotation.coordinate.longitude];
+        self.searchBar.text = [NSString stringWithFormat:@"%.6f, %.6f", annotation.coordinate.latitude, annotation.coordinate.longitude];
         [self.searchBar becomeFirstResponder];
     }
 }
@@ -703,7 +875,7 @@ static void loadAllSettings() {
     
     [self.geocoder geocodeAddressString:searchText completionHandler:^(NSArray<CLPlacemark *> *placemarks, NSError *error) {
         if (error) {
-            [self showAlertWithTitle:@"搜索失败" message:@"未找到该地点，请尝试输入坐标格式：纬度,经度"];
+            [self showAlertWithTitle:@"搜索失败" message:@"未找到该地点，请尝试输入坐标格式：纬度,经度" showSettingsButton:NO];
             return;
         }
         
@@ -989,8 +1161,8 @@ static void loadAllSettings() {
         cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
     }
     
-    double latitude = [defaults doubleForKey:kFakeLatitudeKey];
-    double longitude = [defaults doubleForKey:kFakeLongitudeKey];
+    double latitude = [VirtualLocationManager sharedManager].latitude;
+    double longitude = [VirtualLocationManager sharedManager].longitude;
     
     UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
     content.text = @"打开地图自定义";
@@ -2133,26 +2305,6 @@ static void loadAllSettings() {
 }
 %end
 
-%hook MMLocationMgr
-- (void)locationManager:(id)arg1 didUpdateToLocation:(id)arg2 fromLocation:(id)arg3 {
-    if (isFakeLocationEnabled()) {
-        CLLocation *fakeLocation = [[CLLocation alloc] initWithLatitude:getFakeLatitude() longitude:getFakeLongitude()];
-        %orig(arg1, fakeLocation, arg3);
-    } else {
-        %orig(arg1, arg2, arg3);
-    }
-}
-
-- (void)locationManager:(id)arg1 didUpdateLocations:(NSArray *)arg2 {
-    if (isFakeLocationEnabled()) {
-        CLLocation *fakeLocation = [[CLLocation alloc] initWithLatitude:getFakeLatitude() longitude:getFakeLongitude()];
-        %orig(arg1, @[fakeLocation]);
-    } else {
-        %orig(arg1, arg2);
-    }
-}
-%end
-
 %hook WCDeviceStepObject
 - (unsigned int)m7StepCount {
     if (isCustomStepsEnabled()) {
@@ -2188,20 +2340,53 @@ static void loadAllSettings() {
 }
 %end
 
-%hook WCLocationInfo
-- (double)latitude {
-    if (isFakeLocationEnabled()) {
-        return getFakeLatitude();
+// MARK: - 新的虚拟定位Hook
+%hook CLLocationManager
+
+- (void)startUpdatingLocation {
+    if ([[VirtualLocationManager sharedManager] isVirtualLocationEnabled]) {
+        NSLog(@"[DDGPS] 拦截位置更新请求（虚拟定位启用）");
+        [[VirtualLocationManager sharedManager] startFakeLocationUpdatesForManager:self];
+    } else {
+        NSLog(@"[DDGPS] 允许真实位置更新（虚拟定位临时禁用或未启用）");
+        %orig;
+    }
+}
+
+- (void)stopUpdatingLocation {
+    [[VirtualLocationManager sharedManager] stopFakeLocationUpdates];
+    %orig;
+    NSLog(@"[DDGPS] 停止位置更新");
+}
+
+- (CLAuthorizationStatus)authorizationStatus {
+    if ([[VirtualLocationManager sharedManager] isVirtualLocationEnabled]) {
+        return kCLAuthorizationStatusAuthorizedWhenInUse;
     }
     return %orig;
 }
 
-- (double)longitude {
-    if (isFakeLocationEnabled()) {
-        return getFakeLongitude();
+%end
+
+%hook CLLocation
+
+- (CLLocationCoordinate2D)coordinate {
+    if ([[VirtualLocationManager sharedManager] isVirtualLocationEnabled]) {
+        return CLLocationCoordinate2DMake(
+            [VirtualLocationManager sharedManager].latitude,
+            [VirtualLocationManager sharedManager].longitude
+        );
     }
     return %orig;
 }
+
+- (CLLocationAccuracy)horizontalAccuracy {
+    if ([[VirtualLocationManager sharedManager] isVirtualLocationEnabled]) {
+        return 5.0;
+    }
+    return %orig;
+}
+
 %end
 
 %hook UIApplication
@@ -2306,9 +2491,14 @@ static void loadAllSettings() {
 }
 %end
 
+// MARK: - 插件初始化
 %ctor {
     @autoreleasepool {
+        NSLog(@"[DD助手] 插件已加载 v%@", PLUGIN_VERSION);
+        
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        
+        // 设置默认值
         NSDictionary *defaultValues = @{
             kGameCheatEnabledKey: @NO,
             kPreventRevokeEnabledKey: @NO,
@@ -2330,23 +2520,28 @@ static void loadAllSettings() {
             }
         }
         
-        if ([defaults doubleForKey:kFakeLatitudeKey] == 0 && [defaults doubleForKey:kFakeLongitudeKey] == 0) {
-            [defaults setDouble:39.9035 forKey:kFakeLatitudeKey];
-            [defaults setDouble:116.3976 forKey:kFakeLongitudeKey];
+        // 虚拟定位经纬度默认值
+        if ([defaults doubleForKey:kFakeLatitudeKey] == 0 && [defaults doubleForKey:kLongitudeKey] == 0) {
+            [defaults setDouble:39.9042 forKey:kFakeLatitudeKey];
+            [defaults setDouble:116.4074 forKey:kFakeLongitudeKey];
         }
         
+        // 步数默认值
         if ([defaults integerForKey:kCustomStepsValueKey] == 0) {
             [defaults setInteger:8888 forKey:kCustomStepsValueKey];
         }
         
+        // 步数最后更新日期
         if (![defaults objectForKey:kLastStepsUpdateDateKey]) {
             [defaults setObject:[NSDate date] forKey:kLastStepsUpdateDateKey];
         }
         
         [defaults synchronize];
         
+        // 加载所有设置
         loadAllSettings();
         
+        // 监听设置变化
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL,
                                         (CFNotificationCallback)loadAllSettings,
@@ -2354,10 +2549,14 @@ static void loadAllSettings() {
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
         
+        // 注册到微信插件系统
         Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
         if (pluginsMgrClass && [pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
             g_hasPluginsMgr = YES;
-            [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:PLUGIN_NAME version:PLUGIN_VERSION controller:@"DDAssistantSettingsViewController"];
+            [[objc_getClass("WCPluginsMgr") sharedInstance] 
+                registerControllerWithTitle:PLUGIN_NAME 
+                                   version:PLUGIN_VERSION 
+                               controller:@"DDAssistantSettingsViewController"];
         } else {
             g_hasPluginsMgr = NO;
         }
