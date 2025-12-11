@@ -1206,7 +1206,7 @@ static void loadAllSettings() {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return gFakeLocationEnabled ? 2 : 1;
+    return gLocationSpoofingEnabled ? 2 : 1;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -1223,8 +1223,8 @@ static void loadAllSettings() {
         
         UISwitch *switchView = [[UISwitch alloc] init];
         switchView.onTintColor = [UIColor systemBlueColor];
-        switchView.on = gFakeLocationEnabled;
-        [switchView addTarget:self action:@selector(fakeLocationEnabledChanged:) forControlEvents:UIControlEventValueChanged];
+        switchView.on = gLocationSpoofingEnabled;
+        [switchView addTarget:self action:@selector(locationSpoofingChanged:) forControlEvents:UIControlEventValueChanged];
         
         cell.accessoryView = switchView;
         return cell;
@@ -1241,7 +1241,7 @@ static void loadAllSettings() {
         
         UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
         content.text = @"打开位置自定义";
-        content.secondaryText = [NSString stringWithFormat:@"当前：%.4f, %.4f", gFakeLatitude, gFakeLongitude];
+        content.secondaryText = [NSString stringWithFormat:@"当前：%.4f, %.4f", gLatitude, gLongitude];
         content.textProperties.color = [UIColor labelColor];
         content.secondaryTextProperties.color = [UIColor secondaryLabelColor];
         cell.contentConfiguration = content;
@@ -1287,9 +1287,9 @@ static void loadAllSettings() {
     [self presentViewController:nav animated:YES completion:nil];
 }
 
-- (void)fakeLocationEnabledChanged:(UISwitch *)sender {
+- (void)locationSpoofingChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setBool:sender.isOn forKey:kFakeLocationEnabledKey];
+    [defaults setBool:sender.isOn forKey:kLocationSpoofingEnabledKey];
     [defaults synchronize];
     
     loadAllSettings();
