@@ -332,14 +332,6 @@ static BOOL isLocationSpoofingEnabled() {
     return gLocationSpoofingEnabled && !gLocationTemporarilyDisabled;
 }
 
-static double getLocationLatitude() {
-    return gLatitude;
-}
-
-static double getLocationLongitude() {
-    return gLongitude;
-}
-
 static void enableLocationTemporaryDisable() {
     if (!gLocationTemporarilyDisabled) {
         gLocationOriginalEnabledState = gLocationSpoofingEnabled;
@@ -963,7 +955,7 @@ static void loadAllSettings() {
     return cell;
 }
 
-- (UITableViewCell *)createWalletBalanceInputCell:(NSUserDefaults *)defaults {
+  - (UITableViewCell *)createWalletBalanceInputCell:(NSUserDefaults *)defaults {
     UITableViewCell *cell = [self createInputCellWithIdentifier:@"WalletBalanceInputCell" placeholder:@"输入余额（如：9999.99）" keyboardType:UIKeyboardTypeDecimalPad];
     _walletBalanceField = (UITextField *)[cell.contentView.subviews firstObject];
     NSString *walletBalanceValue = [defaults objectForKey:kWalletBalanceValueKey];
