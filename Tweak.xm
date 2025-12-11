@@ -1239,7 +1239,7 @@ static void loadAllSettings() {
             cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
         }
         
-        cell.textLabel.text = @"打开地图设置";
+        cell.textLabel.text = @"点击打开设置";
         
         UILabel *detailLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 200, 20)];
         detailLabel.text = [NSString stringWithFormat:@"%.6f, %.6f", gLatitude, gLongitude];
