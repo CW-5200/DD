@@ -1206,7 +1206,7 @@ static void loadAllSettings() {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return gLocationSpoofingEnabled ? 2 : 1;
+    return gFakeLocationEnabled ? 2 : 1;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -1223,8 +1223,8 @@ static void loadAllSettings() {
         
         UISwitch *switchView = [[UISwitch alloc] init];
         switchView.onTintColor = [UIColor systemBlueColor];
-        switchView.on = gLocationSpoofingEnabled;
-        [switchView addTarget:self action:@selector(locationSpoofingChanged:) forControlEvents:UIControlEventValueChanged];
+        switchView.on = gFakeLocationEnabled;
+        [switchView addTarget:self action:@selector(fakeLocationEnabledChanged:) forControlEvents:UIControlEventValueChanged];
         
         cell.accessoryView = switchView;
         return cell;
@@ -1239,14 +1239,12 @@ static void loadAllSettings() {
             cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
         }
         
-        cell.textLabel.text = @"打开地图自定义";
-        
-        UILabel *detailLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 200, 20)];
-        detailLabel.text = [NSString stringWithFormat:@"%.6f, %.6f", gLatitude, gLongitude];
-        detailLabel.textColor = [UIColor secondaryLabelColor];
-        detailLabel.font = [UIFont systemFontOfSize:14];
-        detailLabel.textAlignment = NSTextAlignmentRight;
-        cell.accessoryView = detailLabel;
+        UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
+        content.text = @"打开位置自定义";
+        content.secondaryText = [NSString stringWithFormat:@"当前：%.4f, %.4f", gFakeLatitude, gFakeLongitude];
+        content.textProperties.color = [UIColor labelColor];
+        content.secondaryTextProperties.color = [UIColor secondaryLabelColor];
+        cell.contentConfiguration = content;
         
         return cell;
     }
@@ -1254,6 +1252,10 @@ static void loadAllSettings() {
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     return 50.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 10.0;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -1270,12 +1272,12 @@ static void loadAllSettings() {
     
     nav.modalPresentationStyle = UIModalPresentationPageSheet;
     nav.sheetPresentationController.preferredCornerRadius = 16;
-    
     nav.sheetPresentationController.detents = @[
         [UISheetPresentationControllerDetent mediumDetent],
         [UISheetPresentationControllerDetent largeDetent]
     ];
     nav.sheetPresentationController.prefersGrabberVisible = YES;
+    nav.sheetPresentationController.prefersScrollingExpandsWhenScrolledToEdge = NO;
     
     __weak typeof(self) weakSelf = self;
     mapVC.completionHandler = ^(CLLocationCoordinate2D coordinate) {
@@ -1285,9 +1287,9 @@ static void loadAllSettings() {
     [self presentViewController:nav animated:YES completion:nil];
 }
 
-- (void)locationSpoofingChanged:(UISwitch *)sender {
+- (void)fakeLocationEnabledChanged:(UISwitch *)sender {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setBool:sender.isOn forKey:kLocationSpoofingEnabledKey];
+    [defaults setBool:sender.isOn forKey:kFakeLocationEnabledKey];
     [defaults synchronize];
     
     loadAllSettings();
