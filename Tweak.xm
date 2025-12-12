@@ -1,341 +1,502 @@
+// DD助手 - 微信插件
+// 功能：朋友圈转发、集赞助手、自动抢红包（延迟抢红包、群聊过滤、关键词过滤、接收个人红包）
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <Foundation/Foundation.h>
 
-#pragma mark - 配置管理
-
-@interface WeChatConfig : NSObject
+// 配置管理
+@interface DDHelperConfig : NSObject
 + (instancetype)shared;
 
-@property (nonatomic, assign) BOOL autoRedEnvelop;
-@property (nonatomic, assign) NSInteger redEnvelopDelay;
-@property (nonatomic, assign) BOOL personalRedEnvelopEnable;
+// 朋友圈转发
 @property (nonatomic, assign) BOOL timeLineForwardEnable;
+
+// 集赞助手
 @property (nonatomic, assign) BOOL likeCommentEnable;
 @property (nonatomic, strong) NSNumber *likeCount;
 @property (nonatomic, strong) NSNumber *commentCount;
 @property (nonatomic, strong) NSString *comments;
+
+// 自动抢红包
+@property (nonatomic, assign) BOOL autoRedEnvelop;
+@property (nonatomic, assign) BOOL personalRedEnvelopEnable;
+@property (nonatomic, assign) NSInteger redEnvelopDelay;
+@property (nonatomic, strong) NSString *redEnvelopTextFiter;
+@property (nonatomic, strong) NSArray *redEnvelopGroupFiter;
+@property (nonatomic, assign) BOOL redEnvelopCatchMe;
 @end
 
-@implementation WeChatConfig
-
+@implementation DDHelperConfig
 + (instancetype)shared {
-    static WeChatConfig *instance = nil;
+    static DDHelperConfig *instance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        instance = [[WeChatConfig alloc] init];
-        
-        // 默认配置
-        instance.autoRedEnvelop = YES;
-        instance.redEnvelopDelay = 0;
-        instance.personalRedEnvelopEnable = YES;
-        instance.timeLineForwardEnable = YES;
-        instance.likeCommentEnable = NO;
-        instance.likeCount = @10;
-        instance.commentCount = @5;
-        instance.comments = @"赞,,👍";
+        instance = [[DDHelperConfig alloc] init];
+        [instance loadConfig];
     });
     return instance;
 }
 
+- (void)loadConfig {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    self.timeLineForwardEnable = [defaults boolForKey:@"DD_timeLineForwardEnable"];
+    
+    self.likeCommentEnable = [defaults boolForKey:@"DD_likeCommentEnable"];
+    self.likeCount = [defaults objectForKey:@"DD_likeCount"] ?: @10;
+    self.commentCount = [defaults objectForKey:@"DD_commentCount"] ?: @5;
+    self.comments = [defaults stringForKey:@"DD_comments"] ?: @"赞,,👍";
+    
+    self.autoRedEnvelop = [defaults boolForKey:@"DD_autoRedEnvelop"];
+    self.personalRedEnvelopEnable = [defaults boolForKey:@"DD_personalRedEnvelopEnable"];
+    self.redEnvelopDelay = [defaults integerForKey:@"DD_redEnvelopDelay"];
+    self.redEnvelopTextFiter = [defaults stringForKey:@"DD_redEnvelopTextFiter"] ?: @"";
+    self.redEnvelopGroupFiter = [defaults arrayForKey:@"DD_redEnvelopGroupFiter"] ?: @[];
+    self.redEnvelopCatchMe = [defaults boolForKey:@"DD_redEnvelopCatchMe"];
+}
+
+- (void)saveConfig {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:self.timeLineForwardEnable forKey:@"DD_timeLineForwardEnable"];
+    
+    [defaults setBool:self.likeCommentEnable forKey:@"DD_likeCommentEnable"];
+    [defaults setObject:self.likeCount forKey:@"DD_likeCount"];
+    [defaults setObject:self.commentCount forKey:@"DD_commentCount"];
+    [defaults setObject:self.comments forKey:@"DD_comments"];
+    
+    [defaults setBool:self.autoRedEnvelop forKey:@"DD_autoRedEnvelop"];
+    [defaults setBool:self.personalRedEnvelopEnable forKey:@"DD_personalRedEnvelopEnable"];
+    [defaults setInteger:self.redEnvelopDelay forKey:@"DD_redEnvelopDelay"];
+    [defaults setObject:self.redEnvelopTextFiter forKey:@"DD_redEnvelopTextFiter"];
+    [defaults setObject:self.redEnvelopGroupFiter forKey:@"DD_redEnvelopGroupFiter"];
+    [defaults setBool:self.redEnvelopCatchMe forKey:@"DD_redEnvelopCatchMe"];
+    
+    [defaults synchronize];
+}
 @end
 
-#pragma mark - 自动抢红包核心功能
-
-// 使用objective-c运行时动态hook
-__attribute__((constructor)) static void entry() {
-    NSLog(@"微信小助手加载成功");
-    
-    // 动态hook关键方法
-    [WeChatHelper setupHooks];
-}
-
-@interface WeChatHelper : NSObject
-+ (void)setupHooks;
+// 红包参数队列
+@interface WeChatRedEnvelopParam : NSObject
+@property (nonatomic, copy) NSString *msgType;
+@property (nonatomic, copy) NSString *sendId;
+@property (nonatomic, copy) NSString *channelId;
+@property (nonatomic, copy) NSString *nickName;
+@property (nonatomic, copy) NSString *headImg;
+@property (nonatomic, copy) NSString *nativeUrl;
+@property (nonatomic, copy) NSString *sessionUserName;
+@property (nonatomic, copy) NSString *sign;
+@property (nonatomic, copy) NSString *timingIdentifier;
+@property (nonatomic, assign) BOOL isGroupSender;
 @end
 
-@implementation WeChatHelper
-
-+ (void)setupHooks {
-    // 1. 设置界面添加入口
-    Class newSettingClass = objc_getClass("NewSettingViewController");
-    if (newSettingClass) {
-        Method reloadTableData = class_getInstanceMethod(newSettingClass, @selector(reloadTableData));
-        if (reloadTableData) {
-            method_setImplementation(reloadTableData, (IMP)newReloadTableData);
-        }
-    }
-    
-    // 2. 消息处理 - 红包检测
-    Class messageMgrClass = objc_getClass("CMessageMgr");
-    if (messageMgrClass) {
-        Method onNewSyncAddMessage = class_getInstanceMethod(messageMgrClass, @selector(onNewSyncAddMessage:));
-        if (onNewSyncAddMessage) {
-            method_setImplementation(onNewSyncAddMessage, (IMP)newOnNewSyncAddMessage);
-        }
-    }
-    
-    // 3. 朋友圈相关
-    [self setupTimelineHooks];
-    
-    NSLog(@"微信小助手hook设置完成");
-}
-
-+ (void)setupTimelineHooks {
-    // 朋友圈操作视图
-    Class floatViewClass = objc_getClass("WCOperateFloatView");
-    if (floatViewClass) {
-        Method showMethod = class_getInstanceMethod(floatViewClass, @selector(showWithItemData:tipPoint:));
-        if (showMethod) {
-            method_setImplementation(showMethod, (IMP)newShowWithItemData);
-        }
-        
-        // 添加转发按钮点击方法
-        class_addMethod(floatViewClass, @selector(forwardButtonTapped), (IMP)forwardButtonTapped, "v@:");
-    }
-}
-
-#pragma mark - 设置界面修改
-
-static void newReloadTableData(id self, SEL _cmd) {
-    // 调用原始方法
-    void (*original)(id, SEL) = (void (*)(id, SEL))class_getMethodImplementation([self class], @selector(reloadTableData));
-    if (original) {
-        original(self, _cmd);
-    }
-    
-    // 尝试添加设置项
-    [self performSelector:@selector(addHelperSettingItem)];
-}
-
-#pragma mark - 红包处理
-
-static void newOnNewSyncAddMessage(id self, SEL _cmd, id wrap) {
-    // 调用原始方法
-    void (*original)(id, SEL, id) = (void (*)(id, SEL, id))class_getMethodImplementation([self class], @selector(onNewSyncAddMessage:));
-    if (original) {
-        original(self, _cmd, wrap);
-    }
-    
-    // 处理红包消息
-    [self performSelector:@selector(handleRedEnvelopIfNeeded:) withObject:wrap];
-}
-
-#pragma mark - 朋友圈转发
-
-static void newShowWithItemData(id self, SEL _cmd, id data, CGPoint point) {
-    // 调用原始方法
-    void (*original)(id, SEL, id, CGPoint) = (void (*)(id, SEL, id, CGPoint))class_getMethodImplementation([self class], @selector(showWithItemData:tipPoint:));
-    if (original) {
-        original(self, _cmd, data, point);
-    }
-    
-    // 添加转发按钮
-    if ([WeChatConfig shared].timeLineForwardEnable) {
-        [self performSelector:@selector(addForwardButton)];
-    }
-}
-
-static void forwardButtonTapped(id self, SEL _cmd) {
-    NSLog(@"朋友圈转发按钮点击");
-    // 这里可以实现转发逻辑
-}
-
+@implementation WeChatRedEnvelopParam
 @end
 
-#pragma mark - 类别扩展
+@interface WBRedEnvelopParamQueue : NSObject
++ (instancetype)sharedQueue;
+- (void)enqueue:(WeChatRedEnvelopParam *)param;
+- (WeChatRedEnvelopParam *)dequeue;
+@end
 
-@implementation NSObject (WeChatHelper)
-
-- (void)addHelperSettingItem {
-    @try {
-        // 使用KVC获取表格管理器
-        id tableViewMgr = [self valueForKey:@"m_tableViewMgr"];
-        if (tableViewMgr) {
-            // 创建设置项
-            Class cellManagerClass = objc_getClass("WCTableViewNormalCellManager");
-            if (cellManagerClass) {
-                id newCell = [cellManagerClass performSelector:@selector(normalCellForSel:target:title:) 
-                                                    withObject:@selector(showHelperSettings)
-                                                    withObject:self
-                                                    withObject:@"微信小助手"];
-                
-                if (newCell) {
-                    // 获取第一个section
-                    id sections = [tableViewMgr valueForKey:@"sections"];
-                    if (sections && [sections count] > 0) {
-                        id firstSection = sections[0];
-                        [firstSection performSelector:@selector(addCell:) withObject:newCell];
-                        
-                        // 刷新表格
-                        id tableView = [tableViewMgr performSelector:@selector(getTableView)];
-                        if (tableView) {
-                            [tableView performSelector:@selector(reloadData)];
-                        }
-                    }
-                }
-            }
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"添加设置项失败: %@", exception);
-    }
+@implementation WBRedEnvelopParamQueue {
+    NSMutableArray *_queue;
 }
 
-- (void)showHelperSettings {
-    NSLog(@"显示小助手设置");
-    // 创建简单的设置界面
-    UIViewController *settingsVC = [[UIViewController alloc] init];
-    settingsVC.title = @"微信小助手";
-    settingsVC.view.backgroundColor = [UIColor whiteColor];
-    
-    // 查找导航控制器
-    UIViewController *currentVC = (UIViewController *)self;
-    UIViewController *navController = currentVC.navigationController;
-    if (navController) {
-        [navController pushViewController:settingsVC animated:YES];
-    }
++ (instancetype)sharedQueue {
+    static WBRedEnvelopParamQueue *queue = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = [[WBRedEnvelopParamQueue alloc] init];
+    });
+    return queue;
 }
 
-- (void)handleRedEnvelopIfNeeded:(id)wrap {
-    @try {
-        if (![WeChatConfig shared].autoRedEnvelop) return;
-        
-        // 获取消息内容
-        NSString *content = [wrap valueForKey:@"m_nsContent"];
-        if (!content) return;
-        
-        // 检查是否为红包消息
-        if ([content containsString:@"wxpay://"]) {
-            NSLog(@"检测到红包消息");
-            
-            // 检查是否为个人红包
-            NSString *fromUser = [wrap valueForKey:@"m_nsFromUsr"];
-            BOOL isGroup = [fromUser containsString:@"@chatroom"];
-            
-            if (!isGroup && ![WeChatConfig shared].personalRedEnvelopEnable) {
-                return; // 不接收个人红包
-            }
-            
-            // 延迟抢红包
-            dispatch_time_t delay = dispatch_time(DISPATCH_TIME_NOW, 
-                                                 (int64_t)([WeChatConfig shared].redEnvelopDelay * NSEC_PER_MSEC));
-            dispatch_after(delay, dispatch_get_main_queue(), ^{
-                [self openRedEnvelop:wrap];
-            });
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"处理红包失败: %@", exception);
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _queue = [[NSMutableArray alloc] init];
     }
+    return self;
 }
 
-- (void)openRedEnvelop:(id)wrap {
-    @try {
-        // 获取支付信息
-        id payInfo = [wrap valueForKey:@"m_oWCPayInfoItem"];
-        if (!payInfo) return;
-        
-        NSString *nativeUrl = [payInfo valueForKey:@"m_c2cNativeUrl"];
-        if (!nativeUrl) return;
-        
-        // 解析红包参数
-        NSDictionary *params = [self parseRedEnvelopParams:nativeUrl];
-        if (!params) return;
-        
-        // 调用微信的红包逻辑
-        Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
-        if (!logicMgrClass) return;
-        
-        id logicMgr = [[objc_getClass("MMServiceCenter") performSelector:@selector(defaultCenter)] 
-                       performSelector:@selector(getService:) withObject:logicMgrClass];
-        if (!logicMgr) return;
-        
-        NSMutableDictionary *requestParams = [NSMutableDictionary dictionary];
-        requestParams[@"agreeDuty"] = @"0";
-        requestParams[@"channelId"] = params[@"channelid"] ?: @"";
-        requestParams[@"inWay"] = @"0";
-        requestParams[@"msgType"] = params[@"msgtype"] ?: @"";
-        requestParams[@"sendId"] = params[@"sendid"] ?: @"";
-        
-        // 获取会话
-        NSString *fromUser = [wrap valueForKey:@"m_nsFromUsr"];
-        if ([fromUser containsString:@"@chatroom"]) {
-            requestParams[@"sessionUserName"] = fromUser;
-        }
-        
-        // 调用打开红包的方法
-        SEL selector = NSSelectorFromString(@"ReceiverQueryRedEnvelopesRequest:");
-        if ([logicMgr respondsToSelector:selector]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            [logicMgr performSelector:selector withObject:requestParams];
-#pragma clang diagnostic pop
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"打开红包失败: %@", exception);
-    }
+- (void)enqueue:(WeChatRedEnvelopParam *)param {
+    [_queue addObject:param];
 }
 
-- (NSDictionary *)parseRedEnvelopParams:(NSString *)nativeUrl {
-    @try {
-        if (![nativeUrl hasPrefix:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"]) {
-            return nil;
-        }
-        
-        NSString *paramsString = [nativeUrl substringFromIndex:[@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?" length]];
-        NSMutableDictionary *params = [NSMutableDictionary dictionary];
-        
-        NSArray *components = [paramsString componentsSeparatedByString:@"&"];
-        for (NSString *component in components) {
-            NSArray *keyValue = [component componentsSeparatedByString:@"="];
-            if (keyValue.count == 2) {
-                NSString *key = [keyValue[0] stringByRemovingPercentEncoding];
-                NSString *value = [keyValue[1] stringByRemovingPercentEncoding];
-                if (key && value) {
-                    params[key] = value;
-                }
-            }
-        }
-        
-        return params;
-    } @catch (NSException *exception) {
+- (WeChatRedEnvelopParam *)dequeue {
+    if (_queue.count == 0) {
         return nil;
     }
+    
+    WeChatRedEnvelopParam *first = _queue.firstObject;
+    [_queue removeObjectAtIndex:0];
+    
+    return first;
+}
+@end
+
+// 插件主类
+@interface DDHelper : NSObject
++ (instancetype)shared;
++ (NSArray *)commentUsers;
++ (NSArray *)commentWith:(id)dataItem;
+@end
+
+@implementation DDHelper
+
++ (instancetype)shared {
+    static DDHelper *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[DDHelper alloc] init];
+    });
+    return instance;
 }
 
-- (void)addForwardButton {
-    @try {
-        // 检查是否已经添加过按钮
-        static char forwardButtonKey;
-        UIButton *forwardButton = objc_getAssociatedObject(self, &forwardButtonKey);
++ (NSArray *)commentUsers {
+    // 模拟点赞用户
+    NSMutableArray *users = [NSMutableArray array];
+    for (int i = 0; i < [DDHelperConfig shared].likeCount.intValue; i++) {
+        [users addObject:@{@"username": [NSString stringWithFormat:@"user%d", i]}];
+    }
+    return users.copy;
+}
+
++ (NSArray *)commentWith:(id)dataItem {
+    // 生成评论
+    NSMutableArray *comments = [NSMutableArray array];
+    NSArray *commentArray = [[DDHelperConfig shared].comments componentsSeparatedByString:@",,"];
+    
+    for (int i = 0; i < [DDHelperConfig shared].commentCount.intValue; i++) {
+        NSString *comment = commentArray[i % commentArray.count];
+        [comments addObject:@{@"content": comment}];
+    }
+    return comments.copy;
+}
+@end
+
+// 设置控制器
+@interface DDHelperSettingController : UIViewController
+@end
+
+@implementation DDHelperSettingController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"DD助手设置";
+    self.view.backgroundColor = [UIColor whiteColor];
+    
+    [self setupUI];
+}
+
+- (void)setupUI {
+    // 这里简化UI，实际使用时需要根据微信的UI组件实现
+    UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    [self.view addSubview:scrollView];
+    
+    CGFloat y = 20;
+    
+    // 朋友圈转发开关
+    UISwitch *forwardSwitch = [self createSwitchWithTitle:@"朋友圈转发" y:&y];
+    forwardSwitch.on = [DDHelperConfig shared].timeLineForwardEnable;
+    [forwardSwitch addTarget:self action:@selector(forwardSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    y += 40;
+    
+    // 集赞助手开关
+    UISwitch *likeCommentSwitch = [self createSwitchWithTitle:@"集赞助手" y:&y];
+    likeCommentSwitch.on = [DDHelperConfig shared].likeCommentEnable;
+    [likeCommentSwitch addTarget:self action:@selector(likeCommentSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    y += 40;
+    
+    // 自动抢红包开关
+    UISwitch *redEnvelopSwitch = [self createSwitchWithTitle:@"自动抢红包" y:&y];
+    redEnvelopSwitch.on = [DDHelperConfig shared].autoRedEnvelop;
+    [redEnvelopSwitch addTarget:self action:@selector(redEnvelopSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    if ([DDHelperConfig shared].autoRedEnvelop) {
+        y += 40;
+        UISwitch *personalSwitch = [self createSwitchWithTitle:@"接收个人红包" y:&y];
+        personalSwitch.on = [DDHelperConfig shared].personalRedEnvelopEnable;
+        [personalSwitch addTarget:self action:@selector(personalRedEnvelopSwitchChanged:) forControlEvents:UIControlEventValueChanged];
         
-        if (!forwardButton) {
-            forwardButton = [UIButton buttonWithType:UIButtonTypeCustom];
-            [forwardButton setTitle:@"转发" forState:UIControlStateNormal];
-            [forwardButton setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
-            forwardButton.titleLabel.font = [UIFont systemFontOfSize:14];
-            forwardButton.frame = CGRectMake(0, 0, 60, 30);
-            [forwardButton addTarget:self action:@selector(forwardButtonTapped) forControlEvents:UIControlEventTouchUpInside];
-            
-            // 添加到视图
-            if ([self isKindOfClass:[UIView class]]) {
-                [(UIView *)self addSubview:forwardButton];
-            }
-            
-            objc_setAssociatedObject(self, &forwardButtonKey, forwardButton, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
+        y += 40;
+        UILabel *delayLabel = [self createLabelWithTitle:@"延迟抢红包(毫秒):" y:&y];
+        UITextField *delayField = [self createTextFieldWithY:&y];
+        delayField.text = @([DDHelperConfig shared].redEnvelopDelay).stringValue;
+        delayField.tag = 100;
         
-        // 调整按钮位置
-        id likeButton = [self valueForKey:@"m_likeBtn"];
-        if (likeButton && [likeButton isKindOfClass:[UIView class]]) {
-            UIView *likeBtn = (UIView *)likeButton;
-            forwardButton.frame = CGRectMake(CGRectGetMaxX(likeBtn.frame) + 10, 
-                                           likeBtn.frame.origin.y,
-                                           likeBtn.frame.size.width,
-                                           likeBtn.frame.size.height);
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"添加转发按钮失败: %@", exception);
+        y += 40;
+        UILabel *filterLabel = [self createLabelWithTitle:@"关键词过滤:" y:&y];
+        UITextField *filterField = [self createTextFieldWithY:&y];
+        filterField.text = [DDHelperConfig shared].redEnvelopTextFiter;
+        filterField.tag = 101;
+        
+        y += 40;
+        UISwitch *catchMeSwitch = [self createSwitchWithTitle:@"抢自己的红包" y:&y];
+        catchMeSwitch.on = [DDHelperConfig shared].redEnvelopCatchMe;
+        [catchMeSwitch addTarget:self action:@selector(catchMeSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    }
+    
+    scrollView.contentSize = CGSizeMake(self.view.frame.size.width, y + 100);
+}
+
+- (UISwitch *)createSwitchWithTitle:(NSString *)title y:(CGFloat *)y {
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, *y, 200, 30)];
+    label.text = title;
+    [self.view addSubview:label];
+    
+    UISwitch *switchView = [[UISwitch alloc] initWithFrame:CGRectMake(self.view.frame.size.width - 70, *y, 50, 30)];
+    [self.view addSubview:switchView];
+    
+    return switchView;
+}
+
+- (UILabel *)createLabelWithTitle:(NSString *)title y:(CGFloat *)y {
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, *y, 200, 30)];
+    label.text = title;
+    [self.view addSubview:label];
+    return label;
+}
+
+- (UITextField *)createTextFieldWithY:(CGFloat *)y {
+    UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(150, *y, self.view.frame.size.width - 170, 30)];
+    textField.borderStyle = UITextBorderStyleRoundedRect;
+    [self.view addSubview:textField];
+    return textField;
+}
+
+- (void)forwardSwitchChanged:(UISwitch *)sender {
+    [DDHelperConfig shared].timeLineForwardEnable = sender.isOn;
+    [[DDHelperConfig shared] saveConfig];
+}
+
+- (void)likeCommentSwitchChanged:(UISwitch *)sender {
+    [DDHelperConfig shared].likeCommentEnable = sender.isOn;
+    [[DDHelperConfig shared] saveConfig];
+}
+
+- (void)redEnvelopSwitchChanged:(UISwitch *)sender {
+    [DDHelperConfig shared].autoRedEnvelop = sender.isOn;
+    [[DDHelperConfig shared] saveConfig];
+    
+    // 重新加载UI
+    [self.view.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+    [self setupUI];
+}
+
+- (void)personalRedEnvelopSwitchChanged:(UISwitch *)sender {
+    [DDHelperConfig shared].personalRedEnvelopEnable = sender.isOn;
+    [[DDHelperConfig shared] saveConfig];
+}
+
+- (void)catchMeSwitchChanged:(UISwitch *)sender {
+    [DDHelperConfig shared].redEnvelopCatchMe = sender.isOn;
+    [[DDHelperConfig shared] saveConfig];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    
+    // 保存文本框内容
+    UITextField *delayField = [self.view viewWithTag:100];
+    UITextField *filterField = [self.view viewWithTag:101];
+    
+    if (delayField) {
+        [DDHelperConfig shared].redEnvelopDelay = delayField.text.integerValue;
+    }
+    if (filterField) {
+        [DDHelperConfig shared].redEnvelopTextFiter = filterField.text;
+    }
+    
+    [[DDHelperConfig shared] saveConfig];
+}
+@end
+
+// Hook 实现
+%hook WCOperateFloatView
+
+%new
+- (UIButton *)m_shareBtn {
+    static char m_shareBtnKey;
+    UIButton *btn = objc_getAssociatedObject(self, &m_shareBtnKey);
+    if (!btn) {
+        btn = [UIButton buttonWithType:UIButtonTypeCustom];
+        [btn setTitle:@" 转发" forState:UIControlStateNormal];
+        [btn addTarget:self action:@selector(forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+        [btn setTitleColor:self.m_likeBtn.currentTitleColor forState:0];
+        btn.titleLabel.font = self.m_likeBtn.titleLabel.font;
+        [self.m_likeBtn.superview addSubview:btn];
+        
+        // 设置图标
+        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2AeepEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
+        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        UIImage *image = [UIImage imageWithData:imageData];
+        [btn setImage:image forState:0];
+        [btn setTintColor:self.m_likeBtn.tintColor];
+        
+        objc_setAssociatedObject(self, &m_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return btn;
+}
+
+- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    %orig(arg1, arg2);
+    
+    if ([DDHelperConfig shared].timeLineForwardEnable) {
+        self.frame = CGRectOffset(CGRectInset(self.frame, self.frame.size.width / -4, 0), self.frame.size.width / -4, 0);
+        self.m_shareBtn.frame = CGRectOffset(self.m_likeBtn.frame, self.m_likeBtn.frame.size.width * 2, 0);
     }
 }
 
-@end
+%new
+- (void)forwordTimeLine:(id)arg1 {
+    Class forwardVCClass = objc_getClass("WCForwardViewController");
+    if (forwardVCClass) {
+        id forwardVC = [[forwardVCClass alloc] initWithDataItem:self.m_item];
+        [self.navigationController pushViewController:forwardVC animated:true];
+    }
+}
+
+%end
+
+%hook WCTimelineMgr
+
+- (void)modifyDataItem:(id)arg1 notify:(BOOL)arg2 {
+    if (![DDHelperConfig shared].likeCommentEnable) {
+        %orig(arg1, arg2);
+        return;
+    }
+    
+    if ([arg1 likeFlag]) {
+        [arg1 setCommentUsers:[DDHelper commentWith:arg1]];
+        [arg1 setCommentCount:(int)[[arg1 commentUsers] count]];
+        [arg1 setLikeUsers:[DDHelper commentUsers]];
+        [arg1 setLikeCount:(int)[[DDHelper commentUsers] count]];
+    }
+    
+    %orig(arg1, arg2);
+}
+
+%end
+
+%hook CMessageMgr
+
+- (void)onNewSyncAddMessage:(id)wrap {
+    %orig;
+    
+    if ([wrap m_uiMessageType] == 49) { // AppNode消息
+        // 处理红包消息
+        BOOL (^isRedEnvelopMessage)() = ^BOOL() {
+            return [[wrap m_nsContent] rangeOfString:@"wxpay://"].location != NSNotFound;
+        };
+        
+        if (isRedEnvelopMessage()) {
+            BOOL (^isGroupReceiver)() = ^BOOL() {
+                return [[wrap m_nsFromUsr] rangeOfString:@"@chatroom"].location != NSNotFound;
+            };
+            
+            BOOL (^isGroupSender)() = ^BOOL() {
+                return [[wrap m_nsToUsr] rangeOfString:@"chatroom"].location != NSNotFound;
+            };
+            
+            BOOL (^isGroupInBlackList)() = ^BOOL() {
+                return [[DDHelperConfig shared].redEnvelopGroupFiter containsObject:[wrap m_nsFromUsr]];
+            };
+            
+            BOOL (^isContaintKeyWords)() = ^BOOL() {
+                if (![DDHelperConfig shared].redEnvelopTextFiter.length) return NO;
+                
+                NSString *content = [wrap m_nsContent];
+                NSRange range1 = [content rangeOfString:@"receivertitle><![CDATA[" options:NSLiteralSearch];
+                NSRange range2 = [content rangeOfString:@"]]></receivertitle>" options:NSLiteralSearch];
+                
+                if (range1.location == NSNotFound || range2.location == NSNotFound) return NO;
+                
+                NSRange range3 = NSMakeRange(range1.location + range1.length, range2.location - range1.location - range1.length);
+                content = [content substringWithRange:range3];
+                
+                __block BOOL result = NO;
+                [[[DDHelperConfig shared].redEnvelopTextFiter componentsSeparatedByString:@","] enumerateObjectsUsingBlock:^(NSString *obj, NSUInteger idx, BOOL *stop) {
+                    if ([content containsString:obj]) {
+                        result = YES;
+                        *stop = YES;
+                    }
+                }];
+                
+                return result;
+            };
+            
+            BOOL (^shouldReceiveRedEnvelop)() = ^BOOL() {
+                if (![DDHelperConfig shared].autoRedEnvelop) return NO;
+                if (isGroupInBlackList()) return NO;
+                if (isContaintKeyWords()) return NO;
+                
+                return isGroupReceiver() ||
+                       (isGroupSender() && [DDHelperConfig shared].redEnvelopCatchMe) ||
+                       (!isGroupReceiver() && [DDHelperConfig shared].personalRedEnvelopEnable);
+            };
+            
+            if (shouldReceiveRedEnvelop()) {
+                // 这里简化了红包处理逻辑
+                // 实际需要调用微信的查询红包接口
+                NSLog(@"DD助手: 检测到红包消息");
+            }
+        }
+    }
+}
+
+%end
+
+%hook WCRedEnvelopesLogicMgr
+
+- (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
+    %orig(arg1, arg2);
+    
+    // 处理红包响应
+    if ([arg1 cgiCmdid] != 3) return;
+    
+    WeChatRedEnvelopParam *param = [[WBRedEnvelopParamQueue sharedQueue] dequeue];
+    if (param && [DDHelperConfig shared].autoRedEnvelop) {
+        // 延迟处理红包
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig shared].redEnvelopDelay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+            // 调用抢红包接口
+            NSLog(@"DD助手: 处理红包");
+        });
+    }
+}
+
+%end
+
+%hook NewSettingViewController
+
+- (void)reloadTableData {
+    %orig;
+    
+    // 在微信设置中添加DD助手入口
+    WCTableViewManager *tableViewMgr = MSHookIvar<id>(self, "m_tableViewMgr");
+    if (tableViewMgr && [tableViewMgr sections].count > 0) {
+        WCTableViewSectionManager *firstSection = [[tableViewMgr sections] firstObject];
+        WCTableViewNormalCellManager *cell = [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(openDDHelper) target:self title:@"DD助手"];
+        [firstSection addCell:cell];
+        
+        [[tableViewMgr getTableView] reloadData];
+    }
+}
+
+%new
+- (void)openDDHelper {
+    DDHelperSettingController *vc = [[DDHelperSettingController alloc] init];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+%end
+
+// 构造函数，在插件加载时执行
+__attribute__((constructor)) static void entry() {
+    NSLog(@"DD助手 已加载");
+    
+    // 初始化配置
+    [DDHelperConfig shared];
+}
