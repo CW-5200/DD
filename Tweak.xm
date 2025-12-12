@@ -202,9 +202,10 @@
 @end
 
 // DD助手设置界面
-@interface DDHelperSettingController : UIViewController
+@interface DDHelperSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSMutableArray *sections;
+- (void)dismissSettings;
 @end
 
 // 辅助类
@@ -250,7 +251,7 @@
 }
 @end
 
-// 主逻辑实现
+// MARK: - Logos Hooks 开始
 %group Ungrouped
 
 // MARK: - 微信设置界面添加DD助手入口
@@ -562,6 +563,8 @@
     }
 }
 %end
+
+%end // 结束 %group Ungrouped
 
 // MARK: - DD助手设置界面实现
 @implementation DDHelperSettingController
