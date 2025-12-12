@@ -1,12 +1,11 @@
 //
-//  DDHelper.m
+//  DDAssistant.xm
 //  DD助手 - 微信增强插件
 //  支持iOS15.0+
 //
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
-#import <objc/message.h>
 #import <CaptainHook/CaptainHook.h>
 
 #pragma mark - 配置常量
@@ -20,75 +19,19 @@
 #define kCommentCountKey @"DDHelper_CommentCount"
 #define kCommentsKey @"DDHelper_Comments"
 
-#pragma mark - 插件管理器接口
-@interface WCPluginsMgr : NSObject
-+ (instancetype)sharedInstance;
-- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
-- (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
-@end
-
-#pragma mark - 微信类声明（简化版）
-@interface CMessageWrap : NSObject
-@property(retain, nonatomic) NSString *m_nsContent;
-@property(retain, nonatomic) NSString *m_nsFromUsr;
-@property(retain, nonatomic) NSString *m_nsToUsr;
-@property(nonatomic) int m_uiMessageType;
-@property(retain, nonatomic) id m_oWCPayInfoItem;
-@end
-
-@interface WCPayInfoItem : NSObject
-@property(retain, nonatomic) NSString *m_c2cNativeUrl;
-@end
-
-@interface CContact : NSObject
-@property(retain, nonatomic) NSString *m_nsUsrName;
-@property(retain, nonatomic) NSString *m_nsNickName;
-@property(retain, nonatomic) NSString *m_nsRemark;
-- (NSString *)getContactDisplayName;
-@end
-
-@interface CContactMgr : NSObject
-- (CContact *)getSelfContact;
-- (CContact *)getContactByName:(NSString *)name;
-@end
-
-@interface WCDataItem : NSObject
-@property(retain, nonatomic) NSMutableArray *likeUsers;
-@property(nonatomic) int likeCount;
-@property(retain, nonatomic) NSMutableArray *commentUsers;
-@property(nonatomic) int commentCount;
-@property(retain, nonatomic) NSString *username;
-@property(nonatomic) BOOL likeFlag;
-@end
-
-@interface WCUserComment : NSObject
-@property(retain, nonatomic) NSString *nickname;
-@property(retain, nonatomic) NSString *username;
-@property(retain, nonatomic) NSString *content;
-@property(nonatomic) int type; // 1:点赞 2:评论
-@end
-
-@interface WCRedEnvelopesLogicMgr : NSObject
-- (void)OpenRedEnvelopesRequest:(id)arg1;
-- (void)ReceiverQueryRedEnvelopesRequest:(id)arg1;
-@end
-
-@interface WCForwardViewController : UIViewController
-- (id)initWithDataItem:(id)arg1;
-@end
-
-@interface MMServiceCenter : NSObject
-+ (id)defaultCenter;
-- (id)getService:(Class)service;
-@end
-
-@interface UIViewController (Navigation)
-- (void)PushViewController:(UIViewController *)vc animated:(BOOL)animated;
-@end
-
-@interface WCBizUtil : NSObject
-+ (id)dictionaryWithDecodedComponets:(id)arg1 separator:(id)arg2;
-@end
+#pragma mark - 微信类声明
+CHDeclareClass(CMessageWrap);
+CHDeclareClass(CContact);
+CHDeclareClass(CContactMgr);
+CHDeclareClass(WCPayInfoItem);
+CHDeclareClass(WCDataItem);
+CHDeclareClass(WCUserComment);
+CHDeclareClass(WCRedEnvelopesLogicMgr);
+CHDeclareClass(WCOperateFloatView);
+CHDeclareClass(WCForwardViewController);
+CHDeclareClass(WCTimelineMgr);
+CHDeclareClass(MMServiceCenter);
+CHDeclareClass(UIViewController);
 
 #pragma mark - 红包参数队列
 @interface DDRedEnvelopParam : NSObject
@@ -102,6 +45,9 @@
 @property(copy, nonatomic) NSString *sign;
 @property(copy, nonatomic) NSString *timingIdentifier;
 @property(nonatomic) BOOL isGroupSender;
+@end
+
+@implementation DDRedEnvelopParam
 @end
 
 @interface DDRedEnvelopParamQueue : NSObject
@@ -139,10 +85,10 @@
 
 - (DDRedEnvelopParam *)dequeue {
     @synchronized(self) {
-    if (_queue.count == 0) return nil;
-    DDRedEnvelopParam *first = _queue.firstObject;
-    [_queue removeObjectAtIndex:0];
-    return first;
+        if (_queue.count == 0) return nil;
+        DDRedEnvelopParam *first = _queue.firstObject;
+        [_queue removeObjectAtIndex:0];
+        return first;
     }
 }
 
@@ -253,19 +199,19 @@
     
     self.sectionData = @[
         @[
-            @{@"title": @"开启自动抢红包", @"type": @"switch", @"key": kAutoGrabRedEnvelopKey, @"value": @(config.autoGrabRedEnvelop)},
-            @{@"title": @"延迟抢红包(毫秒)", @"type": @"input", @"key": kRedEnvelopDelayKey, @"value": @(config.redEnvelopDelay)},
-            @{@"title": @"抢自己的红包", @"type": @"switch", @"key": kRedEnvelopCatchSelfKey, @"value": @(config.redEnvelopCatchSelf)},
+            @{@"title": @"开启自动抢红包", @"type": @"switch", @"key": kAutoGrabRedEnvelopKey},
+            @{@"title": @"延迟抢红包(毫秒)", @"type": @"input", @"key": kRedEnvelopDelayKey},
+            @{@"title": @"抢自己的红包", @"type": @"switch", @"key": kRedEnvelopCatchSelfKey},
             @{@"title": @"群聊黑名单", @"type": @"button", @"action": @"showBlackList"}
         ],
         @[
-            @{@"title": @"开启朋友圈转发", @"type": @"switch", @"key": kTimeLineForwardKey, @"value": @(config.timeLineForward)}
+            @{@"title": @"开启朋友圈转发", @"type": @"switch", @"key": kTimeLineForwardKey}
         ],
         @[
-            @{@"title": @"开启集赞助手", @"type": @"switch", @"key": kLikeCommentHelperKey, @"value": @(config.likeCommentHelper)},
-            @{@"title": @"点赞数量", @"type": @"input", @"key": kLikeCountKey, @"value": @(config.likeCount)},
-            @{@"title": @"评论数量", @"type": @"input", @"key": kCommentCountKey, @"value": @(config.commentCount)},
-            @{@"title": @"评论内容(逗号分隔)", @"type": @"input", @"key": kCommentsKey, @"value": config.comments ?: @""}
+            @{@"title": @"开启集赞助手", @"type": @"switch", @"key": kLikeCommentHelperKey},
+            @{@"title": @"点赞数量", @"type": @"input", @"key": kLikeCountKey},
+            @{@"title": @"评论数量", @"type": @"input", @"key": kCommentCountKey},
+            @{@"title": @"评论内容(逗号分隔)", @"type": @"input", @"key": kCommentsKey}
         ]
     ];
 }
@@ -292,6 +238,7 @@
     NSDictionary *item = self.sectionData[indexPath.section][indexPath.row];
     NSString *type = item[@"type"];
     NSString *title = item[@"title"];
+    NSString *key = item[@"key"];
     
     cell.textLabel.text = title;
     cell.detailTextLabel.text = nil;
@@ -302,7 +249,6 @@
     
     if ([type isEqualToString:@"switch"]) {
         UISwitch *switchView = [[UISwitch alloc] init];
-        NSString *key = item[@"key"];
         
         if ([key isEqualToString:kAutoGrabRedEnvelopKey]) {
             switchView.on = config.autoGrabRedEnvelop;
@@ -320,9 +266,6 @@
         
         cell.accessoryView = switchView;
     } else if ([type isEqualToString:@"input"]) {
-        NSString *key = item[@"key"];
-        id value = item[@"value"];
-        
         if ([key isEqualToString:kRedEnvelopDelayKey]) {
             cell.detailTextLabel.text = [NSString stringWithFormat:@"%ld", (long)config.redEnvelopDelay];
         } else if ([key isEqualToString:kLikeCountKey]) {
@@ -446,60 +389,86 @@
 @end
 
 #pragma mark - Hook实现
-CHDeclareClass(CMessageMgr);
-CHDeclareClass(WCRedEnvelopesLogicMgr);
-CHDeclareClass(WCOperateFloatView);
-CHDeclareClass(WCTimelineMgr);
 
 #pragma mark 1. 自动抢红包功能
-CHMethod2(void, CMessageMgr, onNewSyncAddMessage, CMessageWrap *, wrap) {
-    CHSuper2(CMessageMgr, onNewSyncAddMessage, wrap);
+CHDeclareClass(CMessageMgr);
+CHDeclareClass(WCRedEnvelopesLogicMgr);
+
+CHMethod(2, void, CMessageMgr, onNewSyncAddMessage, id, arg1, id, arg2) {
+    CHSuper(2, CMessageMgr, onNewSyncAddMessage, arg1, arg2);
     
     if (![DDHelperConfig sharedConfig].autoGrabRedEnvelop) return;
     
-    // 只处理红包消息
-    if (wrap.m_uiMessageType != 49) return;
-    if (![wrap.m_nsContent containsString:@"wxpay://"]) return;
+    // 使用运行时获取属性值
+    id wrap = arg1;
     
-    // 判断是否为群聊红包
-    BOOL isGroup = [wrap.m_nsFromUsr containsString:@"@chatroom"];
+    // 获取消息类型
+    int msgType = [[wrap valueForKey:@"m_uiMessageType"] intValue];
+    if (msgType != 49) return;
+    
+    // 获取消息内容
+    NSString *content = [wrap valueForKey:@"m_nsContent"];
+    if (![content containsString:@"wxpay://"]) return;
+    
+    // 获取发送者
+    NSString *fromUsr = [wrap valueForKey:@"m_nsFromUsr"];
+    BOOL isGroup = [fromUsr containsString:@"@chatroom"];
     
     // 判断是否在黑名单中
     if (isGroup) {
         NSArray *blackList = [DDHelperConfig sharedConfig].redEnvelopBlackList;
-        if ([blackList containsObject:wrap.m_nsFromUsr]) return;
+        if ([blackList containsObject:fromUsr]) return;
     }
     
-    // 判断是否抢自己的红包
-    CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
-    CContact *selfContact = [contactMgr getSelfContact];
-    BOOL isSelf = [wrap.m_nsFromUsr isEqualToString:selfContact.m_nsUsrName];
+    // 获取支付信息
+    id payInfo = [wrap valueForKey:@"m_oWCPayInfoItem"];
+    if (!payInfo) return;
     
-    if (isSelf && ![DDHelperConfig sharedConfig].redEnvelopCatchSelf) return;
+    // 获取原生URL
+    NSString *nativeUrl = [payInfo valueForKey:@"m_c2cNativeUrl"];
+    if (!nativeUrl) return;
     
-    // 解析红包URL
-    NSString *nativeUrl = [(WCPayInfoItem *)wrap.m_oWCPayInfoItem m_c2cNativeUrl];
+    // 解析URL参数
     NSString *urlParams = [nativeUrl substringFromIndex:[@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?" length]];
+    NSArray *components = [urlParams componentsSeparatedByString:@"&"];
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
     
-    NSDictionary *params = [objc_getClass("WCBizUtil") dictionaryWithDecodedComponets:urlParams separator:@"&"];
+    for (NSString *component in components) {
+        NSArray *keyValue = [component componentsSeparatedByString:@"="];
+        if (keyValue.count == 2) {
+            NSString *key = [keyValue[0] stringByRemovingPercentEncoding];
+            NSString *value = [keyValue[1] stringByRemovingPercentEncoding];
+            if (key && value) {
+                params[key] = value;
+            }
+        }
+    }
+    
+    // 获取自身信息
+    Class contactMgrClass = objc_getClass("CContactMgr");
+    if (!contactMgrClass) return;
+    
+    id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
+    id selfContact = [contactMgr getSelfContact];
     
     // 创建红包参数
     DDRedEnvelopParam *param = [[DDRedEnvelopParam alloc] init];
-    param.msgType = [params objectForKey:@"msgtype"];
-    param.sendId = [params objectForKey:@"sendid"];
-    param.channelId = [params objectForKey:@"channelid"];
-    param.nickName = [selfContact getContactDisplayName];
-    param.headImg = [selfContact m_nsHeadImgUrl];
+    param.msgType = params[@"msgtype"];
+    param.sendId = params[@"sendid"];
+    param.channelId = params[@"channelid"];
+    param.nickName = [selfContact valueForKey:@"m_nsNickName"];
+    param.headImg = [selfContact valueForKey:@"m_nsHeadImgUrl"];
     param.nativeUrl = nativeUrl;
-    param.sessionUserName = wrap.m_nsFromUsr;
-    param.sign = [params objectForKey:@"sign"];
+    param.sessionUserName = fromUsr;
+    param.sign = params[@"sign"];
     param.isGroupSender = NO;
     
     // 添加到队列
     [[DDRedEnvelopParamQueue sharedQueue] enqueue:param];
     
     // 延迟抢红包
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig sharedConfig].redEnvelopDelay * NSEC_PER_MSEC)), 
+    NSInteger delay = [DDHelperConfig sharedConfig].redEnvelopDelay;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), 
                    dispatch_get_main_queue(), ^{
         if ([DDHelperConfig sharedConfig].autoGrabRedEnvelop) {
             NSMutableDictionary *requestParams = [@{
@@ -511,37 +480,48 @@ CHMethod2(void, CMessageMgr, onNewSyncAddMessage, CMessageWrap *, wrap) {
                 @"sendId": param.sendId
             } mutableCopy];
             
-            WCRedEnvelopesLogicMgr *logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] 
-                getService:objc_getClass("WCRedEnvelopesLogicMgr")];
-            [logicMgr ReceiverQueryRedEnvelopesRequest:requestParams];
+            Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
+            if (!logicMgrClass) return;
+            
+            id logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:logicMgrClass];
+            if ([logicMgr respondsToSelector:@selector(ReceiverQueryRedEnvelopesRequest:)]) {
+                [logicMgr ReceiverQueryRedEnvelopesRequest:requestParams];
+            }
         }
     });
 }
 
-CHMethod2(void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1, Request, id, arg2) {
-    CHSuper2(WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, arg1, Request, arg2);
+CHMethod(2, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1, Request, id, arg2) {
+    CHSuper(2, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, arg1, Request, arg2);
     
     if (![DDHelperConfig sharedConfig].autoGrabRedEnvelop) return;
     
     // 获取响应数据
-    NSData *retData = [arg1 valueForKeyPath:@"retText.buffer"];
-    NSString *retString = [[NSString alloc] initWithData:retData encoding:NSUTF8StringEncoding];
-    NSDictionary *response = [retString JSONDictionary];
+    id retText = [arg1 valueForKeyPath:@"retText.buffer"];
+    if (![retText isKindOfClass:[NSData class]]) return;
     
-    if (!response || ![response[@"timingIdentifier"] length]) return;
+    NSData *retData = (NSData *)retText;
+    NSError *error = nil;
+    id response = [NSJSONSerialization JSONObjectWithData:retData options:0 error:&error];
+    
+    if (error || ![response isKindOfClass:[NSDictionary class]]) return;
+    
+    NSDictionary *responseDict = (NSDictionary *)response;
+    if (!responseDict[@"timingIdentifier"]) return;
     
     // 从队列获取参数
     DDRedEnvelopParam *param = [[DDRedEnvelopParamQueue sharedQueue] dequeue];
     if (!param) return;
     
     // 检查红包状态
-    if ([response[@"hbStatus"] integerValue] == 4) return; // 红包已抢完
-    if ([response[@"receiveStatus"] integerValue] == 2) return; // 已抢过
+    if ([responseDict[@"hbStatus"] integerValue] == 4) return;
+    if ([responseDict[@"receiveStatus"] integerValue] == 2) return;
     
-    param.timingIdentifier = response[@"timingIdentifier"];
+    param.timingIdentifier = responseDict[@"timingIdentifier"];
     
     // 发送抢红包请求
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig sharedConfig].redEnvelopDelay * NSEC_PER_MSEC)), 
+    NSInteger delay = [DDHelperConfig sharedConfig].redEnvelopDelay;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), 
                    dispatch_get_main_queue(), ^{
         NSMutableDictionary *openParams = [@{
             @"channelId": param.channelId,
@@ -556,28 +536,40 @@ CHMethod2(void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1, R
             @"nickName": param.nickName
         } mutableCopy];
         
-        WCRedEnvelopesLogicMgr *logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] 
-            getService:objc_getClass("WCRedEnvelopesLogicMgr")];
-        [logicMgr OpenRedEnvelopesRequest:openParams];
+        Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
+        if (!logicMgrClass) return;
+        
+        id logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:logicMgrClass];
+        if ([logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
+            [logicMgr OpenRedEnvelopesRequest:openParams];
+        }
     });
 }
 
 #pragma mark 2. 朋友圈转发功能
-CHMethod2(void, WCOperateFloatView, showWithItemData, id, arg1, tipPoint, CGPoint, arg2) {
-    CHSuper2(WCOperateFloatView, showWithItemData, arg1, tipPoint, arg2);
+CHDeclareClass(WCOperateFloatView);
+
+CHMethod(2, void, WCOperateFloatView, showWithItemData, id, arg1, tipPoint, CGPoint, arg2) {
+    CHSuper(2, WCOperateFloatView, showWithItemData, arg1, tipPoint, arg2);
     
     if (![DDHelperConfig sharedConfig].timeLineForward) return;
     
-    // 获取like按钮的父视图
-    UIView *likeBtn = [self valueForKey:@"m_likeBtn"];
+    // 使用运行时获取like按钮
+    UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
     if (!likeBtn || !likeBtn.superview) return;
+    
+    // 检查是否已添加转发按钮
+    UIButton *existingBtn = objc_getAssociatedObject(self, "dd_forwardBtn");
+    if (existingBtn) {
+        [existingBtn removeFromSuperview];
+    }
     
     // 创建转发按钮
     UIButton *forwardBtn = [UIButton buttonWithType:UIButtonTypeCustom];
     [forwardBtn setTitle:@"转发" forState:UIControlStateNormal];
     [forwardBtn setTitleColor:[likeBtn titleColorForState:UIControlStateNormal] forState:UIControlStateNormal];
-    forwardBtn.titleLabel.font = [likeBtn titleLabel].font;
-    [forwardBtn addTarget:self action:@selector(dd_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+    forwardBtn.titleLabel.font = likeBtn.titleLabel.font;
+    [forwardBtn addTarget:self action:@selector(dd_forwardTimeLine) forControlEvents:UIControlEventTouchUpInside];
     
     // 设置frame
     CGRect likeFrame = likeBtn.frame;
@@ -592,13 +584,17 @@ CHMethod2(void, WCOperateFloatView, showWithItemData, id, arg1, tipPoint, CGPoin
     objc_setAssociatedObject(self, "dd_forwardBtn", forwardBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-CHMethod1(void, WCOperateFloatView, dd_forwardTimeLine, id, arg1) {
+- (void)dd_forwardTimeLine {
     // 获取朋友圈数据
-    WCDataItem *dataItem = [self valueForKey:@"m_item"];
+    id dataItem = [self valueForKey:@"m_item"];
     if (!dataItem) return;
     
     // 创建转发控制器
-    WCForwardViewController *forwardVC = [[objc_getClass("WCForwardViewController") alloc] initWithDataItem:dataItem];
+    Class forwardVCClass = objc_getClass("WCForwardViewController");
+    if (!forwardVCClass) return;
+    
+    id forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
+    if (!forwardVC) return;
     
     // 获取当前导航控制器
     UIViewController *currentVC = (UIViewController *)self;
@@ -607,31 +603,45 @@ CHMethod1(void, WCOperateFloatView, dd_forwardTimeLine, id, arg1) {
     }
     
     if ([currentVC isKindOfClass:[UINavigationController class]]) {
-        [(UINavigationController *)currentVC pushViewController:forwardVC animated:YES];
+        [currentVC pushViewController:forwardVC animated:YES];
     } else if (currentVC.navigationController) {
         [currentVC.navigationController pushViewController:forwardVC animated:YES];
     }
 }
 
 #pragma mark 3. 集赞助手功能
-CHMethod2(void, WCTimelineMgr, modifyDataItem, WCDataItem *, arg1, notify, BOOL, arg2) {
+CHDeclareClass(WCTimelineMgr);
+
+CHMethod(2, void, WCTimelineMgr, modifyDataItem, id, arg1, notify, BOOL, arg2) {
     if ([DDHelperConfig sharedConfig].likeCommentHelper) {
         [self dd_addLikeAndComments:arg1];
     }
     
-    CHSuper2(WCTimelineMgr, modifyDataItem, arg1, notify, arg2);
+    CHSuper(2, WCTimelineMgr, modifyDataItem, arg1, notify, arg2);
 }
 
-CHMethod1(void, WCTimelineMgr, dd_addLikeAndComments, WCDataItem *, dataItem) {
+- (void)dd_addLikeAndComments:(id)dataItem {
     DDHelperConfig *config = [DDHelperConfig sharedConfig];
     
-    // 获取好友列表（真实用户名）
-    CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
-    NSArray *allContacts = [contactMgr getContactList:2 contactType:0]; // 获取好友列表
+    // 获取好友列表
+    Class contactMgrClass = objc_getClass("CContactMgr");
+    if (!contactMgrClass) return;
+    
+    id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
+    
+    // 尝试获取好友列表
+    NSArray *allContacts = nil;
+    if ([contactMgr respondsToSelector:@selector(getContactList:contactType:)]) {
+        allContacts = [contactMgr getContactList:2 contactType:0];
+    }
+    
+    if (!allContacts) allContacts = @[];
     
     // 添加点赞
-    if (!dataItem.likeUsers) {
-        dataItem.likeUsers = [NSMutableArray array];
+    NSMutableArray *likeUsers = [dataItem valueForKey:@"likeUsers"];
+    if (!likeUsers) {
+        likeUsers = [NSMutableArray array];
+        [dataItem setValue:likeUsers forKey:@"likeUsers"];
     }
     
     NSInteger likeCount = config.likeCount;
@@ -640,74 +650,213 @@ CHMethod1(void, WCTimelineMgr, dd_addLikeAndComments, WCDataItem *, dataItem) {
     }
     
     for (int i = 0; i < likeCount && i < allContacts.count; i++) {
-        CContact *contact = allContacts[i];
-        WCUserComment *like = [[objc_getClass("WCUserComment") alloc] init];
-        like.type = 1; // 点赞
-        like.nickname = [contact getContactDisplayName];
-        like.username = contact.m_nsUsrName;
-        [dataItem.likeUsers addObject:like];
+        id contact = allContacts[i];
+        Class commentClass = objc_getClass("WCUserComment");
+        if (!commentClass) continue;
+        
+        id like = [[commentClass alloc] init];
+        if (!like) continue;
+        
+        [like setValue:@1 forKey:@"type"]; // 点赞
+        [like setValue:[contact valueForKey:@"m_nsNickName"] forKey:@"nickname"];
+        [like setValue:[contact valueForKey:@"m_nsUsrName"] forKey:@"username"];
+        
+        [likeUsers addObject:like];
     }
     
-    dataItem.likeCount = (int)dataItem.likeUsers.count;
-    dataItem.likeFlag = YES;
+    [dataItem setValue:@((int)likeUsers.count) forKey:@"likeCount"];
+    [dataItem setValue:@YES forKey:@"likeFlag"];
     
     // 添加评论
-    if (!dataItem.commentUsers) {
-        dataItem.commentUsers = [NSMutableArray array];
+    NSMutableArray *commentUsers = [dataItem valueForKey:@"commentUsers"];
+    if (!commentUsers) {
+        commentUsers = [NSMutableArray array];
+        [dataItem setValue:commentUsers forKey:@"commentUsers"];
     }
     
     NSInteger commentCount = config.commentCount;
     NSArray *comments = [config.comments componentsSeparatedByString:@","];
     
     for (int i = 0; i < commentCount && i < allContacts.count; i++) {
-        CContact *contact = allContacts[i];
-        WCUserComment *comment = [[objc_getClass("WCUserComment") alloc] init];
-        comment.type = 2; // 评论
-        comment.nickname = [contact getContactDisplayName];
-        comment.username = contact.m_nsUsrName;
+        id contact = allContacts[i];
+        Class commentClass = objc_getClass("WCUserComment");
+        if (!commentClass) continue;
+        
+        id comment = [[commentClass alloc] init];
+        if (!comment) continue;
+        
+        [comment setValue:@2 forKey:@"type"]; // 评论
+        [comment setValue:[contact valueForKey:@"m_nsNickName"] forKey:@"nickname"];
+        [comment setValue:[contact valueForKey:@"m_nsUsrName"] forKey:@"username"];
         
         // 随机选择评论内容
         if (comments.count > 0) {
             NSString *commentText = comments[arc4random_uniform((uint32_t)comments.count)];
-            comment.content = commentText;
+            [comment setValue:commentText forKey:@"content"];
         } else {
-            comment.content = @"赞！";
+            [comment setValue:@"赞！" forKey:@"content"];
         }
         
-        [dataItem.commentUsers addObject:comment];
+        [commentUsers addObject:comment];
     }
     
-    dataItem.commentCount = (int)dataItem.commentUsers.count;
+    [dataItem setValue:@((int)commentUsers.count) forKey:@"commentCount"];
 }
 
-#pragma mark - 注册插件
+#pragma mark - 注册插件和Hook
 CHConstructor {
     @autoreleasepool {
         // 延迟执行，确保微信初始化完成
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (NSClassFromString(@"WCPluginsMgr")) {
-                // 注册带设置页面的插件
-                [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD助手" 
-                                                                                   version:@"1.0.0" 
-                                                                               controller:@"DDHelperSettingController"];
+            // 注册插件设置界面
+            Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
+            if (pluginsMgrClass) {
+                id pluginsMgr = [pluginsMgrClass sharedInstance];
+                if (pluginsMgr && [pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
+                    [pluginsMgr registerControllerWithTitle:@"DD助手" 
+                                                   version:@"1.0.0" 
+                                               controller:@"DDHelperSettingController"];
+                }
             }
         });
         
         // Hook相关类
         CHLoadLateClass(CMessageMgr);
-        CHHook2(CMessageMgr, onNewSyncAddMessage);
+        CHHook(2, CMessageMgr, onNewSyncAddMessage, arg1, arg2);
         
         CHLoadLateClass(WCRedEnvelopesLogicMgr);
-        CHHook2(WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, Request);
+        CHHook(2, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, Request);
         
         CHLoadLateClass(WCOperateFloatView);
-        CHHook2(WCOperateFloatView, showWithItemData, tipPoint);
-        CHClassHook1(WCOperateFloatView, dd_forwardTimeLine);
+        CHHook(2, WCOperateFloatView, showWithItemData, tipPoint);
+        
+        // 为WCOperateFloatView添加转发方法
+        Class floatViewClass = objc_getClass("WCOperateFloatView");
+        if (floatViewClass) {
+            class_addMethod(floatViewClass, @selector(dd_forwardTimeLine), 
+                           (IMP)dd_forwardTimeLine, "v@:");
+        }
         
         CHLoadLateClass(WCTimelineMgr);
-        CHHook2(WCTimelineMgr, modifyDataItem, notify);
-        CHClassHook1(WCTimelineMgr, dd_addLikeAndComments);
+        CHHook(2, WCTimelineMgr, modifyDataItem, notify);
+        
+        // 为WCTimelineMgr添加集赞方法
+        Class timelineMgrClass = objc_getClass("WCTimelineMgr");
+        if (timelineMgrClass) {
+            class_addMethod(timelineMgrClass, @selector(dd_addLikeAndComments:), 
+                           (IMP)dd_addLikeAndComments, "v@:@");
+        }
     }
+}
+
+// 转发方法的C函数实现
+static void dd_forwardTimeLine(id self, SEL _cmd) {
+    // 获取朋友圈数据
+    id dataItem = [self valueForKey:@"m_item"];
+    if (!dataItem) return;
+    
+    // 创建转发控制器
+    Class forwardVCClass = objc_getClass("WCForwardViewController");
+    if (!forwardVCClass) return;
+    
+    id forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
+    if (!forwardVC) return;
+    
+    // 获取当前导航控制器
+    UIViewController *currentVC = (UIViewController *)self;
+    while (currentVC.parentViewController) {
+        currentVC = currentVC.parentViewController;
+    }
+    
+    if ([currentVC isKindOfClass:[UINavigationController class]]) {
+        [currentVC pushViewController:forwardVC animated:YES];
+    } else if (currentVC.navigationController) {
+        [currentVC.navigationController pushViewController:forwardVC animated:YES];
+    }
+}
+
+// 集赞方法的C函数实现
+static void dd_addLikeAndComments(id self, SEL _cmd, id dataItem) {
+    DDHelperConfig *config = [DDHelperConfig sharedConfig];
+    
+    // 获取好友列表
+    Class contactMgrClass = objc_getClass("CContactMgr");
+    if (!contactMgrClass) return;
+    
+    id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
+    
+    // 尝试获取好友列表
+    NSArray *allContacts = nil;
+    if ([contactMgr respondsToSelector:@selector(getContactList:contactType:)]) {
+        allContacts = [contactMgr getContactList:2 contactType:0];
+    }
+    
+    if (!allContacts) allContacts = @[];
+    
+    // 添加点赞
+    NSMutableArray *likeUsers = [dataItem valueForKey:@"likeUsers"];
+    if (!likeUsers) {
+        likeUsers = [NSMutableArray array];
+        [dataItem setValue:likeUsers forKey:@"likeUsers"];
+    }
+    
+    NSInteger likeCount = config.likeCount;
+    if (likeCount > allContacts.count) {
+        likeCount = allContacts.count;
+    }
+    
+    for (int i = 0; i < likeCount && i < allContacts.count; i++) {
+        id contact = allContacts[i];
+        Class commentClass = objc_getClass("WCUserComment");
+        if (!commentClass) continue;
+        
+        id like = [[commentClass alloc] init];
+        if (!like) continue;
+        
+        [like setValue:@1 forKey:@"type"];
+        [like setValue:[contact valueForKey:@"m_nsNickName"] forKey:@"nickname"];
+        [like setValue:[contact valueForKey:@"m_nsUsrName"] forKey:@"username"];
+        
+        [likeUsers addObject:like];
+    }
+    
+    [dataItem setValue:@((int)likeUsers.count) forKey:@"likeCount"];
+    [dataItem setValue:@YES forKey:@"likeFlag"];
+    
+    // 添加评论
+    NSMutableArray *commentUsers = [dataItem valueForKey:@"commentUsers"];
+    if (!commentUsers) {
+        commentUsers = [NSMutableArray array];
+        [dataItem setValue:commentUsers forKey:@"commentUsers"];
+    }
+    
+    NSInteger commentCount = config.commentCount;
+    NSArray *comments = [config.comments componentsSeparatedByString:@","];
+    
+    for (int i = 0; i < commentCount && i < allContacts.count; i++) {
+        id contact = allContacts[i];
+        Class commentClass = objc_getClass("WCUserComment");
+        if (!commentClass) continue;
+        
+        id comment = [[commentClass alloc] init];
+        if (!comment) continue;
+        
+        [comment setValue:@2 forKey:@"type"];
+        [comment setValue:[contact valueForKey:@"m_nsNickName"] forKey:@"nickname"];
+        [comment setValue:[contact valueForKey:@"m_nsUsrName"] forKey:@"username"];
+        
+        // 随机选择评论内容
+        if (comments.count > 0) {
+            NSString *commentText = comments[arc4random_uniform((uint32_t)comments.count)];
+            [comment setValue:commentText forKey:@"content"];
+        } else {
+            [comment setValue:@"赞！" forKey:@"content"];
+        }
+        
+        [commentUsers addObject:comment];
+    }
+    
+    [dataItem setValue:@((int)commentUsers.count) forKey:@"commentCount"];
 }
 
 #pragma mark - 插件入口
