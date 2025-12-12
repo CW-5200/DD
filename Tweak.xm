@@ -3,6 +3,11 @@
 #import <substrate.h>
 #import <objc/runtime.h>
 
+// 前向声明
+@class CMessageMgr, WCRedEnvelopesLogicMgr, WCTimelineMgr, WCOperateFloatView;
+@class CContactMgr, CContact, CMessageWrap, WCDataItem, WCUserComment;
+@class UINavigationController, UIButton, UITableView, UITableViewCell;
+
 // 配置管理器
 @interface DDHelperConfig : NSObject
 + (instancetype)shared;
@@ -108,7 +113,7 @@
 }
 @end
 
-// 微信红包参数队列
+// 微信红包参数
 @interface DDRedEnvelopParam : NSObject
 @property (nonatomic, copy) NSString *msgType;
 @property (nonatomic, copy) NSString *sendId;
@@ -125,6 +130,7 @@
 @implementation DDRedEnvelopParam
 @end
 
+// 红包参数队列
 @interface DDRedEnvelopQueue : NSObject
 + (instancetype)sharedQueue;
 - (void)enqueue:(DDRedEnvelopParam *)param;
@@ -168,6 +174,12 @@
 }
 @end
 
+// 辅助函数声明
+static void openRedEnvelopWithParam(DDRedEnvelopParam *param);
+static NSMutableArray *getRealFriends();
+static id createFakeLikeUserFromContact(id contact);
+static id createFakeCommentUserFromContact(id contact, NSString *text);
+
 // 自动抢红包功能
 %hook CMessageMgr
 
@@ -177,76 +189,91 @@
     if (![DDHelperConfig shared].autoRedEnvelop) return;
     
     // 检查是否是红包消息
-    if ([arg1 isKindOfClass:objc_getClass("CMessageWrap")]) {
-        id wrap = arg1;
-        NSInteger msgType = [[wrap valueForKey:@"m_uiMessageType"] integerValue];
-        
-        if (msgType == 49) { // App消息
-            NSString *content = [wrap valueForKey:@"m_nsContent"];
-            if ([content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao"]) {
-                // 解析红包参数
-                NSRange range = [content rangeOfString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"];
-                if (range.location != NSNotFound) {
-                    NSString *queryString = [content substringFromIndex:range.location + range.length];
-                    NSArray *components = [queryString componentsSeparatedByString:@"&"];
-                    NSMutableDictionary *params = [NSMutableDictionary dictionary];
-                    
-                    for (NSString *component in components) {
-                        NSArray *keyValue = [component componentsSeparatedByString:@"="];
-                        if (keyValue.count == 2) {
-                            params[keyValue[0]] = keyValue[1];
+    CMessageWrap *wrap = (CMessageWrap *)arg1;
+    NSInteger msgType = [wrap m_uiMessageType];
+    
+    if (msgType == 49) { // App消息
+        NSString *content = [wrap m_nsContent];
+        if (content && [content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao"]) {
+            // 解析红包参数
+            NSRange range = [content rangeOfString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"];
+            if (range.location != NSNotFound) {
+                NSString *queryString = [content substringFromIndex:range.location + range.length];
+                NSArray *components = [queryString componentsSeparatedByString:@"&"];
+                NSMutableDictionary *params = [NSMutableDictionary dictionary];
+                
+                for (NSString *component in components) {
+                    NSArray *keyValue = [component componentsSeparatedByString:@"="];
+                    if (keyValue.count == 2) {
+                        NSString *key = [keyValue[0] stringByRemovingPercentEncoding];
+                        NSString *value = [keyValue[1] stringByRemovingPercentEncoding];
+                        if (key && value) {
+                            params[key] = value;
                         }
                     }
-                    
-                    // 判断是否应该抢
-                    NSString *fromUser = [wrap valueForKey:@"m_nsFromUsr"];
-                    BOOL isGroup = [fromUser containsString:@"@chatroom"];
-                    BOOL isSelf = NO; // 需要获取自己的用户名
-                    
-                    Class contactMgrClass = objc_getClass("CContactMgr");
-                    if (contactMgrClass) {
-                        id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
+                }
+                
+                // 判断是否应该抢
+                NSString *fromUser = [wrap m_nsFromUsr];
+                BOOL isGroup = [fromUser containsString:@"@chatroom"];
+                BOOL isSelf = NO;
+                
+                // 获取自己的用户名
+                Class contactMgrClass = objc_getClass("CContactMgr");
+                if (contactMgrClass) {
+                    id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
+                    if ([contactMgr respondsToSelector:@selector(getSelfContact)]) {
                         id selfContact = [contactMgr getSelfContact];
-                        NSString *selfUserName = [selfContact valueForKey:@"m_nsUsrName"];
-                        isSelf = [fromUser isEqualToString:selfUserName];
-                    }
-                    
-                    BOOL shouldCatch = YES;
-                    if (isGroup) {
-                        // 群红包
-                        if (isSelf && ![DDHelperConfig shared].redEnvelopCatchMe) {
-                            shouldCatch = NO;
+                        if (selfContact) {
+                            NSString *selfUserName = [selfContact m_nsUsrName];
+                            isSelf = [fromUser isEqualToString:selfUserName];
                         }
-                    } else {
-                        // 个人红包
-                        shouldCatch = [DDHelperConfig shared].personalRedEnvelopEnable;
+                    }
+                }
+                
+                BOOL shouldCatch = YES;
+                if (isGroup) {
+                    // 群红包
+                    if (isSelf && ![DDHelperConfig shared].redEnvelopCatchMe) {
+                        shouldCatch = NO;
+                    }
+                } else {
+                    // 个人红包
+                    shouldCatch = [DDHelperConfig shared].personalRedEnvelopEnable;
+                }
+                
+                if (shouldCatch) {
+                    // 存储参数
+                    DDRedEnvelopParam *param = [[DDRedEnvelopParam alloc] init];
+                    param.msgType = params[@"msgtype"];
+                    param.sendId = params[@"sendid"];
+                    param.channelId = params[@"channelid"];
+                    
+                    id payInfoItem = [wrap m_oWCPayInfoItem];
+                    if (payInfoItem && [payInfoItem respondsToSelector:@selector(m_c2cNativeUrl)]) {
+                        param.nativeUrl = [payInfoItem m_c2cNativeUrl];
                     }
                     
-                    if (shouldCatch) {
-                        // 存储参数
-                        DDRedEnvelopParam *param = [[DDRedEnvelopParam alloc] init];
-                        param.msgType = params[@"msgtype"];
-                        param.sendId = params[@"sendid"];
-                        param.channelId = params[@"channelid"];
-                        param.nativeUrl = [[wrap valueForKey:@"m_oWCPayInfoItem"] valueForKey:@"m_c2cNativeUrl"];
-                        param.sign = params[@"sign"];
-                        param.sessionUserName = fromUser;
-                        param.isGroupSender = isSelf;
-                        
-                        [[DDRedEnvelopQueue sharedQueue] enqueue:param];
-                        
-                        // 延迟抢红包
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig shared].redEnvelopDelay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-                            [self openRedEnvelopWithParam:param];
-                        });
-                    }
+                    param.sign = params[@"sign"];
+                    param.sessionUserName = fromUser;
+                    param.isGroupSender = isSelf;
+                    
+                    [[DDRedEnvelopQueue sharedQueue] enqueue:param];
+                    
+                    // 延迟抢红包
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig shared].redEnvelopDelay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                        openRedEnvelopWithParam(param);
+                    });
                 }
             }
         }
     }
 }
 
-- (void)openRedEnvelopWithParam:(DDRedEnvelopParam *)param {
+%end
+
+// 打开红包的辅助函数
+static void openRedEnvelopWithParam(DDRedEnvelopParam *param) {
     if (!param) return;
     
     NSMutableDictionary *requestParams = [NSMutableDictionary dictionary];
@@ -264,13 +291,11 @@
     Class redEnvelopClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (redEnvelopClass) {
         id logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:redEnvelopClass];
-        if ([logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
+        if (logicMgr && [logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
             [logicMgr OpenRedEnvelopesRequest:requestParams];
         }
     }
 }
-
-%end
 
 %hook WCRedEnvelopesLogicMgr
 
@@ -278,22 +303,31 @@
     %orig;
     
     // 处理红包查询响应
-    NSInteger cmdId = [[arg1 valueForKey:@"cgiCmdid"] integerValue];
+    NSInteger cmdId = 0;
+    if ([arg1 respondsToSelector:@selector(cgiCmdid)]) {
+        cmdId = [arg1 cgiCmdid];
+    }
+    
     if (cmdId == 3) { // 查询红包详情响应
-        NSData *retData = [[arg1 valueForKey:@"retText"] valueForKey:@"buffer"];
-        if (retData) {
-            NSDictionary *response = [NSJSONSerialization JSONObjectWithData:retData options:0 error:nil];
-            NSString *timingIdentifier = response[@"timingIdentifier"];
-            
-            if (timingIdentifier) {
-                DDRedEnvelopParam *param = [[DDRedEnvelopQueue sharedQueue] dequeue];
-                if (param) {
-                    param.timingIdentifier = timingIdentifier;
+        SKBuiltinBuffer_t *retText = [arg1 retText];
+        if (retText && [retText respondsToSelector:@selector(buffer)]) {
+            NSData *retData = [retText buffer];
+            if (retData) {
+                NSError *error = nil;
+                NSDictionary *response = [NSJSONSerialization JSONObjectWithData:retData options:0 error:&error];
+                if (!error && [response isKindOfClass:[NSDictionary class]]) {
+                    NSString *timingIdentifier = response[@"timingIdentifier"];
                     
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig shared].redEnvelopDelay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-                        CMessageMgr *msgMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CMessageMgr")];
-                        [msgMgr openRedEnvelopWithParam:param];
-                    });
+                    if (timingIdentifier && [timingIdentifier isKindOfClass:[NSString class]]) {
+                        DDRedEnvelopParam *param = [[DDRedEnvelopQueue sharedQueue] dequeue];
+                        if (param) {
+                            param.timingIdentifier = timingIdentifier;
+                            
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig shared].redEnvelopDelay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                                openRedEnvelopWithParam(param);
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -311,7 +345,8 @@
     if (![DDHelperConfig shared].timeLineForward) return;
     
     // 添加转发按钮
-    UIButton *forwardBtn = objc_getAssociatedObject(self, @"DDForwardButton");
+    static char forwardBtnKey;
+    UIButton *forwardBtn = objc_getAssociatedObject(self, &forwardBtnKey);
     if (!forwardBtn) {
         forwardBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         [forwardBtn setTitle:@"转发" forState:UIControlStateNormal];
@@ -319,27 +354,29 @@
         forwardBtn.titleLabel.font = [UIFont systemFontOfSize:14];
         [forwardBtn addTarget:self action:@selector(dd_forwardTimeline:) forControlEvents:UIControlEventTouchUpInside];
         
-        UIView *superview = [self valueForKey:@"m_likeBtn"];
-        if ([superview isKindOfClass:[UIView class]]) {
-            [superview.superview addSubview:forwardBtn];
+        // 获取父视图
+        UIButton *likeBtn = [self m_likeBtn];
+        if (likeBtn && likeBtn.superview) {
+            [likeBtn.superview addSubview:forwardBtn];
             
             // 调整布局
-            CGRect frame = [[self valueForKey:@"m_likeBtn"] frame];
+            CGRect frame = likeBtn.frame;
             forwardBtn.frame = CGRectMake(frame.origin.x + frame.size.width * 2 + 10, frame.origin.y, frame.size.width, frame.size.height);
             
-            objc_setAssociatedObject(self, @"DDForwardButton", forwardBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(self, &forwardBtnKey, forwardBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
     forwardBtn.hidden = NO;
 }
 
+%new
 - (void)dd_forwardTimeline:(id)sender {
-    id dataItem = [self valueForKey:@"m_item"];
+    WCDataItem *dataItem = [self m_item];
     if (dataItem) {
         Class forwardVCClass = objc_getClass("WCForwardViewController");
         if (forwardVCClass) {
             id forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
-            UINavigationController *nav = [self valueForKey:@"navigationController"];
+            UINavigationController *nav = [self navigationController];
             if (nav) {
                 [nav pushViewController:forwardVC animated:YES];
             }
@@ -361,20 +398,21 @@
     %orig;
 }
 
-- (void)dd_addFakeLikeAndComment:(id)dataItem {
+%new
+- (void)dd_addFakeLikeAndComment:(WCDataItem *)dataItem {
     if (!dataItem) return;
     
     // 获取真实好友列表
-    NSMutableArray *realFriends = [self dd_getRealFriends];
+    NSMutableArray *realFriends = getRealFriends();
     
     // 设置点赞
     NSInteger likeCount = [DDHelperConfig shared].likeCount;
-    NSInteger actualLikeCount = MIN(likeCount, realFriends.count);
+    NSInteger actualLikeCount = MIN(likeCount, (NSInteger)realFriends.count);
     
-    NSMutableArray *likeUsers = [dataItem valueForKey:@"likeUsers"];
+    NSMutableArray *likeUsers = [dataItem likeUsers];
     if (!likeUsers) {
         likeUsers = [NSMutableArray array];
-        [dataItem setValue:likeUsers forKey:@"likeUsers"];
+        [dataItem setLikeUsers:likeUsers];
     }
     
     // 清空现有点赞，添加新的
@@ -382,20 +420,22 @@
     
     for (int i = 0; i < actualLikeCount; i++) {
         id contact = realFriends[i % realFriends.count];
-        id likeUser = [self dd_createFakeLikeUserFromContact:contact];
-        [likeUsers addObject:likeUser];
+        id likeUser = createFakeLikeUserFromContact(contact);
+        if (likeUser) {
+            [likeUsers addObject:likeUser];
+        }
     }
     
-    [dataItem setValue:@(actualLikeCount) forKey:@"likeCount"];
+    [dataItem setLikeCount:(int)actualLikeCount];
     
     // 设置评论
     NSInteger commentCount = [DDHelperConfig shared].commentCount;
-    NSInteger actualCommentCount = MIN(commentCount, realFriends.count);
+    NSInteger actualCommentCount = MIN(commentCount, (NSInteger)realFriends.count);
     
-    NSMutableArray *commentUsers = [dataItem valueForKey:@"commentUsers"];
+    NSMutableArray *commentUsers = [dataItem commentUsers];
     if (!commentUsers) {
         commentUsers = [NSMutableArray array];
-        [dataItem setValue:commentUsers forKey:@"commentUsers"];
+        [dataItem setCommentUsers:commentUsers];
     }
     
     // 保留真实评论，添加新的
@@ -409,18 +449,23 @@
     
     for (int i = 0; i < actualCommentCount; i++) {
         id contact = realFriends[i % realFriends.count];
-        id commentUser = [self dd_createFakeCommentUserFromContact:contact 
-                                                       commentText:comments[i % comments.count]];
-        [commentUsers addObject:commentUser];
+        NSString *commentText = comments[i % comments.count];
+        id commentUser = createFakeCommentUserFromContact(contact, commentText);
+        if (commentUser) {
+            [commentUsers addObject:commentUser];
+        }
     }
     
     // 添加回真实评论
     [commentUsers addObjectsFromArray:existingComments];
     
-    [dataItem setValue:@(commentUsers.count) forKey:@"commentCount"];
+    [dataItem setCommentCount:(int)commentUsers.count];
 }
 
-- (NSMutableArray *)dd_getRealFriends {
+%end
+
+// 辅助函数实现
+static NSMutableArray *getRealFriends() {
     NSMutableArray *friends = [NSMutableArray array];
     
     Class contactMgrClass = objc_getClass("CContactMgr");
@@ -433,8 +478,16 @@
             
             for (id contact in contactList) {
                 // 过滤公众号和自己
-                BOOL isBrand = [[contact valueForKey:@"isBrandContact"] boolValue];
-                BOOL isSelf = [[contact valueForKey:@"m_uiSex"] integerValue] == 0;
+                BOOL isBrand = NO;
+                if ([contact respondsToSelector:@selector(isBrandContact)]) {
+                    isBrand = [contact isBrandContact];
+                }
+                
+                BOOL isSelf = NO;
+                if ([contact respondsToSelector:@selector(m_uiSex)]) {
+                    NSInteger sex = [contact m_uiSex];
+                    isSelf = (sex == 0);
+                }
                 
                 if (!isBrand && !isSelf) {
                     [friends addObject:contact];
@@ -446,34 +499,40 @@
     return friends;
 }
 
-- (id)dd_createFakeLikeUserFromContact:(id)contact {
+static id createFakeLikeUserFromContact(id contact) {
     Class userCommentClass = objc_getClass("WCUserComment");
     if (!userCommentClass) return nil;
     
     id likeUser = [[userCommentClass alloc] init];
-    [likeUser setValue:[contact valueForKey:@"m_nsUsrName"] forKey:@"username"];
-    [likeUser setValue:[contact valueForKey:@"m_nsNickName"] forKey:@"nickname"];
-    [likeUser setValue:@(2) forKey:@"type"]; // 2表示点赞
-    [likeUser setValue:@([[NSDate date] timeIntervalSince1970]) forKey:@"createTime"];
+    if ([contact respondsToSelector:@selector(m_nsUsrName)]) {
+        [likeUser setUsername:[contact m_nsUsrName]];
+    }
+    if ([contact respondsToSelector:@selector(m_nsNickName)]) {
+        [likeUser setNickname:[contact m_nsNickName]];
+    }
+    [likeUser setType:2]; // 2表示点赞
+    [likeUser setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
     
     return likeUser;
 }
 
-- (id)dd_createFakeCommentUserFromContact:(id)contact commentText:(NSString *)text {
+static id createFakeCommentUserFromContact(id contact, NSString *text) {
     Class userCommentClass = objc_getClass("WCUserComment");
     if (!userCommentClass) return nil;
     
     id commentUser = [[userCommentClass alloc] init];
-    [commentUser setValue:[contact valueForKey:@"m_nsUsrName"] forKey:@"username"];
-    [commentUser setValue:[contact valueForKey:@"m_nsNickName"] forKey:@"nickname"];
-    [commentUser setValue:@(1) forKey:@"type"]; // 1表示评论
-    [commentUser setValue:text forKey:@"content"];
-    [commentUser setValue:@([[NSDate date] timeIntervalSince1970]) forKey:@"createTime"];
+    if ([contact respondsToSelector:@selector(m_nsUsrName)]) {
+        [commentUser setUsername:[contact m_nsUsrName]];
+    }
+    if ([contact respondsToSelector:@selector(m_nsNickName)]) {
+        [commentUser setNickname:[contact m_nsNickName]];
+    }
+    [commentUser setType:1]; // 1表示评论
+    [commentUser setContent:text];
+    [commentUser setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
     
     return commentUser;
 }
-
-%end
 
 // 设置界面控制器
 @interface DDHelperSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
@@ -493,6 +552,9 @@
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     [self.view addSubview:self.tableView];
+    
+    // 注册单元格
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
     
     // 设置数据
     self.settings = @[
@@ -548,6 +610,11 @@
     ];
 }
 
+- (void)viewWillLayoutSubviews {
+    [super viewWillLayoutSubviews];
+    self.tableView.frame = self.view.bounds;
+}
+
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -555,10 +622,7 @@
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"Cell"];
-    }
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
     
     NSDictionary *setting = self.settings[indexPath.row];
     NSString *type = setting[@"type"];
@@ -567,6 +631,10 @@
     
     cell.textLabel.text = title;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    
+    // 移除旧的accessoryView
+    cell.accessoryView = nil;
+    cell.detailTextLabel.text = nil;
     
     if ([type isEqualToString:@"switch"]) {
         UISwitch *switchView = [[UISwitch alloc] init];
@@ -667,10 +735,16 @@
         if (@available(iOS 15.0, *)) {
             // 注册到插件管理系统
             if (NSClassFromString(@"WCPluginsMgr")) {
+                // 使用正确的注册方法 - 带设置页面
                 [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD助手" 
                                                                                    version:@"1.0.0" 
                                                                                controller:@"DDHelperSettingController"];
+            } else {
+                // 备用方案：如果WCPluginsMgr不存在，尝试其他方式
+                NSLog(@"DD助手: WCPluginsMgr not found");
             }
+        } else {
+            NSLog(@"DD助手: Requires iOS 15.0 or later");
         }
     }
 }
