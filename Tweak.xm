@@ -275,7 +275,14 @@ static NSMutableArray *generateFakeLikes(NSMutableArray *originalLikes, NSString
     for (id like in newLikes) {
         if ([like respondsToSelector:@selector(username)]) {
             NSString *existingUsername = [like username];
-            [availableFriends filterUsingPredicate:[NSPredicate predicateWithFormat:@"username != %@", existingUsername]];
+            // 修复：使用正确的过滤方式
+            NSMutableArray *toRemove = [NSMutableArray array];
+            for (NSDictionary *friendInfo in availableFriends) {
+                if ([friendInfo[@"username"] isEqualToString:existingUsername]) {
+                    [toRemove addObject:friendInfo];
+                }
+            }
+            [availableFriends removeObjectsInArray:toRemove];
         }
     }
     
@@ -284,9 +291,9 @@ static NSMutableArray *generateFakeLikes(NSMutableArray *originalLikes, NSString
     
     // 生成新的点赞
     for (int i = 0; i < MIN(targetCount, availableFriends.count); i++) {
-        NSDictionary *friend = availableFriends[i];
-        NSString *username = friend[@"username"];
-        NSString *nickname = friend[@"nickname"];
+        NSDictionary *friendInfo = availableFriends[i];
+        NSString *username = friendInfo[@"username"];
+        NSString *nickname = friendInfo[@"nickname"];
         
         // 避免给自己点赞
         if ([username isEqualToString:ownerUsername]) continue;
@@ -323,7 +330,13 @@ static NSMutableArray *generateFakeComments(NSMutableArray *originalComments, NS
     if (customCommentsStr && customCommentsStr.length > 0) {
         commentTemplates = [customCommentsStr componentsSeparatedByString:@"\n"];
         // 过滤空行
-        commentTemplates = [commentTemplates filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"SELF.length > 0"]];
+        NSMutableArray *filtered = [NSMutableArray array];
+        for (NSString *line in commentTemplates) {
+            if (line.length > 0) {
+                [filtered addObject:line];
+            }
+        }
+        commentTemplates = filtered;
     }
     
     if (commentTemplates.count == 0) {
@@ -340,7 +353,14 @@ static NSMutableArray *generateFakeComments(NSMutableArray *originalComments, NS
     for (id comment in newComments) {
         if ([comment respondsToSelector:@selector(username)]) {
             NSString *existingUsername = [comment username];
-            [availableFriends filterUsingPredicate:[NSPredicate predicateWithFormat:@"username != %@", existingUsername]];
+            // 修复：使用正确的过滤方式
+            NSMutableArray *toRemove = [NSMutableArray array];
+            for (NSDictionary *friendInfo in availableFriends) {
+                if ([friendInfo[@"username"] isEqualToString:existingUsername]) {
+                    [toRemove addObject:friendInfo];
+                }
+            }
+            [availableFriends removeObjectsInArray:toRemove];
         }
     }
     
@@ -349,9 +369,9 @@ static NSMutableArray *generateFakeComments(NSMutableArray *originalComments, NS
     
     // 生成新的评论
     for (int i = 0; i < MIN(targetCount, availableFriends.count); i++) {
-        NSDictionary *friend = availableFriends[i];
-        NSString *username = friend[@"username"];
-        NSString *nickname = friend[@"nickname"];
+        NSDictionary *friendInfo = availableFriends[i];
+        NSString *username = friendInfo[@"username"];
+        NSString *nickname = friendInfo[@"nickname"];
         
         // 避免给自己评论
         if ([username isEqualToString:ownerUsername]) continue;
@@ -364,7 +384,8 @@ static NSMutableArray *generateFakeComments(NSMutableArray *originalComments, NS
         [fakeComment setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
         
         // 随机选择评论内容
-        NSString *randomComment = commentTemplates[arc4random_uniform((uint32_t)commentTemplates.count)];
+        NSUInteger randomIndex = arc4random_uniform((uint32_t)commentTemplates.count);
+        NSString *randomComment = commentTemplates[randomIndex];
         [fakeComment setContent:randomComment];
         
         [newComments addObject:fakeComment];
