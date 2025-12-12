@@ -1,750 +1,409 @@
-// DDHelper.xm
+// DD集赞助手.xm
+// Created by 集赞助手插件
+// 仅支持iOS 15.0+
+
 #import <UIKit/UIKit.h>
-#import <substrate.h>
 #import <objc/runtime.h>
+#import <Foundation/Foundation.h>
 
-// 前向声明
-@class CMessageMgr, WCRedEnvelopesLogicMgr, WCTimelineMgr, WCOperateFloatView;
-@class CContactMgr, CContact, CMessageWrap, WCDataItem, WCUserComment;
-@class UINavigationController, UIButton, UITableView, UITableViewCell;
-
-// 配置管理器
-@interface DDHelperConfig : NSObject
-+ (instancetype)shared;
-@property (nonatomic, assign) BOOL autoRedEnvelop;
-@property (nonatomic, assign) BOOL timeLineForward;
-@property (nonatomic, assign) BOOL likeCommentEnable;
-@property (nonatomic, assign) NSInteger redEnvelopDelay;
-@property (nonatomic, assign) BOOL redEnvelopCatchMe;
-@property (nonatomic, assign) BOOL personalRedEnvelopEnable;
-@property (nonatomic, assign) NSInteger likeCount;
-@property (nonatomic, assign) NSInteger commentCount;
-@property (nonatomic, copy) NSString *comments;
+// 微信基础类声明
+@interface CContact : NSObject
+@property(retain, nonatomic) NSString *m_nsUsrName;
+@property(retain, nonatomic) NSString *m_nsNickName;
 @end
 
-@implementation DDHelperConfig
+@interface WCUserComment : NSObject
+@property(retain, nonatomic) NSString *nickname;
+@property(retain, nonatomic) NSString *username;
+@property(retain, nonatomic) NSString *content;
+@property(retain, nonatomic) NSString *commentID;
+@property(nonatomic) int type;
+@property(nonatomic) unsigned int createTime;
+@end
+
+@interface WCDataItem : NSObject
+@property(retain, nonatomic) NSMutableArray *likeUsers;
+@property(nonatomic) int likeCount;
+@property(retain, nonatomic) NSMutableArray *commentUsers;
+@property(nonatomic) int commentCount;
+@property(nonatomic) BOOL likeFlag;
+@end
+
+@interface WCTimelineMgr : NSObject
+- (void)modifyDataItem:(WCDataItem *)arg1 notify:(BOOL)arg2;
+@end
+
+@interface CContactMgr : NSObject
+- (NSArray *)getContactList:(unsigned int)arg1 contactType:(unsigned int)arg2;
+@end
+
+@interface MMServiceCenter : NSObject
++ (id)defaultCenter;
+- (id)getService:(Class)arg1;
+@end
+
+// 插件配置管理
+@interface DDLikeAssistConfig : NSObject
++ (instancetype)shared;
+@property (nonatomic, assign) BOOL enabled;
+@property (nonatomic, assign) NSInteger likeCount;
+@property (nonatomic, assign) NSInteger commentCount;
+@property (nonatomic, strong) NSString *comments;
+@end
+
+@implementation DDLikeAssistConfig
 + (instancetype)shared {
-    static DDHelperConfig *config = nil;
+    static DDLikeAssistConfig *config = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        config = [[DDHelperConfig alloc] init];
+        config = [[DDLikeAssistConfig alloc] init];
         // 默认值
-        config.redEnvelopDelay = 0;
-        config.likeCount = 20;
-        config.commentCount = 10;
-        config.comments = @"赞,👍,真棒,好厉害";
+        config.likeCount = 10;
+        config.commentCount = 5;
+        config.comments = @"赞,,👍,,太棒了";
     });
     return config;
 }
 
-- (void)setAutoRedEnvelop:(BOOL)autoRedEnvelop {
-    [[NSUserDefaults standardUserDefaults] setBool:autoRedEnvelop forKey:@"DDHelperAutoRedEnvelop"];
+- (BOOL)enabled {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:@"DDLikeAssistEnabled"];
 }
 
-- (BOOL)autoRedEnvelop {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:@"DDHelperAutoRedEnvelop"];
-}
-
-- (void)setTimeLineForward:(BOOL)timeLineForward {
-    [[NSUserDefaults standardUserDefaults] setBool:timeLineForward forKey:@"DDHelperTimeLineForward"];
-}
-
-- (BOOL)timeLineForward {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:@"DDHelperTimeLineForward"];
-}
-
-- (void)setLikeCommentEnable:(BOOL)likeCommentEnable {
-    [[NSUserDefaults standardUserDefaults] setBool:likeCommentEnable forKey:@"DDHelperLikeCommentEnable"];
-}
-
-- (BOOL)likeCommentEnable {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:@"DDHelperLikeCommentEnable"];
-}
-
-- (void)setRedEnvelopDelay:(NSInteger)redEnvelopDelay {
-    [[NSUserDefaults standardUserDefaults] setInteger:redEnvelopDelay forKey:@"DDHelperRedEnvelopDelay"];
-}
-
-- (NSInteger)redEnvelopDelay {
-    return [[NSUserDefaults standardUserDefaults] integerForKey:@"DDHelperRedEnvelopDelay"];
-}
-
-- (void)setRedEnvelopCatchMe:(BOOL)redEnvelopCatchMe {
-    [[NSUserDefaults standardUserDefaults] setBool:redEnvelopCatchMe forKey:@"DDHelperRedEnvelopCatchMe"];
-}
-
-- (BOOL)redEnvelopCatchMe {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:@"DDHelperRedEnvelopCatchMe"];
-}
-
-- (void)setPersonalRedEnvelopEnable:(BOOL)personalRedEnvelopEnable {
-    [[NSUserDefaults standardUserDefaults] setBool:personalRedEnvelopEnable forKey:@"DDHelperPersonalRedEnvelopEnable"];
-}
-
-- (BOOL)personalRedEnvelopEnable {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:@"DDHelperPersonalRedEnvelopEnable"];
-}
-
-- (void)setLikeCount:(NSInteger)likeCount {
-    [[NSUserDefaults standardUserDefaults] setInteger:likeCount forKey:@"DDHelperLikeCount"];
+- (void)setEnabled:(BOOL)enabled {
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"DDLikeAssistEnabled"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 - (NSInteger)likeCount {
-    NSInteger count = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDHelperLikeCount"];
-    return count > 0 ? count : 20;
-}
-
-- (void)setCommentCount:(NSInteger)commentCount {
-    [[NSUserDefaults standardUserDefaults] setInteger:commentCount forKey:@"DDHelperCommentCount"];
-}
-
-- (NSInteger)commentCount {
-    NSInteger count = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDHelperCommentCount"];
+    NSInteger count = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDLikeAssistLikeCount"];
     return count > 0 ? count : 10;
 }
 
-- (void)setComments:(NSString *)comments {
-    [[NSUserDefaults standardUserDefaults] setObject:comments forKey:@"DDHelperComments"];
+- (void)setLikeCount:(NSInteger)likeCount {
+    [[NSUserDefaults standardUserDefaults] setInteger:likeCount forKey:@"DDLikeAssistLikeCount"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (NSInteger)commentCount {
+    NSInteger count = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDLikeAssistCommentCount"];
+    return count > 0 ? count : 5;
+}
+
+- (void)setCommentCount:(NSInteger)commentCount {
+    [[NSUserDefaults standardUserDefaults] setInteger:commentCount forKey:@"DDLikeAssistCommentCount"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 - (NSString *)comments {
-    NSString *str = [[NSUserDefaults standardUserDefaults] stringForKey:@"DDHelperComments"];
-    return str ?: @"赞,👍,真棒,好厉害";
+    NSString *comments = [[NSUserDefaults standardUserDefaults] stringForKey:@"DDLikeAssistComments"];
+    return comments ? comments : @"赞,,👍,,太棒了";
+}
+
+- (void)setComments:(NSString *)comments {
+    [[NSUserDefaults standardUserDefaults] setObject:comments forKey:@"DDLikeAssistComments"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 @end
 
-// 微信红包参数
-@interface DDRedEnvelopParam : NSObject
-@property (nonatomic, copy) NSString *msgType;
-@property (nonatomic, copy) NSString *sendId;
-@property (nonatomic, copy) NSString *channelId;
-@property (nonatomic, copy) NSString *nickName;
-@property (nonatomic, copy) NSString *headImg;
-@property (nonatomic, copy) NSString *nativeUrl;
-@property (nonatomic, copy) NSString *sessionUserName;
-@property (nonatomic, copy) NSString *sign;
-@property (nonatomic, copy) NSString *timingIdentifier;
-@property (nonatomic, assign) BOOL isGroupSender;
+// 集赞助手核心功能
+@interface DDLikeAssist : NSObject
++ (instancetype)shared;
+- (NSArray *)getAllFriends;
+- (NSMutableArray *)generateLikeUsers;
+- (NSMutableArray *)generateCommentUsers:(WCDataItem *)origItem;
 @end
 
-@implementation DDRedEnvelopParam
-@end
-
-// 红包参数队列
-@interface DDRedEnvelopQueue : NSObject
-+ (instancetype)sharedQueue;
-- (void)enqueue:(DDRedEnvelopParam *)param;
-- (DDRedEnvelopParam *)dequeue;
-- (BOOL)isEmpty;
-@end
-
-@implementation DDRedEnvelopQueue {
-    NSMutableArray *_queue;
-}
-
-+ (instancetype)sharedQueue {
-    static DDRedEnvelopQueue *queue = nil;
+@implementation DDLikeAssist
++ (instancetype)shared {
+    static DDLikeAssist *assist = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = [[DDRedEnvelopQueue alloc] init];
+        assist = [[DDLikeAssist alloc] init];
     });
-    return queue;
+    return assist;
 }
 
-- (instancetype)init {
-    if (self = [super init]) {
-        _queue = [NSMutableArray array];
+- (NSArray *)getAllFriends {
+    static NSArray *cachedFriends = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSMutableArray *friends = [NSMutableArray array];
+        @try {
+            CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
+            if (contactMgr) {
+                NSArray *contacts = [contactMgr getContactList:1 contactType:0];
+                for (CContact *contact in contacts) {
+                    // 过滤品牌账号和性别为0的账号（可能是公众号）
+                    if (![contact respondsToSelector:@selector(isBrandContact)] || 
+                        (![(id)contact isBrandContact] && 
+                         [contact respondsToSelector:@selector(m_uiSex)] && 
+                         ((unsigned int)[contact performSelector:@selector(m_uiSex)] != 0))) {
+                        [friends addObject:contact];
+                    }
+                }
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"DDLikeAssist: 获取好友列表失败: %@", exception);
+        }
+        cachedFriends = [friends copy];
+    });
+    return cachedFriends;
+}
+
+- (NSMutableArray *)generateLikeUsers {
+    NSMutableArray *likeUsers = [NSMutableArray array];
+    NSArray *friends = [self getAllFriends];
+    NSInteger maxCount = MIN([DDLikeAssistConfig shared].likeCount, friends.count);
+    
+    for (int i = 0; i < maxCount; i++) {
+        CContact *friend = friends[i];
+        WCUserComment *likeComment = [[objc_getClass("WCUserComment") alloc] init];
+        likeComment.username = friend.m_nsUsrName;
+        likeComment.nickname = friend.m_nsNickName;
+        likeComment.type = 2; // 点赞类型
+        likeComment.commentID = [NSString stringWithFormat:@"%d", i];
+        likeComment.createTime = (unsigned int)[[NSDate date] timeIntervalSince1970];
+        [likeUsers addObject:likeComment];
     }
-    return self;
+    
+    return likeUsers;
 }
 
-- (void)enqueue:(DDRedEnvelopParam *)param {
-    [_queue addObject:param];
-}
-
-- (DDRedEnvelopParam *)dequeue {
-    if (_queue.count == 0) return nil;
-    DDRedEnvelopParam *first = _queue.firstObject;
-    [_queue removeObjectAtIndex:0];
-    return first;
-}
-
-- (BOOL)isEmpty {
-    return _queue.count == 0;
+- (NSMutableArray *)generateCommentUsers:(WCDataItem *)origItem {
+    NSMutableArray *newComments = [NSMutableArray array];
+    NSArray *origComments = origItem.commentUsers ?: @[];
+    
+    if (origComments.count >= [DDLikeAssistConfig shared].commentCount) {
+        return [origComments mutableCopy];
+    }
+    
+    NSArray *defaultComments = [[DDLikeAssistConfig shared].comments componentsSeparatedByString:@",,"];
+    if (defaultComments.count == 0) {
+        defaultComments = @[@"赞", @"👍", @"太棒了"];
+    }
+    
+    NSArray *friends = [self getAllFriends];
+    NSInteger maxCount = MIN([DDLikeAssistConfig shared].commentCount - origComments.count, friends.count);
+    
+    for (int i = 0; i < maxCount; i++) {
+        CContact *friend = friends[i];
+        WCUserComment *newComment = [[objc_getClass("WCUserComment") alloc] init];
+        newComment.username = friend.m_nsUsrName;
+        newComment.nickname = friend.m_nsNickName;
+        newComment.type = 2; // 评论类型
+        newComment.commentID = [NSString stringWithFormat:@"%d", (int)(i + origComments.count)];
+        newComment.createTime = (unsigned int)([[NSDate date] timeIntervalSince1970] - arc4random() % 3600);
+        newComment.content = defaultComments[arc4random() % defaultComments.count];
+        [newComments addObject:newComment];
+    }
+    
+    // 添加原始评论
+    [newComments addObjectsFromArray:origComments];
+    
+    // 按时间排序
+    [newComments sortUsingComparator:^NSComparisonResult(WCUserComment *obj1, WCUserComment *obj2) {
+        return obj1.createTime < obj2.createTime ? NSOrderedAscending : NSOrderedDescending;
+    }];
+    
+    return newComments;
 }
 @end
 
-// 辅助函数声明
-static void openRedEnvelopWithParam(DDRedEnvelopParam *param);
-static NSMutableArray *getRealFriends();
-static id createFakeLikeUserFromContact(id contact);
-static id createFakeCommentUserFromContact(id contact, NSString *text);
-
-// 自动抢红包功能
-%hook CMessageMgr
-
-- (void)onNewSyncAddMessage:(id)arg1 {
-    %orig;
-    
-    if (![DDHelperConfig shared].autoRedEnvelop) return;
-    
-    // 检查是否是红包消息
-    CMessageWrap *wrap = (CMessageWrap *)arg1;
-    NSInteger msgType = [wrap m_uiMessageType];
-    
-    if (msgType == 49) { // App消息
-        NSString *content = [wrap m_nsContent];
-        if (content && [content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao"]) {
-            // 解析红包参数
-            NSRange range = [content rangeOfString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"];
-            if (range.location != NSNotFound) {
-                NSString *queryString = [content substringFromIndex:range.location + range.length];
-                NSArray *components = [queryString componentsSeparatedByString:@"&"];
-                NSMutableDictionary *params = [NSMutableDictionary dictionary];
-                
-                for (NSString *component in components) {
-                    NSArray *keyValue = [component componentsSeparatedByString:@"="];
-                    if (keyValue.count == 2) {
-                        NSString *key = [keyValue[0] stringByRemovingPercentEncoding];
-                        NSString *value = [keyValue[1] stringByRemovingPercentEncoding];
-                        if (key && value) {
-                            params[key] = value;
-                        }
-                    }
-                }
-                
-                // 判断是否应该抢
-                NSString *fromUser = [wrap m_nsFromUsr];
-                BOOL isGroup = [fromUser containsString:@"@chatroom"];
-                BOOL isSelf = NO;
-                
-                // 获取自己的用户名
-                Class contactMgrClass = objc_getClass("CContactMgr");
-                if (contactMgrClass) {
-                    id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
-                    if ([contactMgr respondsToSelector:@selector(getSelfContact)]) {
-                        id selfContact = [contactMgr getSelfContact];
-                        if (selfContact) {
-                            NSString *selfUserName = [selfContact m_nsUsrName];
-                            isSelf = [fromUser isEqualToString:selfUserName];
-                        }
-                    }
-                }
-                
-                BOOL shouldCatch = YES;
-                if (isGroup) {
-                    // 群红包
-                    if (isSelf && ![DDHelperConfig shared].redEnvelopCatchMe) {
-                        shouldCatch = NO;
-                    }
-                } else {
-                    // 个人红包
-                    shouldCatch = [DDHelperConfig shared].personalRedEnvelopEnable;
-                }
-                
-                if (shouldCatch) {
-                    // 存储参数
-                    DDRedEnvelopParam *param = [[DDRedEnvelopParam alloc] init];
-                    param.msgType = params[@"msgtype"];
-                    param.sendId = params[@"sendid"];
-                    param.channelId = params[@"channelid"];
-                    
-                    id payInfoItem = [wrap m_oWCPayInfoItem];
-                    if (payInfoItem && [payInfoItem respondsToSelector:@selector(m_c2cNativeUrl)]) {
-                        param.nativeUrl = [payInfoItem m_c2cNativeUrl];
-                    }
-                    
-                    param.sign = params[@"sign"];
-                    param.sessionUserName = fromUser;
-                    param.isGroupSender = isSelf;
-                    
-                    [[DDRedEnvelopQueue sharedQueue] enqueue:param];
-                    
-                    // 延迟抢红包
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig shared].redEnvelopDelay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-                        openRedEnvelopWithParam(param);
-                    });
-                }
-            }
-        }
-    }
-}
-
-%end
-
-// 打开红包的辅助函数
-static void openRedEnvelopWithParam(DDRedEnvelopParam *param) {
-    if (!param) return;
-    
-    NSMutableDictionary *requestParams = [NSMutableDictionary dictionary];
-    requestParams[@"agreeDuty"] = @"0";
-    requestParams[@"channelId"] = param.channelId;
-    requestParams[@"inWay"] = @"0";
-    requestParams[@"msgType"] = param.msgType;
-    requestParams[@"nativeUrl"] = param.nativeUrl;
-    requestParams[@"sendId"] = param.sendId;
-    
-    if (param.timingIdentifier) {
-        requestParams[@"timingIdentifier"] = param.timingIdentifier;
-    }
-    
-    Class redEnvelopClass = objc_getClass("WCRedEnvelopesLogicMgr");
-    if (redEnvelopClass) {
-        id logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:redEnvelopClass];
-        if (logicMgr && [logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
-            [logicMgr OpenRedEnvelopesRequest:requestParams];
-        }
-    }
-}
-
-%hook WCRedEnvelopesLogicMgr
-
-- (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
-    %orig;
-    
-    // 处理红包查询响应
-    NSInteger cmdId = 0;
-    if ([arg1 respondsToSelector:@selector(cgiCmdid)]) {
-        cmdId = [arg1 cgiCmdid];
-    }
-    
-    if (cmdId == 3) { // 查询红包详情响应
-        SKBuiltinBuffer_t *retText = [arg1 retText];
-        if (retText && [retText respondsToSelector:@selector(buffer)]) {
-            NSData *retData = [retText buffer];
-            if (retData) {
-                NSError *error = nil;
-                NSDictionary *response = [NSJSONSerialization JSONObjectWithData:retData options:0 error:&error];
-                if (!error && [response isKindOfClass:[NSDictionary class]]) {
-                    NSString *timingIdentifier = response[@"timingIdentifier"];
-                    
-                    if (timingIdentifier && [timingIdentifier isKindOfClass:[NSString class]]) {
-                        DDRedEnvelopParam *param = [[DDRedEnvelopQueue sharedQueue] dequeue];
-                        if (param) {
-                            param.timingIdentifier = timingIdentifier;
-                            
-                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([DDHelperConfig shared].redEnvelopDelay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-                                openRedEnvelopWithParam(param);
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-%end
-
-// 朋友圈转发功能
-%hook WCOperateFloatView
-
-- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    %orig;
-    
-    if (![DDHelperConfig shared].timeLineForward) return;
-    
-    // 添加转发按钮
-    static char forwardBtnKey;
-    UIButton *forwardBtn = objc_getAssociatedObject(self, &forwardBtnKey);
-    if (!forwardBtn) {
-        forwardBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-        [forwardBtn setTitle:@"转发" forState:UIControlStateNormal];
-        [forwardBtn setTitleColor:[UIColor colorWithRed:0.2 green:0.5 blue:0.8 alpha:1] forState:UIControlStateNormal];
-        forwardBtn.titleLabel.font = [UIFont systemFontOfSize:14];
-        [forwardBtn addTarget:self action:@selector(dd_forwardTimeline:) forControlEvents:UIControlEventTouchUpInside];
-        
-        // 获取父视图
-        UIButton *likeBtn = [self m_likeBtn];
-        if (likeBtn && likeBtn.superview) {
-            [likeBtn.superview addSubview:forwardBtn];
-            
-            // 调整布局
-            CGRect frame = likeBtn.frame;
-            forwardBtn.frame = CGRectMake(frame.origin.x + frame.size.width * 2 + 10, frame.origin.y, frame.size.width, frame.size.height);
-            
-            objc_setAssociatedObject(self, &forwardBtnKey, forwardBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
-    forwardBtn.hidden = NO;
-}
-
-%new
-- (void)dd_forwardTimeline:(id)sender {
-    WCDataItem *dataItem = [self m_item];
-    if (dataItem) {
-        Class forwardVCClass = objc_getClass("WCForwardViewController");
-        if (forwardVCClass) {
-            id forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
-            UINavigationController *nav = [self navigationController];
-            if (nav) {
-                [nav pushViewController:forwardVC animated:YES];
-            }
-        }
-    }
-}
-
-%end
-
-// 集赞助手功能
+// Hook WCTimelineMgr 实现集赞功能
 %hook WCTimelineMgr
 
-- (void)modifyDataItem:(id)arg1 notify:(BOOL)arg2 {
-    if ([DDHelperConfig shared].likeCommentEnable) {
-        // 修改点赞和评论数据
-        [self dd_addFakeLikeAndComment:arg1];
+- (void)modifyDataItem:(WCDataItem *)arg1 notify:(BOOL)arg2 {
+    if ([DDLikeAssistConfig shared].enabled && arg1.likeFlag) {
+        // 生成点赞用户
+        arg1.likeUsers = [[DDLikeAssist shared] generateLikeUsers];
+        arg1.likeCount = (int)arg1.likeUsers.count;
+        
+        // 生成评论用户
+        arg1.commentUsers = [[DDLikeAssist shared] generateCommentUsers:arg1];
+        arg1.commentCount = (int)arg1.commentUsers.count;
     }
     
-    %orig;
-}
-
-%new
-- (void)dd_addFakeLikeAndComment:(WCDataItem *)dataItem {
-    if (!dataItem) return;
-    
-    // 获取真实好友列表
-    NSMutableArray *realFriends = getRealFriends();
-    
-    // 设置点赞
-    NSInteger likeCount = [DDHelperConfig shared].likeCount;
-    NSInteger actualLikeCount = MIN(likeCount, (NSInteger)realFriends.count);
-    
-    NSMutableArray *likeUsers = [dataItem likeUsers];
-    if (!likeUsers) {
-        likeUsers = [NSMutableArray array];
-        [dataItem setLikeUsers:likeUsers];
-    }
-    
-    // 清空现有点赞，添加新的
-    [likeUsers removeAllObjects];
-    
-    for (int i = 0; i < actualLikeCount; i++) {
-        id contact = realFriends[i % realFriends.count];
-        id likeUser = createFakeLikeUserFromContact(contact);
-        if (likeUser) {
-            [likeUsers addObject:likeUser];
-        }
-    }
-    
-    [dataItem setLikeCount:(int)actualLikeCount];
-    
-    // 设置评论
-    NSInteger commentCount = [DDHelperConfig shared].commentCount;
-    NSInteger actualCommentCount = MIN(commentCount, (NSInteger)realFriends.count);
-    
-    NSMutableArray *commentUsers = [dataItem commentUsers];
-    if (!commentUsers) {
-        commentUsers = [NSMutableArray array];
-        [dataItem setCommentUsers:commentUsers];
-    }
-    
-    // 保留真实评论，添加新的
-    NSArray *existingComments = [commentUsers copy];
-    [commentUsers removeAllObjects];
-    
-    NSArray *comments = [[DDHelperConfig shared].comments componentsSeparatedByString:@","];
-    if (comments.count == 0) {
-        comments = @[@"赞", @"👍", @"真棒"];
-    }
-    
-    for (int i = 0; i < actualCommentCount; i++) {
-        id contact = realFriends[i % realFriends.count];
-        NSString *commentText = comments[i % comments.count];
-        id commentUser = createFakeCommentUserFromContact(contact, commentText);
-        if (commentUser) {
-            [commentUsers addObject:commentUser];
-        }
-    }
-    
-    // 添加回真实评论
-    [commentUsers addObjectsFromArray:existingComments];
-    
-    [dataItem setCommentCount:(int)commentUsers.count];
+    %orig(arg1, arg2);
 }
 
 %end
 
-// 辅助函数实现
-static NSMutableArray *getRealFriends() {
-    NSMutableArray *friends = [NSMutableArray array];
-    
-    Class contactMgrClass = objc_getClass("CContactMgr");
-    if (contactMgrClass) {
-        id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
-        
-        // 获取好友列表
-        if ([contactMgr respondsToSelector:@selector(getContactList:contactType:)]) {
-            NSArray *contactList = [contactMgr getContactList:1 contactType:0];
-            
-            for (id contact in contactList) {
-                // 过滤公众号和自己
-                BOOL isBrand = NO;
-                if ([contact respondsToSelector:@selector(isBrandContact)]) {
-                    isBrand = [contact isBrandContact];
-                }
-                
-                BOOL isSelf = NO;
-                if ([contact respondsToSelector:@selector(m_uiSex)]) {
-                    NSInteger sex = [contact m_uiSex];
-                    isSelf = (sex == 0);
-                }
-                
-                if (!isBrand && !isSelf) {
-                    [friends addObject:contact];
-                }
-            }
-        }
-    }
-    
-    return friends;
-}
-
-static id createFakeLikeUserFromContact(id contact) {
-    Class userCommentClass = objc_getClass("WCUserComment");
-    if (!userCommentClass) return nil;
-    
-    id likeUser = [[userCommentClass alloc] init];
-    if ([contact respondsToSelector:@selector(m_nsUsrName)]) {
-        [likeUser setUsername:[contact m_nsUsrName]];
-    }
-    if ([contact respondsToSelector:@selector(m_nsNickName)]) {
-        [likeUser setNickname:[contact m_nsNickName]];
-    }
-    [likeUser setType:2]; // 2表示点赞
-    [likeUser setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
-    
-    return likeUser;
-}
-
-static id createFakeCommentUserFromContact(id contact, NSString *text) {
-    Class userCommentClass = objc_getClass("WCUserComment");
-    if (!userCommentClass) return nil;
-    
-    id commentUser = [[userCommentClass alloc] init];
-    if ([contact respondsToSelector:@selector(m_nsUsrName)]) {
-        [commentUser setUsername:[contact m_nsUsrName]];
-    }
-    if ([contact respondsToSelector:@selector(m_nsNickName)]) {
-        [commentUser setNickname:[contact m_nsNickName]];
-    }
-    [commentUser setType:1]; // 1表示评论
-    [commentUser setContent:text];
-    [commentUser setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
-    
-    return commentUser;
-}
-
 // 设置界面控制器
-@interface DDHelperSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
-@property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) NSArray *settings;
+@interface DDLikeAssistSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource> {
+    UITableView *_tableView;
+}
 @end
 
-@implementation DDHelperSettingController
+@implementation DDLikeAssistSettingController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"DD助手设置";
-    self.view.backgroundColor = [UIColor whiteColor];
+    self.title = @"DD集赞助手";
+    self.view.backgroundColor = [UIColor colorWithRed:0.95 green:0.95 blue:0.95 alpha:1.0];
     
     // 创建表格
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    [self.view addSubview:self.tableView];
-    
-    // 注册单元格
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
-    
-    // 设置数据
-    self.settings = @[
-        @{
-            @"title": @"自动抢红包",
-            @"type": @"switch",
-            @"key": @"DDHelperAutoRedEnvelop"
-        },
-        @{
-            @"title": @"抢红包延迟(毫秒)",
-            @"type": @"input",
-            @"key": @"DDHelperRedEnvelopDelay",
-            @"valueType": @"number"
-        },
-        @{
-            @"title": @"抢自己的红包",
-            @"type": @"switch",
-            @"key": @"DDHelperRedEnvelopCatchMe"
-        },
-        @{
-            @"title": @"抢个人红包",
-            @"type": @"switch",
-            @"key": @"DDHelperPersonalRedEnvelopEnable"
-        },
-        @{
-            @"title": @"朋友圈转发",
-            @"type": @"switch",
-            @"key": @"DDHelperTimeLineForward"
-        },
-        @{
-            @"title": @"集赞助手",
-            @"type": @"switch",
-            @"key": @"DDHelperLikeCommentEnable"
-        },
-        @{
-            @"title": @"点赞数量",
-            @"type": @"input",
-            @"key": @"DDHelperLikeCount",
-            @"valueType": @"number"
-        },
-        @{
-            @"title": @"评论数量",
-            @"type": @"input",
-            @"key": @"DDHelperCommentCount",
-            @"valueType": @"number"
-        },
-        @{
-            @"title": @"评论内容(用逗号分隔)",
-            @"type": @"input",
-            @"key": @"DDHelperComments",
-            @"valueType": @"text"
-        }
-    ];
+    _tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    _tableView.delegate = self;
+    _tableView.dataSource = self;
+    _tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:_tableView];
 }
 
-- (void)viewWillLayoutSubviews {
-    [super viewWillLayoutSubviews];
-    self.tableView.frame = self.view.bounds;
-}
+#pragma mark - Table view data source
 
-#pragma mark - UITableViewDataSource
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 3;
+}
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.settings.count;
+    switch (section) {
+        case 0: return 1; // 开关
+        case 1: return 2; // 点赞数、评论数
+        case 2: return 1; // 评论内容
+        default: return 0;
+    }
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    switch (section) {
+        case 0: return @"功能开关";
+        case 1: return @"数量设置";
+        case 2: return @"评论内容";
+        default: return @"";
+    }
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 2) {
+        return @"多个评论用英文双逗号分隔，例如：赞,,👍,,太棒了";
+    }
+    return nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
+    static NSString *cellIdentifier = @"Cell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cellIdentifier];
+    }
     
-    NSDictionary *setting = self.settings[indexPath.row];
-    NSString *type = setting[@"type"];
-    NSString *title = setting[@"title"];
-    NSString *key = setting[@"key"];
+    DDLikeAssistConfig *config = [DDLikeAssistConfig shared];
     
-    cell.textLabel.text = title;
-    cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    
-    // 移除旧的accessoryView
-    cell.accessoryView = nil;
-    cell.detailTextLabel.text = nil;
-    
-    if ([type isEqualToString:@"switch"]) {
+    if (indexPath.section == 0) {
+        // 开关
+        cell.textLabel.text = @"启用集赞助手";
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        
         UISwitch *switchView = [[UISwitch alloc] init];
-        BOOL isOn = [[NSUserDefaults standardUserDefaults] boolForKey:key];
-        switchView.on = isOn;
+        switchView.on = config.enabled;
         [switchView addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
-        switchView.tag = indexPath.row;
         cell.accessoryView = switchView;
-    } else if ([type isEqualToString:@"input"]) {
+    } else if (indexPath.section == 1) {
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         
-        // 显示当前值
-        NSString *valueType = setting[@"valueType"];
-        if ([valueType isEqualToString:@"number"]) {
-            NSInteger value = [[NSUserDefaults standardUserDefaults] integerForKey:key];
-            if (value == 0) {
-                if ([key isEqualToString:@"DDHelperLikeCount"]) value = 20;
-                else if ([key isEqualToString:@"DDHelperCommentCount"]) value = 10;
-            }
-            cell.detailTextLabel.text = [NSString stringWithFormat:@"%ld", (long)value];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"点赞数量";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%ld", (long)config.likeCount];
         } else {
-            NSString *value = [[NSUserDefaults standardUserDefaults] stringForKey:key];
-            if (!value) {
-                value = @"赞,👍,真棒,好厉害";
-            }
-            cell.detailTextLabel.text = value;
+            cell.textLabel.text = @"评论数量";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%ld", (long)config.commentCount];
         }
+    } else if (indexPath.section == 2) {
+        cell.textLabel.text = @"评论内容";
+        cell.detailTextLabel.text = config.comments.length > 20 ? 
+            [[config.comments substringToIndex:20] stringByAppendingString:@"..."] : config.comments;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     
     return cell;
 }
 
-#pragma mark - UITableViewDelegate
-
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    NSDictionary *setting = self.settings[indexPath.row];
-    NSString *type = setting[@"type"];
+    DDLikeAssistConfig *config = [DDLikeAssistConfig shared];
     
-    if ([type isEqualToString:@"input"]) {
-        NSString *title = setting[@"title"];
-        NSString *key = setting[@"key"];
-        NSString *valueType = setting[@"valueType"];
+    if (indexPath.section == 1) {
+        // 数量设置
+        NSString *title = indexPath.row == 0 ? @"设置点赞数量" : @"设置评论数量";
+        NSInteger currentValue = indexPath.row == 0 ? config.likeCount : config.commentCount;
         
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
-                                                                       message:@"请输入新值"
+                                                                       message:@"请输入数量"
                                                                 preferredStyle:UIAlertControllerStyleAlert];
         
         [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-            if ([valueType isEqualToString:@"number"]) {
-                NSInteger value = [[NSUserDefaults standardUserDefaults] integerForKey:key];
-                if (value == 0) {
-                    if ([key isEqualToString:@"DDHelperLikeCount"]) value = 20;
-                    else if ([key isEqualToString:@"DDHelperCommentCount"]) value = 10;
-                    else if ([key isEqualToString:@"DDHelperRedEnvelopDelay"]) value = 0;
-                }
-                textField.text = [NSString stringWithFormat:@"%ld", (long)value];
-                textField.keyboardType = UIKeyboardTypeNumberPad;
-            } else {
-                NSString *value = [[NSUserDefaults standardUserDefaults] stringForKey:key];
-                textField.text = value ?: @"赞,👍,真棒,好厉害";
-            }
+            textField.placeholder = @"数量";
+            textField.keyboardType = UIKeyboardTypeNumberPad;
+            textField.text = [NSString stringWithFormat:@"%ld", (long)currentValue];
         }];
         
-        [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
         [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            NSString *value = alert.textFields.firstObject.text;
-            if ([valueType isEqualToString:@"number"]) {
-                [[NSUserDefaults standardUserDefaults] setInteger:value.integerValue forKey:key];
-            } else {
-                [[NSUserDefaults standardUserDefaults] setObject:value forKey:key];
+            NSString *text = alert.textFields.firstObject.text;
+            NSInteger value = [text integerValue];
+            
+            if (value > 0) {
+                if (indexPath.row == 0) {
+                    config.likeCount = value;
+                } else {
+                    config.commentCount = value;
+                }
+                [_tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
             }
-            [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
         }]];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+        
+        [self presentViewController:alert animated:YES completion:nil];
+        
+    } else if (indexPath.section == 2) {
+        // 评论内容
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"设置评论内容"
+                                                                       message:@"多个评论用英文双逗号分隔"
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        
+        [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+            textField.placeholder = @"例如：赞,,👍,,太棒了";
+            textField.text = config.comments;
+        }];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            NSString *text = alert.textFields.firstObject.text;
+            if (text.length > 0) {
+                config.comments = text;
+                [_tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+            }
+        }]];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
         
         [self presentViewController:alert animated:YES completion:nil];
     }
 }
 
-#pragma mark - Actions
-
 - (void)switchChanged:(UISwitch *)sender {
-    NSInteger index = sender.tag;
-    if (index >= 0 && index < self.settings.count) {
-        NSDictionary *setting = self.settings[index];
-        NSString *key = setting[@"key"];
-        [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:key];
-    }
+    [DDLikeAssistConfig shared].enabled = sender.isOn;
 }
 
 @end
 
-// 插件注册
-%ctor {
+// 插件管理入口
+@interface WCPluginsMgr : NSObject
++ (instancetype)sharedInstance;
+- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
+- (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
+@end
+
+// 插件初始化
+__attribute__((constructor)) static void DDLikeAssistInit() {
     @autoreleasepool {
-        // 检查iOS版本
-        if (@available(iOS 15.0, *)) {
-            // 注册到插件管理系统
+        // 延迟执行，确保微信完全启动
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (NSClassFromString(@"WCPluginsMgr")) {
-                // 使用正确的注册方法 - 带设置页面
-                [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD助手" 
-                                                                                   version:@"1.0.0" 
-                                                                               controller:@"DDHelperSettingController"];
-            } else {
-                // 备用方案：如果WCPluginsMgr不存在，尝试其他方式
-                NSLog(@"DD助手: WCPluginsMgr not found");
+                [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD集赞助手" 
+                                                                                   version:@"1.0" 
+                                                                               controller:@"DDLikeAssistSettingController"];
             }
-        } else {
-            NSLog(@"DD助手: Requires iOS 15.0 or later");
-        }
+        });
     }
 }
