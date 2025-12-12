@@ -1,34 +1,45 @@
-// DD集赞助手.xm
+// DDZanHelper.xm
 #import <UIKit/UIKit.h>
-#import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-// 声明微信内部类
+#pragma mark - 插件管理器接口
+@interface WCPluginsMgr : NSObject
++ (instancetype)sharedInstance;
+- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
+- (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
+@end
+
+#pragma mark - 微信相关类声明
+@interface CContact : NSObject
+@property(retain, nonatomic) NSString *m_nsUsrName;
+@property(retain, nonatomic) NSString *m_nsNickName;
+@property(assign, nonatomic) int m_uiType;
+@property(assign, nonatomic) int m_uiFriendScene;
+@end
+
 @interface WCDataItem : NSObject
-@property (retain, nonatomic) NSMutableArray *likeUsers;
-@property (nonatomic) int likeCount;
-@property (retain, nonatomic) NSString *username;
-@property (retain, nonatomic) NSMutableArray *commentUsers;
-@property (nonatomic) int commentCount;
+@property(retain, nonatomic) NSString *username;
+@property(retain, nonatomic) NSMutableArray *likeUsers;
+@property(retain, nonatomic) NSMutableArray *commentUsers;
+@property(assign, nonatomic) int likeCount;
+@property(assign, nonatomic) int commentCount;
 @end
 
 @interface WCUserComment : NSObject
-@property (retain, nonatomic) NSString *nickname;
-@property (retain, nonatomic) NSString *username;
-@property (retain, nonatomic) NSString *content;
-@property (nonatomic) int type; // 1=点赞 2=评论
-@property (nonatomic) unsigned int createTime;
-@end
-
-@interface CContact : NSObject
-@property (retain, nonatomic) NSString *m_nsUsrName;
-@property (retain, nonatomic) NSString *m_nsNickName;
-@property (nonatomic) unsigned int m_uiType; // 联系人类型
+@property(retain, nonatomic) NSString *username;
+@property(retain, nonatomic) NSString *nickname;
+@property(retain, nonatomic) NSString *content;
+@property(assign, nonatomic) int type; // 1:点赞 2:评论
+@property(assign, nonatomic) unsigned int createTime;
 @end
 
 @interface CContactMgr : NSObject
-- (id)getContactByName:(NSString *)name;
-- (NSArray *)getAllContactUserName;
+- (id)getAllContactUserName;
+- (id)getContactByName:(id)arg1;
+@end
+
+@interface SettingUtil : NSObject
++ (NSString *)getCurUsrName;
 @end
 
 @interface MMServiceCenter : NSObject
@@ -36,138 +47,16 @@
 - (id)getService:(Class)service;
 @end
 
-@interface SettingUtil : NSObject
-+ (NSString *)getCurUsrName;
+@interface WCTimelineMgr : NSObject
+- (void)onDataUpdated:(id)arg1 andData:(NSMutableArray *)data andAdData:(id)arg3 withChangedTime:(unsigned int)arg4;
 @end
 
-// 插件管理接口
-@interface WCPluginsMgr : NSObject
-+ (instancetype)sharedInstance;
-- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
-@end
-
-// 设置页面控制器
+#pragma mark - 设置控制器
 @interface DDZanSettingViewController : UIViewController
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSArray *settings;
 @end
 
-// 全局设置
-static BOOL dd_pluginEnabled = YES;
-static NSInteger dd_zanCount = 10;
-static NSInteger dd_commentCount = 5;
-static NSString *dd_customComments = @"高级\n点赞就完事了\n6666\n赞~\n这个不错\n牛皮\n厉害了\n不错哦\n真棒\n支持\n可以";
-
-// 获取好友列表
-NSArray* dd_getFriendList() {
-    NSMutableArray *friends = [NSMutableArray array];
-    
-    @try {
-        MMServiceCenter *center = [objc_getClass("MMServiceCenter") defaultCenter];
-        CContactMgr *contactMgr = [center getService:objc_getClass("CContactMgr")];
-        NSArray *allUsers = [[contactMgr getAllContactUserName] allObjects];
-        
-        for (NSString *userName in allUsers) {
-            CContact *contact = [contactMgr getContactByName:userName];
-            if (!contact) continue;
-            
-            // 只保留正常好友（排除公众号、群聊等）
-            if (contact.m_uiType == 4) {
-                [friends addObject:userName];
-            }
-        }
-    } @catch (NSException *e) {
-        // 静默处理异常
-    }
-    
-    return [friends copy];
-}
-
-// 生成伪造点赞
-NSMutableArray* dd_generateLikes() {
-    NSMutableArray *newLikes = [NSMutableArray array];
-    
-    // 生成新的点赞
-    NSArray *friends = dd_getFriendList();
-    if (friends.count == 0 || dd_zanCount <= 0) {
-        return newLikes;
-    }
-    
-    NSUInteger count = MIN(dd_zanCount, friends.count);
-    
-    for (int i = 0; i < count; i++) {
-        NSUInteger randomIndex = arc4random() % friends.count;
-        NSString *userName = friends[randomIndex];
-        
-        @try {
-            MMServiceCenter *center = [objc_getClass("MMServiceCenter") defaultCenter];
-            CContactMgr *contactMgr = [center getService:objc_getClass("CContactMgr")];
-            CContact *contact = [contactMgr getContactByName:userName];
-            
-            if (contact) {
-                WCUserComment *like = [[objc_getClass("WCUserComment") alloc] init];
-                like.username = userName;
-                like.nickname = contact.m_nsNickName ?: userName;
-                like.type = 1;
-                like.createTime = (unsigned int)[[NSDate date] timeIntervalSince1970];
-                
-                [newLikes addObject:like];
-            }
-        } @catch (NSException *e) {
-            // 静默处理异常
-        }
-    }
-    
-    return newLikes;
-}
-
-// 生成伪造评论
-NSMutableArray* dd_generateComments() {
-    NSMutableArray *newComments = [NSMutableArray array];
-    
-    // 生成新的评论
-    NSArray *friends = dd_getFriendList();
-    if (friends.count == 0 || dd_commentCount <= 0) {
-        return newComments;
-    }
-    
-    // 评论内容
-    NSArray *commentTexts = [dd_customComments componentsSeparatedByString:@"\n"];
-    if (commentTexts.count == 0) {
-        commentTexts = @[@"高级", @"点赞就完事了", @"6666", @"赞~", @"这个不错", @"牛皮"];
-    }
-    
-    NSUInteger count = MIN(dd_commentCount, friends.count);
-    
-    for (int i = 0; i < count; i++) {
-        NSUInteger friendIndex = arc4random() % friends.count;
-        NSString *userName = friends[friendIndex];
-        
-        @try {
-            MMServiceCenter *center = [objc_getClass("MMServiceCenter") defaultCenter];
-            CContactMgr *contactMgr = [center getService:objc_getClass("CContactMgr")];
-            CContact *contact = [contactMgr getContactByName:userName];
-            
-            if (contact) {
-                WCUserComment *comment = [[objc_getClass("WCUserComment") alloc] init];
-                comment.username = userName;
-                comment.nickname = contact.m_nsNickName ?: userName;
-                comment.type = 2;
-                comment.createTime = (unsigned int)[[NSDate date] timeIntervalSince1970];
-                
-                // 随机评论内容
-                NSUInteger textIndex = arc4random() % commentTexts.count;
-                comment.content = commentTexts[textIndex];
-                
-                [newComments addObject:comment];
-            }
-        } @catch (NSException *e) {
-            // 静默处理异常
-        }
-    }
-    
-    return newComments;
-}
-
-#pragma mark - 设置页面
 @implementation DDZanSettingViewController
 
 - (void)viewDidLoad {
@@ -175,178 +64,250 @@ NSMutableArray* dd_generateComments() {
     self.title = @"DD集赞助手";
     self.view.backgroundColor = [UIColor whiteColor];
     
-    [self setupUI];
+    // 创建表格
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+    
+    // 初始化设置项
+    self.settings = @[
+        @{@"type": @"switch", @"title": @"启用插件", @"key": @"DDZan_Enabled"},
+        @{@"type": @"input", @"title": @"点赞数量", @"key": @"DDZan_LikeCount", @"placeholder": @"输入点赞数量"},
+        @{@"type": @"input", @"title": @"评论数量", @"key": @"DDZan_CommentCount", @"placeholder": @"输入评论数量"},
+        @{@"type": @"multiline", @"title": @"自定义评论", @"key": @"DDZan_CustomComments", @"placeholder": @"每行一条评论"}
+    ];
 }
 
-- (void)setupUI {
-    // 创建滚动视图
-    UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
-    scrollView.contentSize = CGSizeMake(self.view.bounds.size.width, 500);
-    [self.view addSubview:scrollView];
-    
-    CGFloat y = 20;
-    CGFloat width = self.view.bounds.size.width - 40;
-    
-    // 标题
-    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, width, 30)];
-    titleLabel.text = @"DD集赞助手 v1.0";
-    titleLabel.font = [UIFont boldSystemFontOfSize:20];
-    [scrollView addSubview:titleLabel];
-    
-    y += 40;
-    
-    // 开关
-    UISwitch *enableSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(20, y, 0, 0)];
-    enableSwitch.on = dd_pluginEnabled;
-    [enableSwitch addTarget:self action:@selector(enableChanged:) forControlEvents:UIControlEventValueChanged];
-    [scrollView addSubview:enableSwitch];
-    
-    UILabel *enableLabel = [[UILabel alloc] initWithFrame:CGRectMake(70, y, width-50, 30)];
-    enableLabel.text = @"启用插件";
-    [scrollView addSubview:enableLabel];
-    
-    y += 50;
-    
-    // 点赞数量
-    UILabel *zanLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, 120, 30)];
-    zanLabel.text = @"点赞数量:";
-    [scrollView addSubview:zanLabel];
-    
-    UIStepper *zanStepper = [[UIStepper alloc] initWithFrame:CGRectMake(150, y, 0, 0)];
-    zanStepper.minimumValue = 0;
-    zanStepper.maximumValue = 50;
-    zanStepper.value = dd_zanCount;
-    zanStepper.stepValue = 1;
-    zanStepper.tag = 100;
-    [zanStepper addTarget:self action:@selector(stepperChanged:) forControlEvents:UIControlEventValueChanged];
-    [scrollView addSubview:zanStepper];
-    
-    UILabel *zanValue = [[UILabel alloc] initWithFrame:CGRectMake(250, y, 60, 30)];
-    zanValue.text = [NSString stringWithFormat:@"%ld", (long)dd_zanCount];
-    zanValue.tag = 101;
-    [scrollView addSubview:zanValue];
-    
-    y += 50;
-    
-    // 评论数量
-    UILabel *commentLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, 120, 30)];
-    commentLabel.text = @"评论数量:";
-    [scrollView addSubview:commentLabel];
-    
-    UIStepper *commentStepper = [[UIStepper alloc] initWithFrame:CGRectMake(150, y, 0, 0)];
-    commentStepper.minimumValue = 0;
-    commentStepper.maximumValue = 20;
-    commentStepper.value = dd_commentCount;
-    commentStepper.stepValue = 1;
-    commentStepper.tag = 200;
-    [commentStepper addTarget:self action:@selector(stepperChanged:) forControlEvents:UIControlEventValueChanged];
-    [scrollView addSubview:commentStepper];
-    
-    UILabel *commentValue = [[UILabel alloc] initWithFrame:CGRectMake(250, y, 60, 30)];
-    commentValue.text = [NSString stringWithFormat:@"%ld", (long)dd_commentCount];
-    commentValue.tag = 201;
-    [scrollView addSubview:commentValue];
-    
-    y += 50;
-    
-    // 自定义评论
-    UILabel *customLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, width, 30)];
-    customLabel.text = @"自定义评论（每行一条）:";
-    [scrollView addSubview:customLabel];
-    
-    y += 35;
-    
-    UITextView *textView = [[UITextView alloc] initWithFrame:CGRectMake(20, y, width, 150)];
-    textView.text = dd_customComments;
-    textView.layer.borderColor = [UIColor grayColor].CGColor;
-    textView.layer.borderWidth = 1;
-    textView.font = [UIFont systemFontOfSize:14];
-    textView.tag = 400;
-    [scrollView addSubview:textView];
-    
-    // 完成按钮
-    UIButton *doneButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    doneButton.frame = CGRectMake(20, y + 160, width, 44);
-    [doneButton setTitle:@"完成" forState:UIControlStateNormal];
-    [doneButton addTarget:self action:@selector(doneTapped) forControlEvents:UIControlEventTouchUpInside];
-    doneButton.backgroundColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:1.0];
-    doneButton.tintColor = [UIColor whiteColor];
-    doneButton.layer.cornerRadius = 8;
-    [scrollView addSubview:doneButton];
+#pragma mark - UITableView DataSource & Delegate
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.settings.count;
 }
 
-- (void)enableChanged:(UISwitch *)sender {
-    dd_pluginEnabled = sender.on;
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSDictionary *setting = self.settings[indexPath.row];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cell"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:@"cell"];
+    }
+    
+    cell.textLabel.text = setting[@"title"];
+    
+    if ([setting[@"type"] isEqualToString:@"switch"]) {
+        UISwitch *switchView = [[UISwitch alloc] init];
+        switchView.on = [[NSUserDefaults standardUserDefaults] boolForKey:setting[@"key"]];
+        [switchView addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        switchView.tag = indexPath.row;
+        cell.accessoryView = switchView;
+        cell.detailTextLabel.text = @"";
+    } else {
+        cell.accessoryView = nil;
+        cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    }
+    
+    return cell;
 }
 
-- (void)stepperChanged:(UIStepper *)sender {
-    if (sender.tag == 100) { // 点赞
-        dd_zanCount = sender.value;
-        UILabel *label = [self.view viewWithTag:101];
-        label.text = [NSString stringWithFormat:@"%ld", (long)dd_zanCount];
-    } else if (sender.tag == 200) { // 评论
-        dd_commentCount = sender.value;
-        UILabel *label = [self.view viewWithTag:201];
-        label.text = [NSString stringWithFormat:@"%ld", (long)dd_commentCount];
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    NSDictionary *setting = self.settings[indexPath.row];
+    if ([setting[@"type"] isEqualToString:@"input"]) {
+        [self showInputAlertForSetting:setting];
+    } else if ([setting[@"type"] isEqualToString:@"multiline"]) {
+        [self showMultilineAlertForSetting:setting];
     }
 }
 
-- (void)doneTapped {
-    UITextView *textView = [self.view viewWithTag:400];
-    dd_customComments = textView.text ?: @"";
+- (void)switchChanged:(UISwitch *)sender {
+    NSDictionary *setting = self.settings[sender.tag];
+    [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:setting[@"key"]];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)showInputAlertForSetting:(NSDictionary *)setting {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:setting[@"title"]
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleAlert];
     
-    [self.view endEditing:YES];
-    [self.navigationController popViewControllerAnimated:YES];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.placeholder = setting[@"placeholder"];
+        textField.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
+        textField.keyboardType = UIKeyboardTypeNumberPad;
+    }];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *value = alert.textFields.firstObject.text;
+        if (value) {
+            [[NSUserDefaults standardUserDefaults] setObject:value forKey:setting[@"key"]];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            [self.tableView reloadData];
+        }
+    }]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showMultilineAlertForSetting:(NSDictionary *)setting {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:setting[@"title"]
+                                                                   message:@"每行一条评论内容"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.placeholder = setting[@"placeholder"];
+        textField.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
+    }];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *value = alert.textFields.firstObject.text;
+        if (value) {
+            [[NSUserDefaults standardUserDefaults] setObject:value forKey:setting[@"key"]];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            [self.tableView reloadData];
+        }
+    }]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end
 
-#pragma mark - Hook微信方法
-%hook WCCommentDetailViewControllerFB
+#pragma mark - 核心功能
+%group Main
 
-- (void)setDataItem:(WCDataItem *)dataItem {
-    if (dd_pluginEnabled) {
-        @try {
-            NSString *currentUser = [objc_getClass("SettingUtil") getCurUsrName];
-            if ([[dataItem username] isEqualToString:currentUser]) {
-                NSMutableArray *newLikes = dd_generateLikes();
-                NSMutableArray *newComments = dd_generateComments();
-                
-                dataItem.likeUsers = newLikes;
-                dataItem.likeCount = (int)newLikes.count;
-                dataItem.commentUsers = newComments;
-                dataItem.commentCount = (int)newComments.count;
+// 获取联系人列表
+static NSArray *getFriendList() {
+    static NSArray *cachedList = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
+        NSArray *allUsernames = [[contactMgr getAllContactUserName] allObjects];
+        NSMutableArray *friends = [NSMutableArray array];
+        
+        for (NSString *username in allUsernames) {
+            CContact *contact = [contactMgr getContactByName:username];
+            // 过滤掉公众号和群聊
+            if (contact.m_uiType != 1 && contact.m_uiType != 2 && contact.m_uiType != 3) {
+                // 只保留好友
+                if (contact.m_uiFriendScene != 0) {
+                    [friends addObject:username];
+                }
             }
-        } @catch (NSException *e) {
-            // 静默处理异常
         }
-    }
+        
+        cachedList = [friends copy];
+    });
     
-    %orig;
+    return cachedList;
 }
 
-%end
+// 生成随机点赞
+static NSMutableArray *generateFakeLikes(NSMutableArray *originalLikes) {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
+        return originalLikes;
+    }
+    
+    NSInteger targetCount = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDZan_LikeCount"];
+    if (targetCount <= 0) return originalLikes;
+    
+    NSArray *friends = getFriendList();
+    if (friends.count == 0) return originalLikes;
+    
+    NSMutableArray *newLikes = [NSMutableArray array];
+    if (originalLikes) [newLikes addObjectsFromArray:originalLikes];
+    
+    // 确保不重复
+    NSMutableArray *availableFriends = [friends mutableCopy];
+    for (WCUserComment *like in originalLikes) {
+        [availableFriends removeObject:like.username];
+    }
+    
+    CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
+    
+    for (int i = 0; i < MIN(targetCount, availableFriends.count); i++) {
+        NSString *username = availableFriends[i];
+        CContact *contact = [contactMgr getContactByName:username];
+        
+        WCUserComment *fakeLike = [objc_getClass("WCUserComment") new];
+        fakeLike.username = username;
+        fakeLike.nickname = contact.m_nsNickName ?: username;
+        fakeLike.type = 1; // 点赞
+        fakeLike.createTime = (unsigned int)[[NSDate date] timeIntervalSince1970];
+        
+        [newLikes addObject:fakeLike];
+    }
+    
+    return newLikes;
+}
+
+// 生成随机评论
+static NSMutableArray *generateFakeComments(NSMutableArray *originalComments) {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
+        return originalComments;
+    }
+    
+    NSInteger targetCount = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDZan_CommentCount"];
+    if (targetCount <= 0) return originalComments;
+    
+    NSArray *friends = getFriendList();
+    if (friends.count == 0) return originalComments;
+    
+    NSString *customCommentsStr = [[NSUserDefaults standardUserDefaults] stringForKey:@"DDZan_CustomComments"];
+    NSArray *commentTemplates = customCommentsStr.length > 0 ? 
+        [customCommentsStr componentsSeparatedByString:@"\n"] : 
+        @[@"赞一个", @"不错哦", @"666", @"优秀", @"可以可以"];
+    
+    NSMutableArray *newComments = [NSMutableArray array];
+    if (originalComments) [newComments addObjectsFromArray:originalComments];
+    
+    CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
+    
+    for (int i = 0; i < MIN(targetCount, friends.count); i++) {
+        NSString *username = friends[i];
+        CContact *contact = [contactMgr getContactByName:username];
+        
+        WCUserComment *fakeComment = [objc_getClass("WCUserComment") new];
+        fakeComment.username = username;
+        fakeComment.nickname = contact.m_nsNickName ?: username;
+        fakeComment.type = 2; // 评论
+        fakeComment.createTime = (unsigned int)[[NSDate date] timeIntervalSince1970];
+        
+        // 随机选择评论内容
+        NSString *randomComment = commentTemplates[arc4random_uniform((uint32_t)commentTemplates.count)];
+        fakeComment.content = randomComment;
+        
+        [newComments addObject:fakeComment];
+    }
+    
+    return newComments;
+}
 
 %hook WCTimelineMgr
 
 - (void)onDataUpdated:(id)arg1 andData:(NSMutableArray *)data andAdData:(id)arg3 withChangedTime:(unsigned int)arg4 {
-    if (dd_pluginEnabled) {
-        @try {
-            NSString *currentUser = [objc_getClass("SettingUtil") getCurUsrName];
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
+        %orig;
+        return;
+    }
+    
+    NSString *myUsername = [objc_getClass("SettingUtil") getCurUsrName];
+    
+    for (WCDataItem *item in data) {
+        if ([item.username isEqualToString:myUsername]) {
+            // 处理点赞
+            NSMutableArray *originalLikes = item.likeUsers;
+            NSMutableArray *fakeLikes = generateFakeLikes(originalLikes);
+            item.likeUsers = fakeLikes;
+            item.likeCount = (int)fakeLikes.count;
             
-            for (WCDataItem *item in data) {
-                if ([[item username] isEqualToString:currentUser]) {
-                    NSMutableArray *newLikes = dd_generateLikes();
-                    NSMutableArray *newComments = dd_generateComments();
-                    
-                    item.likeUsers = newLikes;
-                    item.likeCount = (int)newLikes.count;
-                    item.commentUsers = newComments;
-                    item.commentCount = (int)newComments.count;
-                }
-            }
-        } @catch (NSException *e) {
-            // 静默处理异常
+            // 处理评论
+            NSMutableArray *originalComments = item.commentUsers;
+            NSMutableArray *fakeComments = generateFakeComments(originalComments);
+            item.commentUsers = fakeComments;
+            item.commentCount = (int)fakeComments.count;
         }
     }
     
@@ -355,43 +316,36 @@ NSMutableArray* dd_generateComments() {
 
 %end
 
-#pragma mark - 插件初始化
+%end // Main group
+
+#pragma mark - 插件注册
 %ctor {
     @autoreleasepool {
-        // 注册到插件管理系统
+        // 注册到插件管理器
         if (NSClassFromString(@"WCPluginsMgr")) {
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
                 registerControllerWithTitle:@"DD集赞助手" 
-                version:@"1.0" 
-                controller:@"DDZanSettingViewController"];
+                                   version:@"1.0" 
+                               controller:@"DDZanSettingViewController"];
         }
         
-        // 加载保存的设置
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        if ([defaults objectForKey:@"DDZanEnabled"]) {
-            dd_pluginEnabled = [defaults boolForKey:@"DDZanEnabled"];
-            dd_zanCount = [defaults integerForKey:@"DDZanCount"];
-            dd_commentCount = [defaults integerForKey:@"DDCommentCount"];
-            dd_customComments = [defaults stringForKey:@"DDCustomComments"] ?: @"高级\n点赞就完事了\n6666\n赞~\n这个不错\n牛皮\n厉害了\n不错哦\n真棒\n支持\n可以";
+        // 初始化默认设置
+        NSDictionary *defaults = @{
+            @"DDZan_Enabled": @YES,
+            @"DDZan_LikeCount": @"10",
+            @"DDZan_CommentCount": @"5",
+            @"DDZan_CustomComments": @"赞一个\n不错哦\n666\n优秀\n可以可以"
+        };
+        
+        NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
+        for (NSString *key in defaults) {
+            if (![userDefaults objectForKey:key]) {
+                [userDefaults setObject:defaults[key] forKey:key];
+            }
         }
+        [userDefaults synchronize];
+        
+        // 激活主功能组
+        %init(Main);
     }
 }
-
-// 保存设置
-static void dd_saveSettings() {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setBool:dd_pluginEnabled forKey:@"DDZanEnabled"];
-    [defaults setInteger:dd_zanCount forKey:@"DDZanCount"];
-    [defaults setInteger:dd_commentCount forKey:@"DDCommentCount"];
-    [defaults setObject:dd_customComments forKey:@"DDCustomComments"];
-    [defaults synchronize];
-}
-
-%hook DDZanSettingViewController
-
-- (void)viewWillDisappear:(BOOL)animated {
-    dd_saveSettings();
-    %orig;
-}
-
-%end
