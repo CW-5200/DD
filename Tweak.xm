@@ -1,4 +1,4 @@
-// DDZanHelper.xm
+// DDZanAssistant.xm
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
@@ -52,7 +52,7 @@
 @end
 
 #pragma mark - 设置控制器
-@interface DDZanSettingViewController : UIViewController
+@interface DDZanSettingViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSArray *settings;
 @end
@@ -100,10 +100,12 @@
         switchView.tag = indexPath.row;
         cell.accessoryView = switchView;
         cell.detailTextLabel.text = @"";
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else {
         cell.accessoryView = nil;
         cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     }
     
     return cell;
@@ -124,6 +126,11 @@
     NSDictionary *setting = self.settings[sender.tag];
     [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:setting[@"key"]];
     [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    // 清除缓存以便重新生成
+    if ([setting[@"key"] isEqualToString:@"DDZan_Enabled"]) {
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"DDZan_FriendCache"];
+    }
 }
 
 - (void)showInputAlertForSetting:(NSDictionary *)setting {
@@ -140,7 +147,7 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *value = alert.textFields.firstObject.text;
-        if (value) {
+        if (value && value.length > 0) {
             [[NSUserDefaults standardUserDefaults] setObject:value forKey:setting[@"key"]];
             [[NSUserDefaults standardUserDefaults] synchronize];
             [self.tableView reloadData];
@@ -152,17 +159,23 @@
 
 - (void)showMultilineAlertForSetting:(NSDictionary *)setting {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:setting[@"title"]
-                                                                   message:@"每行一条评论内容"
+                                                                   message:@"每行一条评论内容，输入完成后点击确定"
                                                             preferredStyle:UIAlertControllerStyleAlert];
     
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        textField.placeholder = setting[@"placeholder"];
-        textField.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
-    }];
+    UITextView *textView = [[UITextView alloc] initWithFrame:CGRectMake(10, 50, 250, 150)];
+    textView.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
+    textView.font = [UIFont systemFontOfSize:14];
+    textView.layer.borderColor = [UIColor lightGrayColor].CGColor;
+    textView.layer.borderWidth = 1.0;
+    textView.layer.cornerRadius = 5.0;
+    
+    UIViewController *vc = [UIViewController new];
+    vc.view = textView;
+    [alert setValue:vc forKey:@"contentViewController"];
     
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *value = alert.textFields.firstObject.text;
+        NSString *value = textView.text;
         if (value) {
             [[NSUserDefaults standardUserDefaults] setObject:value forKey:setting[@"key"]];
             [[NSUserDefaults standardUserDefaults] synchronize];
@@ -170,7 +183,9 @@
         }
     }]];
     
-    [self presentViewController:alert animated:YES completion:nil];
+    [self presentViewController:alert animated:YES completion:^{
+        [textView becomeFirstResponder];
+    }];
 }
 
 @end
@@ -180,62 +195,108 @@
 
 // 获取联系人列表
 static NSArray *getFriendList() {
-    static NSArray *cachedList = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
-        NSArray *allUsernames = [[contactMgr getAllContactUserName] allObjects];
-        NSMutableArray *friends = [NSMutableArray array];
-        
-        for (NSString *username in allUsernames) {
+    // 检查缓存
+    NSData *cachedData = [[NSUserDefaults standardUserDefaults] objectForKey:@"DDZan_FriendCache"];
+    if (cachedData) {
+        NSError *error;
+        NSArray *cachedList = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSArray class] fromData:cachedData error:&error];
+        if (cachedList && cachedList.count > 0) {
+            return cachedList;
+        }
+    }
+    
+    // 获取联系人管理器
+    MMServiceCenter *serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
+    CContactMgr *contactMgr = [serviceCenter getService:objc_getClass("CContactMgr")];
+    
+    if (!contactMgr) return @[];
+    
+    // 获取所有联系人
+    NSSet *allUsernamesSet = [contactMgr getAllContactUserName];
+    if (!allUsernamesSet) return @[];
+    
+    NSArray *allUsernames = [allUsernamesSet allObjects];
+    NSMutableArray *friends = [NSMutableArray array];
+    
+    for (NSString *username in allUsernames) {
+        @autoreleasepool {
             CContact *contact = [contactMgr getContactByName:username];
-            // 过滤掉公众号和群聊
-            if (contact.m_uiType != 1 && contact.m_uiType != 2 && contact.m_uiType != 3) {
-                // 只保留好友
-                if (contact.m_uiFriendScene != 0) {
-                    [friends addObject:username];
+            if (contact) {
+                // 过滤掉公众号(1)、群聊(2)、企业号(3)等
+                int contactType = [contact m_uiType];
+                if (contactType != 1 && contactType != 2 && contactType != 3) {
+                    // 确保是好友（m_uiFriendScene != 0 表示是好友）
+                    int friendScene = [contact m_uiFriendScene];
+                    if (friendScene != 0) {
+                        NSString *nickname = [contact m_nsNickName];
+                        NSString *displayName = nickname ? nickname : username;
+                        [friends addObject:@{
+                            @"username": username,
+                            @"nickname": displayName
+                        }];
+                    }
                 }
             }
         }
-        
-        cachedList = [friends copy];
-    });
+    }
     
-    return cachedList;
+    // 缓存结果
+    if (friends.count > 0) {
+        NSError *error;
+        NSData *data = [NSKeyedArchiver archivedDataWithRootObject:friends requiringSecureCoding:NO error:&error];
+        if (data && !error) {
+            [[NSUserDefaults standardUserDefaults] setObject:data forKey:@"DDZan_FriendCache"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
+    }
+    
+    return [friends copy];
 }
 
 // 生成随机点赞
-static NSMutableArray *generateFakeLikes(NSMutableArray *originalLikes) {
+static NSMutableArray *generateFakeLikes(NSMutableArray *originalLikes, NSString *ownerUsername) {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
         return originalLikes;
     }
     
     NSInteger targetCount = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDZan_LikeCount"];
-    if (targetCount <= 0) return originalLikes;
+    if (targetCount <= 0) return originalLikes ?: [NSMutableArray array];
     
     NSArray *friends = getFriendList();
-    if (friends.count == 0) return originalLikes;
+    if (friends.count == 0) return originalLikes ?: [NSMutableArray array];
     
     NSMutableArray *newLikes = [NSMutableArray array];
-    if (originalLikes) [newLikes addObjectsFromArray:originalLikes];
+    if (originalLikes && originalLikes.count > 0) {
+        [newLikes addObjectsFromArray:originalLikes];
+    }
     
     // 确保不重复
     NSMutableArray *availableFriends = [friends mutableCopy];
-    for (WCUserComment *like in originalLikes) {
-        [availableFriends removeObject:like.username];
+    for (id like in newLikes) {
+        if ([like respondsToSelector:@selector(username)]) {
+            NSString *existingUsername = [like username];
+            [availableFriends filterUsingPredicate:[NSPredicate predicateWithFormat:@"username != %@", existingUsername]];
+        }
     }
     
-    CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
+    // 如果可用好友不足，直接返回现有数据
+    if (availableFriends.count == 0) return newLikes;
     
+    // 生成新的点赞
     for (int i = 0; i < MIN(targetCount, availableFriends.count); i++) {
-        NSString *username = availableFriends[i];
-        CContact *contact = [contactMgr getContactByName:username];
+        NSDictionary *friend = availableFriends[i];
+        NSString *username = friend[@"username"];
+        NSString *nickname = friend[@"nickname"];
         
-        WCUserComment *fakeLike = [objc_getClass("WCUserComment") new];
-        fakeLike.username = username;
-        fakeLike.nickname = contact.m_nsNickName ?: username;
-        fakeLike.type = 1; // 点赞
-        fakeLike.createTime = (unsigned int)[[NSDate date] timeIntervalSince1970];
+        // 避免给自己点赞
+        if ([username isEqualToString:ownerUsername]) continue;
+        
+        // 创建点赞对象
+        WCUserComment *fakeLike = [[objc_getClass("WCUserComment") alloc] init];
+        [fakeLike setUsername:username];
+        [fakeLike setNickname:nickname];
+        [fakeLike setType:1]; // 1:点赞
+        [fakeLike setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
         
         [newLikes addObject:fakeLike];
     }
@@ -244,40 +305,67 @@ static NSMutableArray *generateFakeLikes(NSMutableArray *originalLikes) {
 }
 
 // 生成随机评论
-static NSMutableArray *generateFakeComments(NSMutableArray *originalComments) {
+static NSMutableArray *generateFakeComments(NSMutableArray *originalComments, NSString *ownerUsername) {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
         return originalComments;
     }
     
     NSInteger targetCount = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDZan_CommentCount"];
-    if (targetCount <= 0) return originalComments;
+    if (targetCount <= 0) return originalComments ?: [NSMutableArray array];
     
     NSArray *friends = getFriendList();
-    if (friends.count == 0) return originalComments;
+    if (friends.count == 0) return originalComments ?: [NSMutableArray array];
     
+    // 获取自定义评论内容
     NSString *customCommentsStr = [[NSUserDefaults standardUserDefaults] stringForKey:@"DDZan_CustomComments"];
-    NSArray *commentTemplates = customCommentsStr.length > 0 ? 
-        [customCommentsStr componentsSeparatedByString:@"\n"] : 
-        @[@"赞一个", @"不错哦", @"666", @"优秀", @"可以可以"];
+    NSArray *commentTemplates = @[@"👍 赞一个", @"👍 不错哦", @"👍 666", @"👍 优秀", @"👍 可以可以"];
+    
+    if (customCommentsStr && customCommentsStr.length > 0) {
+        commentTemplates = [customCommentsStr componentsSeparatedByString:@"\n"];
+        // 过滤空行
+        commentTemplates = [commentTemplates filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"SELF.length > 0"]];
+    }
+    
+    if (commentTemplates.count == 0) {
+        commentTemplates = @[@"👍 赞一个", @"👍 不错哦", @"👍 666", @"👍 优秀", @"👍 可以可以"];
+    }
     
     NSMutableArray *newComments = [NSMutableArray array];
-    if (originalComments) [newComments addObjectsFromArray:originalComments];
+    if (originalComments && originalComments.count > 0) {
+        [newComments addObjectsFromArray:originalComments];
+    }
     
-    CContactMgr *contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:objc_getClass("CContactMgr")];
+    // 确保不重复
+    NSMutableArray *availableFriends = [friends mutableCopy];
+    for (id comment in newComments) {
+        if ([comment respondsToSelector:@selector(username)]) {
+            NSString *existingUsername = [comment username];
+            [availableFriends filterUsingPredicate:[NSPredicate predicateWithFormat:@"username != %@", existingUsername]];
+        }
+    }
     
-    for (int i = 0; i < MIN(targetCount, friends.count); i++) {
-        NSString *username = friends[i];
-        CContact *contact = [contactMgr getContactByName:username];
+    // 如果可用好友不足，直接返回现有数据
+    if (availableFriends.count == 0) return newComments;
+    
+    // 生成新的评论
+    for (int i = 0; i < MIN(targetCount, availableFriends.count); i++) {
+        NSDictionary *friend = availableFriends[i];
+        NSString *username = friend[@"username"];
+        NSString *nickname = friend[@"nickname"];
         
-        WCUserComment *fakeComment = [objc_getClass("WCUserComment") new];
-        fakeComment.username = username;
-        fakeComment.nickname = contact.m_nsNickName ?: username;
-        fakeComment.type = 2; // 评论
-        fakeComment.createTime = (unsigned int)[[NSDate date] timeIntervalSince1970];
+        // 避免给自己评论
+        if ([username isEqualToString:ownerUsername]) continue;
+        
+        // 创建评论对象
+        WCUserComment *fakeComment = [[objc_getClass("WCUserComment") alloc] init];
+        [fakeComment setUsername:username];
+        [fakeComment setNickname:nickname];
+        [fakeComment setType:2]; // 2:评论
+        [fakeComment setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
         
         // 随机选择评论内容
         NSString *randomComment = commentTemplates[arc4random_uniform((uint32_t)commentTemplates.count)];
-        fakeComment.content = randomComment;
+        [fakeComment setContent:randomComment];
         
         [newComments addObject:fakeComment];
     }
@@ -293,21 +381,32 @@ static NSMutableArray *generateFakeComments(NSMutableArray *originalComments) {
         return;
     }
     
-    NSString *myUsername = [objc_getClass("SettingUtil") getCurUsrName];
+    NSString *myUsername = nil;
+    if ([objc_getClass("SettingUtil") respondsToSelector:@selector(getCurUsrName)]) {
+        myUsername = [objc_getClass("SettingUtil") getCurUsrName];
+    }
+    
+    if (!myUsername || myUsername.length == 0) {
+        %orig;
+        return;
+    }
     
     for (WCDataItem *item in data) {
-        if ([item.username isEqualToString:myUsername]) {
+        if (![item respondsToSelector:@selector(username)]) continue;
+        
+        NSString *itemUsername = [item username];
+        if ([itemUsername isEqualToString:myUsername]) {
             // 处理点赞
-            NSMutableArray *originalLikes = item.likeUsers;
-            NSMutableArray *fakeLikes = generateFakeLikes(originalLikes);
-            item.likeUsers = fakeLikes;
-            item.likeCount = (int)fakeLikes.count;
+            NSMutableArray *originalLikes = [item likeUsers];
+            NSMutableArray *fakeLikes = generateFakeLikes(originalLikes, myUsername);
+            [item setLikeUsers:fakeLikes];
+            [item setLikeCount:(int)fakeLikes.count];
             
             // 处理评论
-            NSMutableArray *originalComments = item.commentUsers;
-            NSMutableArray *fakeComments = generateFakeComments(originalComments);
-            item.commentUsers = fakeComments;
-            item.commentCount = (int)fakeComments.count;
+            NSMutableArray *originalComments = [item commentUsers];
+            NSMutableArray *fakeComments = generateFakeComments(originalComments, myUsername);
+            [item setCommentUsers:fakeComments];
+            [item setCommentCount:(int)fakeComments.count];
         }
     }
     
@@ -318,11 +417,14 @@ static NSMutableArray *generateFakeComments(NSMutableArray *originalComments) {
 
 %end // Main group
 
-#pragma mark - 插件注册
+#pragma mark - 插件注册和初始化
 %ctor {
     @autoreleasepool {
+        NSLog(@"[DD集赞助手] 插件加载");
+        
         // 注册到插件管理器
         if (NSClassFromString(@"WCPluginsMgr")) {
+            NSLog(@"[DD集赞助手] 注册到插件管理器");
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
                 registerControllerWithTitle:@"DD集赞助手" 
                                    version:@"1.0" 
@@ -330,14 +432,14 @@ static NSMutableArray *generateFakeComments(NSMutableArray *originalComments) {
         }
         
         // 初始化默认设置
+        NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
         NSDictionary *defaults = @{
             @"DDZan_Enabled": @YES,
             @"DDZan_LikeCount": @"10",
             @"DDZan_CommentCount": @"5",
-            @"DDZan_CustomComments": @"赞一个\n不错哦\n666\n优秀\n可以可以"
+            @"DDZan_CustomComments": @"👍 赞一个\n👍 不错哦\n👍 666\n👍 优秀\n👍 可以可以"
         };
         
-        NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
         for (NSString *key in defaults) {
             if (![userDefaults objectForKey:key]) {
                 [userDefaults setObject:defaults[key] forKey:key];
