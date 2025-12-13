@@ -114,6 +114,7 @@ static void setupVideoReplacement(void);
 static void disableVideoReplacement(void);
 static void setupStatusBarTripleTap(UIViewController *viewController);
 static void createSampleVideoAtPath(NSString *path);
+static UIWindow *getActiveWindow(void);
 
 // 摄像头相关接口
 @interface AVCaptureDevice (Private)
@@ -209,27 +210,37 @@ static void handleVideoSelection(NSString *videoName) {
     setupVideoReplacement();
 }
 
-// 获取当前活动窗口（适配iOS 13.0+）
+// 获取当前活动窗口（完全移除已弃用的API）
 static UIWindow *getActiveWindow(void) {
     UIWindow *activeWindow = nil;
     
-    if (@available(iOS 13.0, *)) {
-        NSSet *connectedScenes = [UIApplication sharedApplication].connectedScenes;
-        for (UIScene *scene in connectedScenes) {
-            if (scene.activationState == UISceneActivationStateForegroundActive && 
-                [scene isKindOfClass:[UIWindowScene class]]) {
-                UIWindowScene *windowScene = (UIWindowScene *)scene;
-                for (UIWindow *window in windowScene.windows) {
-                    if (window.isKeyWindow) {
-                        activeWindow = window;
-                        break;
-                    }
+    // iOS 13.0+ 使用窗口场景
+    NSSet *connectedScenes = [UIApplication sharedApplication].connectedScenes;
+    for (UIScene *scene in connectedScenes) {
+        if (scene.activationState == UISceneActivationStateForegroundActive && 
+            [scene isKindOfClass:[UIWindowScene class]]) {
+            UIWindowScene *windowScene = (UIWindowScene *)scene;
+            for (UIWindow *window in windowScene.windows) {
+                if (window.isKeyWindow) {
+                    activeWindow = window;
+                    break;
                 }
-                if (activeWindow) break;
+            }
+            if (activeWindow) break;
+        }
+    }
+    
+    // 如果没有找到活动窗口，使用第一个窗口场景的第一个窗口
+    if (!activeWindow) {
+        for (UIScene *scene in connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                if (windowScene.windows.count > 0) {
+                    activeWindow = windowScene.windows.firstObject;
+                    break;
+                }
             }
         }
-    } else {
-        activeWindow = [[UIApplication sharedApplication] windows].firstObject;
     }
     
     return activeWindow;
