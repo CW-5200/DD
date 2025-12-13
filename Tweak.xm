@@ -113,6 +113,7 @@ static void handleVideoSelection(NSString *videoName);
 static void setupVideoReplacement(void);
 static void disableVideoReplacement(void);
 static void setupStatusBarTripleTap(UIViewController *viewController);
+static void createSampleVideoAtPath(NSString *path);
 
 // 摄像头相关接口
 @interface AVCaptureDevice (Private)
@@ -156,6 +157,15 @@ static void setupStatusBarTripleTap(UIViewController *viewController);
 
 %end
 
+// 创建示例视频（修复了self错误）
+static void createSampleVideoAtPath(NSString *path) {
+    // 这里可以创建示例视频文件的代码
+    // 暂时留空
+    // 示例：创建目录
+    NSString *directory = [path stringByDeletingLastPathComponent];
+    [[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
+}
+
 // 设置视频替换
 static void setupVideoReplacement(void) {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -178,15 +188,9 @@ static void setupVideoReplacement(void) {
         // 这里可以添加视频替换的具体实现
     } else {
         // 视频文件不存在，创建示例视频
-        [self createSampleVideoAtPath:selectedVideoPath];
+        createSampleVideoAtPath(selectedVideoPath);
         isVideoReplaceEnabled = YES;
     }
-}
-
-// 创建示例视频
-static void createSampleVideoAtPath(NSString *) {
-    // 这里可以创建示例视频文件的代码
-    // 暂时留空
 }
 
 // 禁用视频替换
@@ -203,6 +207,32 @@ static void handleVideoSelection(NSString *videoName) {
     
     // 重新设置视频替换
     setupVideoReplacement();
+}
+
+// 获取当前活动窗口（适配iOS 13.0+）
+static UIWindow *getActiveWindow(void) {
+    UIWindow *activeWindow = nil;
+    
+    if (@available(iOS 13.0, *)) {
+        NSSet *connectedScenes = [UIApplication sharedApplication].connectedScenes;
+        for (UIScene *scene in connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive && 
+                [scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                for (UIWindow *window in windowScene.windows) {
+                    if (window.isKeyWindow) {
+                        activeWindow = window;
+                        break;
+                    }
+                }
+                if (activeWindow) break;
+            }
+        }
+    } else {
+        activeWindow = [[UIApplication sharedApplication] windows].firstObject;
+    }
+    
+    return activeWindow;
 }
 
 // 显示视频选择菜单
@@ -246,10 +276,7 @@ static void showVideoSelectionMenu(void) {
             UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settings];
             nav.modalPresentationStyle = UIModalPresentationFormSheet;
             
-            UIWindow *window = [UIApplication sharedApplication].keyWindow;
-            if (!window) {
-                window = [[UIApplication sharedApplication].windows firstObject];
-            }
+            UIWindow *window = getActiveWindow();
             
             if (window) {
                 UIViewController *topController = window.rootViewController;
@@ -262,21 +289,12 @@ static void showVideoSelectionMenu(void) {
         [alert addAction:settingsAction];
         
         // 查找顶层视图控制器
-        UIWindow *window = [UIApplication sharedApplication].keyWindow;
-        if (!window) {
-            window = [[UIApplication sharedApplication].windows firstObject];
-        }
+        UIWindow *window = getActiveWindow();
         
         if (window) {
             UIViewController *topController = window.rootViewController;
             while (topController.presentedViewController) {
                 topController = topController.presentedViewController;
-            }
-            
-            // 适配iPad
-            if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
-                alert.popoverPresentationController.sourceView = window;
-                alert.popoverPresentationController.sourceRect = CGRectMake(window.bounds.size.width/2, 40, 1, 1);
             }
             
             [topController presentViewController:alert animated:YES completion:nil];
@@ -287,10 +305,7 @@ static void showVideoSelectionMenu(void) {
 // 状态栏三击检测
 static void setupStatusBarTripleTap(UIViewController *viewController) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *window = [UIApplication sharedApplication].keyWindow;
-        if (!window) {
-            window = [[UIApplication sharedApplication].windows firstObject];
-        }
+        UIWindow *window = getActiveWindow();
         
         if (window) {
             // 创建一个覆盖状态栏区域的视图
