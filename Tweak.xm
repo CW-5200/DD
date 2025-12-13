@@ -1,474 +1,440 @@
-// DDZanAssistant.xm
 #import <UIKit/UIKit.h>
-#import <objc/runtime.h>
+#import <MediaPlayer/MediaPlayer.h>
+#import <AVFoundation/AVFoundation.h>
 
-#pragma mark - 插件管理器接口
+// 插件管理接口
 @interface WCPluginsMgr : NSObject
 + (instancetype)sharedInstance;
 - (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
 - (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
 @end
 
-#pragma mark - 微信相关类声明
-@interface CContact : NSObject
-@property(retain, nonatomic) NSString *m_nsUsrName;
-@property(retain, nonatomic) NSString *m_nsNickName;
-@property(assign, nonatomic) int m_uiType;
-@property(assign, nonatomic) int m_uiFriendScene;
-@end
-
-@interface WCDataItem : NSObject
-@property(retain, nonatomic) NSString *username;
-@property(retain, nonatomic) NSMutableArray *likeUsers;
-@property(retain, nonatomic) NSMutableArray *commentUsers;
-@property(assign, nonatomic) int likeCount;
-@property(assign, nonatomic) int commentCount;
-@end
-
-@interface WCUserComment : NSObject
-@property(retain, nonatomic) NSString *username;
-@property(retain, nonatomic) NSString *nickname;
-@property(retain, nonatomic) NSString *content;
-@property(assign, nonatomic) int type; // 1:点赞 2:评论
-@property(assign, nonatomic) unsigned int createTime;
-@end
-
-@interface CContactMgr : NSObject
-- (id)getAllContactUserName;
-- (id)getContactByName:(id)arg1;
-@end
-
-@interface SettingUtil : NSObject
-+ (NSString *)getCurUsrName;
-@end
-
-@interface MMServiceCenter : NSObject
-+ (instancetype)defaultCenter;
-- (id)getService:(Class)service;
-@end
-
-@interface WCTimelineMgr : NSObject
-- (void)onDataUpdated:(id)arg1 andData:(NSMutableArray *)data andAdData:(id)arg3 withChangedTime:(unsigned int)arg4;
-@end
-
-#pragma mark - 设置控制器
-@interface DDZanSettingViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+// 设置页面控制器
+@interface VirtualVideoSettingsController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) NSArray *settings;
+@property (nonatomic, strong) NSArray *videoOptions;
+@property (nonatomic, strong) NSString *selectedVideo;
 @end
 
-@implementation DDZanSettingViewController
+@implementation VirtualVideoSettingsController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"DD集赞助手";
+    self.title = @"虚拟视频设置";
     self.view.backgroundColor = [UIColor whiteColor];
+    
+    // 视频选项
+    self.videoOptions = @[@"视频1", @"视频2"];
+    
+    // 加载已选择的视频
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    self.selectedVideo = [defaults stringForKey:@"SelectedVideo"] ?: @"视频1";
     
     // 创建表格
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:self.tableView];
-    
-    // 初始化设置项
-    self.settings = @[
-        @{@"type": @"switch", @"title": @"启用插件", @"key": @"DDZan_Enabled"},
-        @{@"type": @"input", @"title": @"点赞数量", @"key": @"DDZan_LikeCount", @"placeholder": @"输入点赞数量"},
-        @{@"type": @"input", @"title": @"评论数量", @"key": @"DDZan_CommentCount", @"placeholder": @"输入评论数量"},
-        @{@"type": @"multiline", @"title": @"自定义评论", @"key": @"DDZan_CustomComments", @"placeholder": @"每行一条评论"}
-    ];
 }
 
-#pragma mark - UITableView DataSource & Delegate
+#pragma mark - UITableViewDataSource
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 2;
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.settings.count;
+    if (section == 0) {
+        return 2; // 启用开关
+    } else {
+        return self.videoOptions.count; // 视频选项
+    }
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 0) {
+        return @"插件开关";
+    } else {
+        return @"选择视频源";
+    }
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *setting = self.settings[indexPath.row];
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cell"];
+    static NSString *cellIdentifier = @"Cell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    
     if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:@"cell"];
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
     }
     
-    cell.textLabel.text = setting[@"title"];
-    
-    if ([setting[@"type"] isEqualToString:@"switch"]) {
+    if (indexPath.section == 0) {
+        // 启用开关
+        cell.textLabel.text = @"启用虚拟视频";
+        
+        // 创建开关
         UISwitch *switchView = [[UISwitch alloc] init];
-        switchView.on = [[NSUserDefaults standardUserDefaults] boolForKey:setting[@"key"]];
-        [switchView addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
-        switchView.tag = indexPath.row;
+        switchView.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"VirtualVideoEnabled"];
+        [switchView addTarget:self action:@selector(toggleEnabled:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
-        cell.detailTextLabel.text = @"";
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else {
-        cell.accessoryView = nil;
-        cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        // 视频选项
+        NSString *videoName = self.videoOptions[indexPath.row];
+        cell.textLabel.text = videoName;
+        
+        // 显示选中标记
+        if ([videoName isEqualToString:self.selectedVideo]) {
+            cell.accessoryType = UITableViewCellAccessoryCheckmark;
+        } else {
+            cell.accessoryType = UITableViewCellAccessoryNone;
+        }
     }
     
     return cell;
 }
 
+#pragma mark - UITableViewDelegate
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    NSDictionary *setting = self.settings[indexPath.row];
-    if ([setting[@"type"] isEqualToString:@"input"]) {
-        [self showInputAlertForSetting:setting];
-    } else if ([setting[@"type"] isEqualToString:@"multiline"]) {
-        [self showMultilineAlertForSetting:setting];
+    if (indexPath.section == 1) {
+        // 选择视频
+        NSString *selectedVideo = self.videoOptions[indexPath.row];
+        self.selectedVideo = selectedVideo;
+        
+        // 保存选择
+        [[NSUserDefaults standardUserDefaults] setObject:selectedVideo forKey:@"SelectedVideo"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        
+        // 重新加载表格
+        [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:1] withRowAnimation:UITableViewRowAnimationNone];
     }
 }
 
-- (void)switchChanged:(UISwitch *)sender {
-    NSDictionary *setting = self.settings[sender.tag];
-    [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:setting[@"key"]];
+#pragma mark - 开关事件
+
+- (void)toggleEnabled:(UISwitch *)switchView {
+    [[NSUserDefaults standardUserDefaults] setBool:switchView.isOn forKey:@"VirtualVideoEnabled"];
     [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    // 清除缓存以便重新生成
-    if ([setting[@"key"] isEqualToString:@"DDZan_Enabled"]) {
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"DDZan_FriendCache"];
-    }
-}
-
-- (void)showInputAlertForSetting:(NSDictionary *)setting {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:setting[@"title"]
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        textField.placeholder = setting[@"placeholder"];
-        textField.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
-        textField.keyboardType = UIKeyboardTypeNumberPad;
-    }];
-    
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *value = alert.textFields.firstObject.text;
-        if (value && value.length > 0) {
-            [[NSUserDefaults standardUserDefaults] setObject:value forKey:setting[@"key"]];
-            [[NSUserDefaults standardUserDefaults] synchronize];
-            [self.tableView reloadData];
-        }
-    }]];
-    
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)showMultilineAlertForSetting:(NSDictionary *)setting {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:setting[@"title"]
-                                                                   message:@"每行一条评论内容，输入完成后点击确定"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    
-    UITextView *textView = [[UITextView alloc] initWithFrame:CGRectMake(10, 50, 250, 150)];
-    textView.text = [[NSUserDefaults standardUserDefaults] stringForKey:setting[@"key"]];
-    textView.font = [UIFont systemFontOfSize:14];
-    textView.layer.borderColor = [UIColor lightGrayColor].CGColor;
-    textView.layer.borderWidth = 1.0;
-    textView.layer.cornerRadius = 5.0;
-    
-    UIViewController *vc = [UIViewController new];
-    vc.view = textView;
-    [alert setValue:vc forKey:@"contentViewController"];
-    
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *value = textView.text;
-        if (value) {
-            [[NSUserDefaults standardUserDefaults] setObject:value forKey:setting[@"key"]];
-            [[NSUserDefaults standardUserDefaults] synchronize];
-            [self.tableView reloadData];
-        }
-    }]];
-    
-    [self presentViewController:alert animated:YES completion:^{
-        [textView becomeFirstResponder];
-    }];
 }
 
 @end
 
-#pragma mark - 核心功能
-%group Main
+// 全局变量
+static BOOL isVideoReplaceEnabled = NO;
+static NSString *selectedVideoPath = nil;
+static UIViewController *currentViewController = nil;
+static NSTimeInterval lastStatusBarTapTime = 0;
+static int statusBarTapCount = 0;
 
-// 获取联系人列表
-static NSArray *getFriendList() {
-    // 检查缓存
-    NSData *cachedData = [[NSUserDefaults standardUserDefaults] objectForKey:@"DDZan_FriendCache"];
-    if (cachedData) {
-        NSError *error;
-        NSArray *cachedList = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSArray class] fromData:cachedData error:&error];
-        if (cachedList && cachedList.count > 0) {
-            return cachedList;
-        }
-    }
-    
-    // 获取联系人管理器
-    MMServiceCenter *serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
-    CContactMgr *contactMgr = [serviceCenter getService:objc_getClass("CContactMgr")];
-    
-    if (!contactMgr) return @[];
-    
-    // 获取所有联系人
-    NSSet *allUsernamesSet = [contactMgr getAllContactUserName];
-    if (!allUsernamesSet) return @[];
-    
-    NSArray *allUsernames = [allUsernamesSet allObjects];
-    NSMutableArray *friends = [NSMutableArray array];
-    
-    for (NSString *username in allUsernames) {
-        @autoreleasepool {
-            CContact *contact = [contactMgr getContactByName:username];
-            if (contact) {
-                // 过滤掉公众号(1)、群聊(2)、企业号(3)等
-                int contactType = [contact m_uiType];
-                if (contactType != 1 && contactType != 2 && contactType != 3) {
-                    // 确保是好友（m_uiFriendScene != 0 表示是好友）
-                    int friendScene = [contact m_uiFriendScene];
-                    if (friendScene != 0) {
-                        NSString *nickname = [contact m_nsNickName];
-                        NSString *displayName = nickname ? nickname : username;
-                        [friends addObject:@{
-                            @"username": username,
-                            @"nickname": displayName
-                        }];
-                    }
-                }
-            }
-        }
-    }
-    
-    // 缓存结果
-    if (friends.count > 0) {
-        NSError *error;
-        NSData *data = [NSKeyedArchiver archivedDataWithRootObject:friends requiringSecureCoding:NO error:&error];
-        if (data && !error) {
-            [[NSUserDefaults standardUserDefaults] setObject:data forKey:@"DDZan_FriendCache"];
-            [[NSUserDefaults standardUserDefaults] synchronize];
-        }
-    }
-    
-    return [friends copy];
-}
+// 函数声明
+static void showVideoSelectionMenu(void);
+static void handleVideoSelection(NSString *videoName);
+static void setupVideoReplacement(void);
+static void disableVideoReplacement(void);
+static void showAlert(NSString *message);
+static void setupStatusBarTripleTap(UIViewController *viewController);
+static void checkStatusBarTripleTap(void);
 
-// 生成随机点赞
-static NSMutableArray *generateFakeLikes(NSMutableArray *originalLikes, NSString *ownerUsername) {
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
-        return originalLikes;
-    }
-    
-    NSInteger targetCount = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDZan_LikeCount"];
-    if (targetCount <= 0) return originalLikes ?: [NSMutableArray array];
-    
-    NSArray *friends = getFriendList();
-    if (friends.count == 0) return originalLikes ?: [NSMutableArray array];
-    
-    NSMutableArray *newLikes = [NSMutableArray array];
-    if (originalLikes && originalLikes.count > 0) {
-        [newLikes addObjectsFromArray:originalLikes];
-    }
-    
-    // 确保不重复
-    NSMutableArray *availableFriends = [friends mutableCopy];
-    for (id like in newLikes) {
-        if ([like respondsToSelector:@selector(username)]) {
-            NSString *existingUsername = [like username];
-            // 修复：使用正确的过滤方式
-            NSMutableArray *toRemove = [NSMutableArray array];
-            for (NSDictionary *friendInfo in availableFriends) {
-                if ([friendInfo[@"username"] isEqualToString:existingUsername]) {
-                    [toRemove addObject:friendInfo];
-                }
-            }
-            [availableFriends removeObjectsInArray:toRemove];
-        }
-    }
-    
-    // 如果可用好友不足，直接返回现有数据
-    if (availableFriends.count == 0) return newLikes;
-    
-    // 生成新的点赞
-    for (int i = 0; i < MIN(targetCount, availableFriends.count); i++) {
-        NSDictionary *friendInfo = availableFriends[i];
-        NSString *username = friendInfo[@"username"];
-        NSString *nickname = friendInfo[@"nickname"];
-        
-        // 避免给自己点赞
-        if ([username isEqualToString:ownerUsername]) continue;
-        
-        // 创建点赞对象
-        WCUserComment *fakeLike = [[objc_getClass("WCUserComment") alloc] init];
-        [fakeLike setUsername:username];
-        [fakeLike setNickname:nickname];
-        [fakeLike setType:1]; // 1:点赞
-        [fakeLike setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
-        
-        [newLikes addObject:fakeLike];
-    }
-    
-    return newLikes;
-}
-
-// 生成随机评论
-static NSMutableArray *generateFakeComments(NSMutableArray *originalComments, NSString *ownerUsername) {
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
-        return originalComments;
-    }
-    
-    NSInteger targetCount = [[NSUserDefaults standardUserDefaults] integerForKey:@"DDZan_CommentCount"];
-    if (targetCount <= 0) return originalComments ?: [NSMutableArray array];
-    
-    NSArray *friends = getFriendList();
-    if (friends.count == 0) return originalComments ?: [NSMutableArray array];
-    
-    // 获取自定义评论内容
-    NSString *customCommentsStr = [[NSUserDefaults standardUserDefaults] stringForKey:@"DDZan_CustomComments"];
-    NSArray *commentTemplates = @[@"👍 赞一个", @"👍 不错哦", @"👍 666", @"👍 优秀", @"👍 可以可以"];
-    
-    if (customCommentsStr && customCommentsStr.length > 0) {
-        commentTemplates = [customCommentsStr componentsSeparatedByString:@"\n"];
-        // 过滤空行
-        NSMutableArray *filtered = [NSMutableArray array];
-        for (NSString *line in commentTemplates) {
-            if (line.length > 0) {
-                [filtered addObject:line];
-            }
-        }
-        commentTemplates = filtered;
-    }
-    
-    if (commentTemplates.count == 0) {
-        commentTemplates = @[@"👍 赞一个", @"👍 不错哦", @"👍 666", @"👍 优秀", @"👍 可以可以"];
-    }
-    
-    NSMutableArray *newComments = [NSMutableArray array];
-    if (originalComments && originalComments.count > 0) {
-        [newComments addObjectsFromArray:originalComments];
-    }
-    
-    // 确保不重复
-    NSMutableArray *availableFriends = [friends mutableCopy];
-    for (id comment in newComments) {
-        if ([comment respondsToSelector:@selector(username)]) {
-            NSString *existingUsername = [comment username];
-            // 修复：使用正确的过滤方式
-            NSMutableArray *toRemove = [NSMutableArray array];
-            for (NSDictionary *friendInfo in availableFriends) {
-                if ([friendInfo[@"username"] isEqualToString:existingUsername]) {
-                    [toRemove addObject:friendInfo];
-                }
-            }
-            [availableFriends removeObjectsInArray:toRemove];
-        }
-    }
-    
-    // 如果可用好友不足，直接返回现有数据
-    if (availableFriends.count == 0) return newComments;
-    
-    // 生成新的评论
-    for (int i = 0; i < MIN(targetCount, availableFriends.count); i++) {
-        NSDictionary *friendInfo = availableFriends[i];
-        NSString *username = friendInfo[@"username"];
-        NSString *nickname = friendInfo[@"nickname"];
-        
-        // 避免给自己评论
-        if ([username isEqualToString:ownerUsername]) continue;
-        
-        // 创建评论对象
-        WCUserComment *fakeComment = [[objc_getClass("WCUserComment") alloc] init];
-        [fakeComment setUsername:username];
-        [fakeComment setNickname:nickname];
-        [fakeComment setType:2]; // 2:评论
-        [fakeComment setCreateTime:(unsigned int)[[NSDate date] timeIntervalSince1970]];
-        
-        // 随机选择评论内容
-        NSUInteger randomIndex = arc4random_uniform((uint32_t)commentTemplates.count);
-        NSString *randomComment = commentTemplates[randomIndex];
-        [fakeComment setContent:randomComment];
-        
-        [newComments addObject:fakeComment];
-    }
-    
-    return newComments;
-}
-
-%hook WCTimelineMgr
-
-- (void)onDataUpdated:(id)arg1 andData:(NSMutableArray *)data andAdData:(id)arg3 withChangedTime:(unsigned int)arg4 {
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DDZan_Enabled"]) {
-        %orig;
-        return;
-    }
-    
-    NSString *myUsername = nil;
-    if ([objc_getClass("SettingUtil") respondsToSelector:@selector(getCurUsrName)]) {
-        myUsername = [objc_getClass("SettingUtil") getCurUsrName];
-    }
-    
-    if (!myUsername || myUsername.length == 0) {
-        %orig;
-        return;
-    }
-    
-    for (WCDataItem *item in data) {
-        if (![item respondsToSelector:@selector(username)]) continue;
-        
-        NSString *itemUsername = [item username];
-        if ([itemUsername isEqualToString:myUsername]) {
-            // 处理点赞
-            NSMutableArray *originalLikes = [item likeUsers];
-            NSMutableArray *fakeLikes = generateFakeLikes(originalLikes, myUsername);
-            [item setLikeUsers:fakeLikes];
-            [item setLikeCount:(int)fakeLikes.count];
+// 显示弹窗
+static void showAlert(NSString *message) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"虚拟视频" 
+                                                                        message:message 
+                                                                 preferredStyle:UIAlertControllerStyleAlert];
             
-            // 处理评论
-            NSMutableArray *originalComments = [item commentUsers];
-            NSMutableArray *fakeComments = generateFakeComments(originalComments, myUsername);
-            [item setCommentUsers:fakeComments];
-            [item setCommentCount:(int)fakeComments.count];
+            UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"确定" 
+                                                            style:UIAlertActionStyleDefault 
+                                                          handler:nil];
+            [alert addAction:okAction];
+            
+            UIWindow *window = [UIApplication sharedApplication].keyWindow;
+            if (!window) {
+                window = [[UIApplication sharedApplication].windows firstObject];
+            }
+            
+            if (window) {
+                UIViewController *rootVC = window.rootViewController;
+                while (rootVC.presentedViewController) {
+                    rootVC = rootVC.presentedViewController;
+                }
+                [rootVC presentViewController:alert animated:YES completion:nil];
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"显示弹窗错误: %@", exception);
         }
+    });
+}
+
+// 检查状态栏三击
+static void checkStatusBarTripleTap(void) {
+    NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970];
+    NSTimeInterval timeDiff = currentTime - lastStatusBarTapTime;
+    
+    if (timeDiff < 0.8) { // 0.8秒内完成三击
+        statusBarTapCount++;
+        
+        if (statusBarTapCount >= 3) {
+            statusBarTapCount = 0;
+            showVideoSelectionMenu();
+        }
+    } else {
+        statusBarTapCount = 1; // 重新开始计数
     }
     
+    lastStatusBarTapTime = currentTime;
+}
+
+// 设置状态栏三击检测
+static void setupStatusBarTripleTap(UIViewController *viewController) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *window = [UIApplication sharedApplication].keyWindow;
+        if (!window) {
+            window = [[UIApplication sharedApplication].windows firstObject];
+        }
+        
+        if (window) {
+            // 创建状态栏区域的触摸检测视图
+            UIView *tapView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, window.bounds.size.width, 44)];
+            tapView.tag = 8888;
+            tapView.userInteractionEnabled = YES;
+            tapView.backgroundColor = [UIColor clearColor];
+            
+            // 移除旧的视图
+            for (UIView *subview in window.subviews) {
+                if (subview.tag == 8888) {
+                    [subview removeFromSuperview];
+                    break;
+                }
+            }
+            
+            // 添加三击手势
+            UITapGestureRecognizer *tripleTap = [[UITapGestureRecognizer alloc] initWithTarget:viewController 
+                                                                                        action:@selector(handleStatusBarTripleTap:)];
+            tripleTap.numberOfTapsRequired = 3;
+            [tapView addGestureRecognizer:tripleTap];
+            
+            [window addSubview:tapView];
+            [window bringSubviewToFront:tapView];
+        }
+    });
+}
+
+// 处理视频选择
+static void handleVideoSelection(NSString *videoName) {
+    NSLog(@"已选择视频: %@", videoName);
+    
+    // 保存视频选择
+    [[NSUserDefaults standardUserDefaults] setObject:videoName forKey:@"SelectedVideo"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    // 设置视频路径
+    NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *videosPath = [documentsPath stringByAppendingPathComponent:@"Videos"];
+    selectedVideoPath = [videosPath stringByAppendingPathComponent:videoName];
+    
+    if ([[NSFileManager defaultManager] fileExistsAtPath:selectedVideoPath]) {
+        isVideoReplaceEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"VirtualVideoEnabled"];
+        if (isVideoReplaceEnabled) {
+            setupVideoReplacement();
+        }
+        showAlert([NSString stringWithFormat:@"已选择: %@\n请确保插件已启用", videoName]);
+    } else {
+        showAlert(@"视频文件不存在\n请将视频文件放入Documents/Videos目录");
+    }
+}
+
+// 视频选择菜单
+static void showVideoSelectionMenu(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"虚拟视频"
+                                                                    message:@"请选择一个视频源"
+                                                             preferredStyle:UIAlertControllerStyleActionSheet];
+        
+        // 添加视频选项
+        NSArray *videos = @[@"视频1", @"视频2"];
+        for (NSString *video in videos) {
+            UIAlertAction *action = [UIAlertAction actionWithTitle:video
+                                                           style:UIAlertActionStyleDefault
+                                                         handler:^(UIAlertAction * _Nonnull action) {
+                handleVideoSelection(video);
+            }];
+            [alert addAction:action];
+        }
+        
+        // 添加启用/禁用选项
+        BOOL isEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"VirtualVideoEnabled"];
+        NSString *enableTitle = isEnabled ? @"禁用插件" : @"启用插件";
+        UIAlertAction *enableAction = [UIAlertAction actionWithTitle:enableTitle
+                                                             style:isEnabled ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault
+                                                           handler:^(UIAlertAction * _Nonnull action) {
+            BOOL newState = !isEnabled;
+            [[NSUserDefaults standardUserDefaults] setBool:newState forKey:@"VirtualVideoEnabled"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            
+            if (newState) {
+                isVideoReplaceEnabled = YES;
+                NSString *selectedVideo = [[NSUserDefaults standardUserDefaults] stringForKey:@"SelectedVideo"] ?: @"视频1";
+                handleVideoSelection(selectedVideo);
+            } else {
+                isVideoReplaceEnabled = NO;
+                showAlert(@"插件已禁用");
+            }
+        }];
+        [alert addAction:enableAction];
+        
+        // 添加取消操作
+        UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消"
+                                                             style:UIAlertActionStyleCancel
+                                                           handler:nil];
+        [alert addAction:cancelAction];
+        
+        // 显示菜单
+        UIWindow *keyWindow = nil;
+        if (@available(iOS 13.0, *)) {
+            NSSet *connectedScenes = [UIApplication sharedApplication].connectedScenes;
+            for (UIScene *scene in connectedScenes) {
+                if (scene.activationState == UISceneActivationStateForegroundActive && [scene isKindOfClass:[UIWindowScene class]]) {
+                    UIWindowScene *windowScene = (UIWindowScene *)scene;
+                    for (UIWindow *window in windowScene.windows) {
+                        if (window.isKeyWindow) {
+                            keyWindow = window;
+                            break;
+                        }
+                    }
+                    if (keyWindow) break;
+                }
+            }
+        } else {
+            keyWindow = [UIApplication sharedApplication].keyWindow;
+        }
+        
+        if (!keyWindow) {
+            keyWindow = [UIApplication sharedApplication].windows.firstObject;
+        }
+        
+        if (keyWindow) {
+            UIViewController *topController = keyWindow.rootViewController;
+            while (topController.presentedViewController) {
+                topController = topController.presentedViewController;
+            }
+            
+            if (topController) {
+                [topController presentViewController:alert animated:YES completion:nil];
+            }
+        }
+    });
+}
+
+// 设置视频替换
+static void setupVideoReplacement(void) {
+    if (!isVideoReplaceEnabled || !selectedVideoPath) {
+        return;
+    }
+    
+    NSLog(@"正在设置视频替换...");
+    // 这里添加视频替换的具体实现
+    // 注意：实际实现需要复杂的视频流处理
+}
+
+// 禁用视频替换
+static void disableVideoReplacement(void) {
+    isVideoReplaceEnabled = NO;
+    selectedVideoPath = nil;
+    NSLog(@"已禁用视频替换");
+}
+
+// 摄像头钩子
+%hook AVCaptureDevice
+
++ (id)deviceWithUniqueID:(id)arg1 {
+    if (isVideoReplaceEnabled && selectedVideoPath) {
+        NSLog(@"虚拟视频: 正在替换摄像头输入...");
+        // 这里返回自定义的视频源
+        return nil;
+    }
+    return %orig;
+}
+
+%end
+
+// 视频会话钩子
+%hook AVCaptureSession
+
+- (void)startRunning {
+    if (isVideoReplaceEnabled && selectedVideoPath) {
+        NSLog(@"虚拟视频: 启动视频会话...");
+        // 处理自定义视频会话
+        return;
+    }
     %orig;
 }
 
 %end
 
-%end // Main group
+// UIViewController扩展
+%hook UIViewController
 
-#pragma mark - 插件注册和初始化
+%new
+- (void)handleStatusBarTripleTap:(UITapGestureRecognizer *)gesture {
+    checkStatusBarTripleTap();
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    currentViewController = self;
+    
+    // 设置状态栏三击检测
+    setupStatusBarTripleTap(self);
+    
+    // 加载设置
+    isVideoReplaceEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"VirtualVideoEnabled"];
+    NSString *selectedVideo = [[NSUserDefaults standardUserDefaults] stringForKey:@"SelectedVideo"];
+    if (selectedVideo) {
+        handleVideoSelection(selectedVideo);
+    }
+}
+
+%end
+
+// 构造函数 - 插件入口
 %ctor {
     @autoreleasepool {
-        NSLog(@"[DD集赞助手] 插件加载");
+        NSLog(@"虚拟视频插件 v1.0.0 已加载");
+        
+        // 初始化默认设置
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        if (![defaults objectForKey:@"VirtualVideoEnabled"]) {
+            [defaults setBool:YES forKey:@"VirtualVideoEnabled"];
+        }
+        if (![defaults objectForKey:@"SelectedVideo"]) {
+            [defaults setObject:@"视频1" forKey:@"SelectedVideo"];
+        }
+        [defaults synchronize];
         
         // 注册到插件管理器
         if (NSClassFromString(@"WCPluginsMgr")) {
-            NSLog(@"[DD集赞助手] 注册到插件管理器");
-            [[objc_getClass("WCPluginsMgr") sharedInstance] 
-                registerControllerWithTitle:@"DD集赞助手" 
-                                   version:@"1.0" 
-                               controller:@"DDZanSettingViewController"];
+            // 注册设置页面
+            [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"虚拟视频" 
+                                                                               version:@"1.0.0" 
+                                                                            controller:@"VirtualVideoSettingsController"];
+            
+            // 注册开关
+            [[objc_getClass("WCPluginsMgr") sharedInstance] registerSwitchWithTitle:@"虚拟视频" 
+                                                                                key:@"VirtualVideoEnabled"];
+            
+            NSLog(@"已注册到插件管理器");
         }
         
-        // 初始化默认设置
-        NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
-        NSDictionary *defaults = @{
-            @"DDZan_Enabled": @YES,
-            @"DDZan_LikeCount": @"10",
-            @"DDZan_CommentCount": @"5",
-            @"DDZan_CustomComments": @"👍 赞一个\n👍 不错哦\n👍 666\n👍 优秀\n👍 可以可以"
-        };
-        
-        for (NSString *key in defaults) {
-            if (![userDefaults objectForKey:key]) {
-                [userDefaults setObject:defaults[key] forKey:key];
-            }
+        // 初始化变量
+        isVideoReplaceEnabled = [defaults boolForKey:@"VirtualVideoEnabled"];
+        NSString *selectedVideo = [defaults stringForKey:@"SelectedVideo"];
+        if (selectedVideo) {
+            NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+            NSString *videosPath = [documentsPath stringByAppendingPathComponent:@"Videos"];
+            selectedVideoPath = [videosPath stringByAppendingPathComponent:selectedVideo];
         }
-        [userDefaults synchronize];
-        
-        // 激活主功能组
-        %init(Main);
     }
 }
