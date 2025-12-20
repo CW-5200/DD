@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import <CaptainHook/CaptainHook.h>
 
 // ==================== 前置声明 ====================
@@ -193,11 +194,18 @@
     // 调用微信的红包领取接口
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (logicMgrClass) {
+        // 使用函数指针调用以避免performSelector警告
         Class mmServiceCenterClass = objc_getClass("MMServiceCenter");
         if (mmServiceCenterClass) {
-            id mmServiceCenter = [mmServiceCenterClass defaultCenter];
-            if ([mmServiceCenter respondsToSelector:@selector(getService:)]) {
-                id logicMgr = [mmServiceCenter getService:logicMgrClass];
+            IMP defaultCenterIMP = class_getMethodImplementation(mmServiceCenterClass, @selector(defaultCenter));
+            id (*defaultCenterFunc)(id, SEL) = (id (*)(id, SEL))defaultCenterIMP;
+            id mmServiceCenter = defaultCenterFunc(mmServiceCenterClass, @selector(defaultCenter));
+            
+            if (mmServiceCenter) {
+                IMP getServiceIMP = class_getMethodImplementation(object_getClass(mmServiceCenter), @selector(getService:));
+                id (*getServiceFunc)(id, SEL, Class) = (id (*)(id, SEL, Class))getServiceIMP;
+                id logicMgr = getServiceFunc(mmServiceCenter, @selector(getService:), logicMgrClass);
+                
                 if ([logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
                     [logicMgr performSelector:@selector(OpenRedEnvelopesRequest:) withObject:[self.redEnvelopParam toParams]];
                 }
@@ -527,9 +535,21 @@ CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, Ms
     Class mmServiceCenterClass = objc_getClass("MMServiceCenter");
     if (!contactMgrClass || !mmServiceCenterClass) return;
     
-    id mmServiceCenter = [mmServiceCenterClass defaultCenter];
-    id contactMgr = [mmServiceCenter getService:contactMgrClass];
-    CContact *selfContact = [contactMgr getSelfContact];
+    // 使用函数指针调用MMServiceCenter方法
+    IMP defaultCenterIMP = class_getMethodImplementation(mmServiceCenterClass, @selector(defaultCenter));
+    id (*defaultCenterFunc)(id, SEL) = (id (*)(id, SEL))defaultCenterIMP;
+    id mmServiceCenter = defaultCenterFunc(mmServiceCenterClass, @selector(defaultCenter));
+    
+    IMP getServiceIMP = class_getMethodImplementation(object_getClass(mmServiceCenter), @selector(getService:));
+    id (*getServiceFunc)(id, SEL, Class) = (id (*)(id, SEL, Class))getServiceIMP;
+    id contactMgr = getServiceFunc(mmServiceCenter, @selector(getService:), contactMgrClass);
+    
+    if (!contactMgr) return;
+    
+    // 获取自己的联系人信息
+    IMP getSelfContactIMP = class_getMethodImplementation([contactMgr class], @selector(getSelfContact));
+    CContact* (*getSelfContactFunc)(id, SEL) = (CContact* (*)(id, SEL))getSelfContactIMP;
+    CContact *selfContact = getSelfContactFunc(contactMgr, @selector(getSelfContact));
     if (!selfContact) return;
     
     NSString *selfUsrName = selfContact.m_nsUsrName;
@@ -562,18 +582,25 @@ CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, Ms
     if (range.location == NSNotFound) return;
     
     NSString *paramString = [nativeUrl substringFromIndex:range.location + 1];
-    NSDictionary *paramDict = [WCBizUtil dictionaryWithDecodedComponets:paramString separator:@"&"];
+    
+    // 使用WCBizUtil解析参数
+    Class wcBizUtilClass = objc_getClass("WCBizUtil");
+    if (!wcBizUtilClass) return;
+    
+    IMP dictWithComponentsIMP = class_getMethodImplementation(wcBizUtilClass, @selector(dictionaryWithDecodedComponets:separator:));
+    NSDictionary* (*dictWithComponentsFunc)(id, SEL, NSString *, NSString *) = (NSDictionary* (*)(id, SEL, NSString *, NSString *))dictWithComponentsIMP;
+    NSDictionary *paramDict = dictWithComponentsFunc(wcBizUtilClass, @selector(dictionaryWithDecodedComponets:separator:), paramString, @"&");
     
     if (!paramDict) return;
     
     // 创建红包参数
     DDRedEnvelopParam *envelopParam = [[DDRedEnvelopParam alloc] init];
-    envelopParam.msgType = paramDict[@"msgtype"];
-    envelopParam.sendId = paramDict[@"sendid"];
-    envelopParam.channelId = paramDict[@"channelid"];
+    envelopParam.msgType = [paramDict objectForKey:@"msgtype"];
+    envelopParam.sendId = [paramDict objectForKey:@"sendid"];
+    envelopParam.channelId = [paramDict objectForKey:@"channelid"];
     envelopParam.nativeUrl = nativeUrl;
     envelopParam.sessionUserName = isGroupSender ? toUsr : fromUsr;
-    envelopParam.sign = paramDict[@"sign"];
+    envelopParam.sign = [paramDict objectForKey:@"sign"];
     envelopParam.isGroupSender = isGroupSender;
     
     // 获取昵称和头像
@@ -592,8 +619,8 @@ CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, Ms
     
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (logicMgrClass) {
-        id logicMgr = [mmServiceCenter getService:logicMgrClass];
-        if ([logicMgr respondsToSelector:@selector(ReceiverQueryRedEnvelopesRequest:)]) {
+        id logicMgr = getServiceFunc(mmServiceCenter, @selector(getService:), logicMgrClass);
+        if (logicMgr && [logicMgr respondsToSelector:@selector(ReceiverQueryRedEnvelopesRequest:)]) {
             [logicMgr performSelector:@selector(ReceiverQueryRedEnvelopesRequest:) withObject:queryParams];
         }
     }
@@ -645,14 +672,20 @@ CHOptimizedMethod(2, self, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResp
     if (reqData) {
         NSString *reqString = [[NSString alloc] initWithData:reqData encoding:NSUTF8StringEncoding];
         if (reqString) {
-            NSDictionary *requestDictionary = [WCBizUtil dictionaryWithDecodedComponets:reqString separator:@"&"];
-            NSString *nativeUrl = [[requestDictionary stringForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
-            NSDictionary *nativeUrlDict = [WCBizUtil dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
-            NSString *sign = [nativeUrlDict stringForKey:@"sign"];
-            
-            // 注意：envelopParam.isGroupSender 是 BOOL
-            if (!envelopParam.isGroupSender && ![sign isEqualToString:envelopParam.sign]) {
-                return; // 签名不匹配
+            Class wcBizUtilClass = objc_getClass("WCBizUtil");
+            if (wcBizUtilClass) {
+                IMP dictWithComponentsIMP = class_getMethodImplementation(wcBizUtilClass, @selector(dictionaryWithDecodedComponets:separator:));
+                NSDictionary* (*dictWithComponentsFunc)(id, SEL, NSString *, NSString *) = (NSDictionary* (*)(id, SEL, NSString *, NSString *))dictWithComponentsIMP;
+                
+                NSDictionary *requestDictionary = dictWithComponentsFunc(wcBizUtilClass, @selector(dictionaryWithDecodedComponets:separator:), reqString, @"&");
+                NSString *nativeUrl = [[requestDictionary objectForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
+                NSDictionary *nativeUrlDict = dictWithComponentsFunc(wcBizUtilClass, @selector(dictionaryWithDecodedComponets:separator:), nativeUrl, @"&");
+                NSString *sign = [nativeUrlDict objectForKey:@"sign"];
+                
+                // 注意：envelopParam.isGroupSender 是 BOOL
+                if (!envelopParam.isGroupSender && ![sign isEqualToString:envelopParam.sign]) {
+                    return; // 签名不匹配
+                }
             }
         }
     }
@@ -699,15 +732,26 @@ CHConstructor {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
             if (pluginsMgrClass) {
-                SEL sharedInstanceSel = @selector(sharedInstance);
-                SEL registerSel = @selector(registerControllerWithTitle:version:controller:);
+                // 使用函数指针调用sharedInstance方法
+                IMP sharedInstanceIMP = class_getMethodImplementation(pluginsMgrClass, @selector(sharedInstance));
+                id (*sharedInstanceFunc)(id, SEL) = (id (*)(id, SEL))sharedInstanceIMP;
+                id pluginsMgr = sharedInstanceFunc(pluginsMgrClass, @selector(sharedInstance));
                 
-                if ([pluginsMgrClass respondsToSelector:sharedInstanceSel] && 
-                    [pluginsMgrClass instancesRespondToSelector:registerSel]) {
+                if (pluginsMgr) {
+                    // 使用objc_msgSend调用三个参数的方法
+                    SEL registerSel = @selector(registerControllerWithTitle:version:controller:);
                     
-                    id pluginsMgr = [pluginsMgrClass performSelector:sharedInstanceSel];
-                    if (pluginsMgr) {
-                        [pluginsMgr performSelector:registerSel withObject:@"DD红包助手" withObject:@"1.0.0" withObject:@"DDRedEnvelopSettingController"];
+                    // 定义函数指针类型
+                    typedef void (*RegisterFunc)(id, SEL, NSString *, NSString *, NSString *);
+                    
+                    // 获取方法实现
+                    Method registerMethod = class_getInstanceMethod([pluginsMgr class], registerSel);
+                    if (registerMethod) {
+                        IMP registerIMP = method_getImplementation(registerMethod);
+                        RegisterFunc registerFunc = (RegisterFunc)registerIMP;
+                        
+                        // 调用方法
+                        registerFunc(pluginsMgr, registerSel, @"DD红包助手", @"1.0.0", @"DDRedEnvelopSettingController");
                     }
                 }
             }
