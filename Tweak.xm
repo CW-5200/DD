@@ -7,7 +7,9 @@
 #import <objc/runtime.h>
 #import <CaptainHook/CaptainHook.h>
 
-// 插件配置管理
+// ==================== 前置声明 ====================
+
+// 配置管理
 @interface DDRedEnvelopConfig : NSObject
 + (instancetype)shared;
 
@@ -48,6 +50,8 @@
 @interface DDReceiveRedEnvelopOperation : NSOperation
 @property (assign, nonatomic, getter=isExecuting) BOOL executing;
 @property (assign, nonatomic, getter=isFinished) BOOL finished;
+@property (strong, nonatomic) DDRedEnvelopParam *redEnvelopParam;
+@property (assign, nonatomic) unsigned int delaySeconds;
 - (instancetype)initWithRedEnvelopParam:(DDRedEnvelopParam *)param delay:(unsigned int)delaySeconds;
 @end
 
@@ -60,7 +64,7 @@
 @end
 
 // 设置控制器
-@interface DDRedEnvelopSettingController : UIViewController
+@interface DDRedEnvelopSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @end
 
 // ==================== 配置管理实现 ====================
@@ -165,8 +169,8 @@
 
 - (instancetype)initWithRedEnvelopParam:(DDRedEnvelopParam *)param delay:(unsigned int)delaySeconds {
     if (self = [super init]) {
-        _redEnvelopParam = param;
-        _delaySeconds = delaySeconds;
+        self.redEnvelopParam = param;
+        self.delaySeconds = delaySeconds;
     }
     return self;
 }
@@ -189,9 +193,15 @@
     // 调用微信的红包领取接口
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (logicMgrClass) {
-        id logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:logicMgrClass];
-        if ([logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
-            [logicMgr performSelector:@selector(OpenRedEnvelopesRequest:) withObject:[self.redEnvelopParam toParams]];
+        Class mmServiceCenterClass = objc_getClass("MMServiceCenter");
+        if (mmServiceCenterClass) {
+            id mmServiceCenter = [mmServiceCenterClass defaultCenter];
+            if ([mmServiceCenter respondsToSelector:@selector(getService:)]) {
+                id logicMgr = [mmServiceCenter getService:logicMgrClass];
+                if ([logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
+                    [logicMgr performSelector:@selector(OpenRedEnvelopesRequest:) withObject:[self.redEnvelopParam toParams]];
+                }
+            }
         }
     }
     
@@ -456,32 +466,57 @@
 
 @end
 
-// ==================== Hook微信关键类 ====================
+// ==================== 微信Hook部分 ====================
 
-// 声明要hook的微信类
+// 微信相关类的前置声明
+@interface CMessageWrap : NSObject
+@property (nonatomic, assign) NSInteger m_uiMessageType;
+@property (nonatomic, strong) NSString *m_nsContent;
+@property (nonatomic, strong) NSString *m_nsFromUsr;
+@property (nonatomic, strong) NSString *m_nsToUsr;
+@property (nonatomic, strong) id m_oWCPayInfoItem;
+@end
+
+@interface CContact : NSObject
+@property (nonatomic, strong) NSString *m_nsUsrName;
+- (NSString *)getContactDisplayName;
+@property (nonatomic, strong) NSString *m_nsHeadImgUrl;
+@end
+
+@interface MMServiceCenter : NSObject
++ (instancetype)defaultCenter;
+- (id)getService:(Class)service;
+@end
+
+@interface CContactMgr : NSObject
+- (CContact *)getSelfContact;
+@end
+
+@interface WCBizUtil : NSObject
++ (NSDictionary *)dictionaryWithDecodedComponets:(NSString *)string separator:(NSString *)separator;
+@end
+
+// Hook CMessageMgr 的 AsyncOnAddMsg:MsgWrap: 方法
 CHDeclareClass(CMessageMgr);
-CHDeclareClass(WCRedEnvelopesLogicMgr);
 
-// Hook CMessageMgr 的 AsyncOnAddMsg:MsgWrap: 方法，监听红包消息
-CHMethod(2, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, id, wrap)
+CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, CMessageWrap *, wrap)
 {
-    // 先调用原始方法
     CHSuper(2, CMessageMgr, AsyncOnAddMsg, msg, MsgWrap, wrap);
     
     // 检查是否是红包消息
     if (![DDRedEnvelopConfig shared].autoRedEnvelop) return;
     
     // 获取消息类型
-    NSInteger messageType = [[wrap valueForKey:@"m_uiMessageType"] integerValue];
+    NSInteger messageType = wrap.m_uiMessageType;
     if (messageType != 49) return; // AppNode 类型消息
     
     // 检查是否是红包消息
-    NSString *content = [wrap valueForKey:@"m_nsContent"];
+    NSString *content = wrap.m_nsContent;
     if (![content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"]) return;
     
     // 获取发送者和接收者
-    NSString *fromUsr = [wrap valueForKey:@"m_nsFromUsr"];
-    NSString *toUsr = [wrap valueForKey:@"m_nsToUsr"];
+    NSString *fromUsr = wrap.m_nsFromUsr;
+    NSString *toUsr = wrap.m_nsToUsr;
     
     // 群聊过滤检查
     NSArray *filterGroups = [DDRedEnvelopConfig shared].redEnvelopGroupFilter;
@@ -489,9 +524,15 @@ CHMethod(2, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, id, wrap
     
     // 获取自己信息
     Class contactMgrClass = objc_getClass("CContactMgr");
-    id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:contactMgrClass];
-    id selfContact = [contactMgr performSelector:@selector(getSelfContact)];
-    NSString *selfUsrName = [selfContact valueForKey:@"m_nsUsrName"];
+    Class mmServiceCenterClass = objc_getClass("MMServiceCenter");
+    if (!contactMgrClass || !mmServiceCenterClass) return;
+    
+    id mmServiceCenter = [mmServiceCenterClass defaultCenter];
+    id contactMgr = [mmServiceCenter getService:contactMgrClass];
+    CContact *selfContact = [contactMgr getSelfContact];
+    if (!selfContact) return;
+    
+    NSString *selfUsrName = selfContact.m_nsUsrName;
     
     // 判断是否是自己发送的红包
     BOOL isSender = [fromUsr isEqualToString:selfUsrName];
@@ -512,7 +553,7 @@ CHMethod(2, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, id, wrap
     if (!shouldReceive) return;
     
     // 解析红包参数
-    NSString *nativeUrl = [[[wrap valueForKey:@"m_oWCPayInfoItem"] valueForKey:@"m_c2cNativeUrl"] stringByRemovingPercentEncoding];
+    NSString *nativeUrl = [[wrap.m_oWCPayInfoItem valueForKey:@"m_c2cNativeUrl"] stringByRemovingPercentEncoding];
     
     if (!nativeUrl) return;
     
@@ -521,15 +562,9 @@ CHMethod(2, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, id, wrap
     if (range.location == NSNotFound) return;
     
     NSString *paramString = [nativeUrl substringFromIndex:range.location + 1];
-    NSArray *params = [paramString componentsSeparatedByString:@"&"];
-    NSMutableDictionary *paramDict = [NSMutableDictionary dictionary];
+    NSDictionary *paramDict = [WCBizUtil dictionaryWithDecodedComponets:paramString separator:@"&"];
     
-    for (NSString *param in params) {
-        NSArray *keyValue = [param componentsSeparatedByString:@"="];
-        if (keyValue.count == 2) {
-            paramDict[keyValue[0]] = keyValue[1];
-        }
-    }
+    if (!paramDict) return;
     
     // 创建红包参数
     DDRedEnvelopParam *envelopParam = [[DDRedEnvelopParam alloc] init];
@@ -542,12 +577,8 @@ CHMethod(2, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, id, wrap
     envelopParam.isGroupSender = isGroupSender;
     
     // 获取昵称和头像
-    if (selfContact) {
-        NSString *nickName = [selfContact performSelector:@selector(getContactDisplayName)];
-        NSString *headImg = [selfContact valueForKey:@"m_nsHeadImgUrl"];
-        envelopParam.nickName = nickName;
-        envelopParam.headImg = headImg;
-    }
+    envelopParam.nickName = [selfContact getContactDisplayName];
+    envelopParam.headImg = selfContact.m_nsHeadImgUrl;
     
     // 查询红包信息
     NSMutableDictionary *queryParams = [@{
@@ -561,7 +592,7 @@ CHMethod(2, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, id, wrap
     
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (logicMgrClass) {
-        id logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:logicMgrClass];
+        id logicMgr = [mmServiceCenter getService:logicMgrClass];
         if ([logicMgr respondsToSelector:@selector(ReceiverQueryRedEnvelopesRequest:)]) {
             [logicMgr performSelector:@selector(ReceiverQueryRedEnvelopesRequest:) withObject:queryParams];
         }
@@ -571,10 +602,11 @@ CHMethod(2, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, id, wrap
     [[DDRedEnvelopParamQueue sharedQueue] enqueue:envelopParam];
 }
 
-// Hook WCRedEnvelopesLogicMgr 的 OnWCToHongbaoCommonResponse:Request: 方法，处理红包查询响应
-CHMethod(2, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1, Request, id, arg2)
+// Hook WCRedEnvelopesLogicMgr 的 OnWCToHongbaoCommonResponse:Request: 方法
+CHDeclareClass(WCRedEnvelopesLogicMgr);
+
+CHOptimizedMethod(2, self, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1, Request, id, arg2)
 {
-    // 先调用原始方法
     CHSuper(2, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, arg1, Request, arg2);
     
     // 检查是否是查询响应
@@ -590,9 +622,8 @@ CHMethod(2, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1,
     NSString *retString = [[NSString alloc] initWithData:retData encoding:NSUTF8StringEncoding];
     if (!retString) return;
     
-    NSData *jsonData = [retString dataUsingEncoding:NSUTF8StringEncoding];
     NSError *error;
-    NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
+    NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:[retString dataUsingEncoding:NSUTF8StringEncoding] options:0 error:&error];
     
     if (error || !responseDict) return;
     
@@ -614,19 +645,14 @@ CHMethod(2, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1,
     if (reqData) {
         NSString *reqString = [[NSString alloc] initWithData:reqData encoding:NSUTF8StringEncoding];
         if (reqString) {
-            NSArray *reqParams = [reqString componentsSeparatedByString:@"&"];
-            for (NSString *param in reqParams) {
-                if ([param hasPrefix:@"nativeUrl="]) {
-                    NSString *nativeUrl = [[param substringFromIndex:10] stringByRemovingPercentEncoding];
-                    NSRange range = [nativeUrl rangeOfString:@"sign="];
-                    if (range.location != NSNotFound) {
-                        NSString *sign = [nativeUrl substringFromIndex:range.location + 5];
-                        if (![envelopParam.isGroupSender boolValue] && ![sign isEqualToString:envelopParam.sign]) {
-                            return; // 签名不匹配
-                        }
-                    }
-                    break;
-                }
+            NSDictionary *requestDictionary = [WCBizUtil dictionaryWithDecodedComponets:reqString separator:@"&"];
+            NSString *nativeUrl = [[requestDictionary stringForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
+            NSDictionary *nativeUrlDict = [WCBizUtil dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
+            NSString *sign = [nativeUrlDict stringForKey:@"sign"];
+            
+            // 注意：envelopParam.isGroupSender 是 BOOL
+            if (!envelopParam.isGroupSender && ![sign isEqualToString:envelopParam.sign]) {
+                return; // 签名不匹配
             }
         }
     }
@@ -671,11 +697,19 @@ CHConstructor {
         
         // 注册插件设置入口
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (NSClassFromString(@"WCPluginsMgr")) {
-                [[objc_getClass("WCPluginsMgr") sharedInstance] 
-                    registerControllerWithTitle:@"DD红包助手" 
-                    version:@"1.0.0" 
-                    controller:@"DDRedEnvelopSettingController"];
+            Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
+            if (pluginsMgrClass) {
+                SEL sharedInstanceSel = @selector(sharedInstance);
+                SEL registerSel = @selector(registerControllerWithTitle:version:controller:);
+                
+                if ([pluginsMgrClass respondsToSelector:sharedInstanceSel] && 
+                    [pluginsMgrClass instancesRespondToSelector:registerSel]) {
+                    
+                    id pluginsMgr = [pluginsMgrClass performSelector:sharedInstanceSel];
+                    if (pluginsMgr) {
+                        [pluginsMgr performSelector:registerSel withObject:@"DD红包助手" withObject:@"1.0.0" withObject:@"DDRedEnvelopSettingController"];
+                    }
+                }
             }
         });
     }
