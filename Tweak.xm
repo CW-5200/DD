@@ -202,34 +202,24 @@
 }
 
 - (void)openRedEnvelop {
+    // 直接调用 OpenRedEnvelopesRequest: 方法
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (!logicMgrClass) return;
     
-    SEL openSel = @selector(OpenRedEnvelopesRequest:);
-    IMP openIMP = class_getMethodImplementation(logicMgrClass, openSel);
-    if (!openIMP) return;
-    
-    void (*openFunc)(id, SEL, NSDictionary *) = (void (*)(id, SEL, NSDictionary *))openIMP;
-    
+    // 获取逻辑管理器
     Class mmServiceClass = objc_getClass("MMServiceCenter");
     if (!mmServiceClass) return;
     
-    SEL defaultSel = @selector(defaultCenter);
-    IMP defaultIMP = class_getMethodImplementation(mmServiceClass, defaultSel);
-    if (!defaultIMP) return;
+    id mmService = [mmServiceClass defaultCenter];
+    if (!mmService) return;
     
-    id (*defaultFunc)(id, SEL) = (id (*)(id, SEL))defaultIMP;
-    id mmService = defaultFunc(mmServiceClass, defaultSel);
+    id logicMgr = [mmService getService:logicMgrClass];
+    if (!logicMgr) return;
     
-    SEL getServiceSel = @selector(getService:);
-    IMP getServiceIMP = class_getMethodImplementation([mmService class], getServiceSel);
-    if (!getServiceIMP) return;
-    
-    id (*getServiceFunc)(id, SEL, Class) = (id (*)(id, SEL, Class))getServiceFunc;
-    id logicMgr = getServiceFunc(mmService, getServiceSel, logicMgrClass);
-    
-    if (logicMgr) {
-        openFunc(logicMgr, openSel, [self.redEnvelopParam toParams]);
+    // 直接调用方法
+    NSDictionary *params = [self.redEnvelopParam toParams];
+    if ([logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
+        [logicMgr OpenRedEnvelopesRequest:params];
     }
 }
 
@@ -506,6 +496,8 @@
 @end
 
 #pragma mark - Logos Hook部分
+
+// Hook CMessageMgr
 %hook CMessageMgr
 
 - (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
@@ -514,7 +506,7 @@
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     if (!config.autoRedEnvelop) return;
     
-    // 检查消息类型
+    // 检查消息类型 (从头文件看是NSInteger类型)
     NSInteger m_uiMessageType = [[wrap valueForKey:@"m_uiMessageType"] integerValue];
     if (m_uiMessageType != 49) return;
     
@@ -531,7 +523,11 @@
     
     // 获取自己信息
     Class contactMgrClass = objc_getClass("CContactMgr");
-    id contactMgr = [self getService:contactMgrClass];
+    Class mmServiceClass = objc_getClass("MMServiceCenter");
+    id mmService = [mmServiceClass defaultCenter];
+    if (!mmService) return;
+    
+    id contactMgr = [mmService getService:contactMgrClass];
     if (!contactMgr) return;
     
     id selfContact = [contactMgr getSelfContact];
@@ -595,9 +591,9 @@
     };
     
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
-    id logicMgr = [self getService:logicMgrClass];
-    if ([logicMgr respondsToSelector:@selector(ReceiverQueryRedEnvelopesRequest:)]) {
-        [logicMgr performSelector:@selector(ReceiverQueryRedEnvelopesRequest:) withObject:queryParams];
+    id logicMgr = [mmService getService:logicMgrClass];
+    if (logicMgr && [logicMgr respondsToSelector:@selector(ReceiverQueryRedEnvelopesRequest:)]) {
+        [logicMgr ReceiverQueryRedEnvelopesRequest:queryParams];
     }
     
     // 加入队列
@@ -606,14 +602,15 @@
 
 %end
 
+// Hook WCRedEnvelopesLogicMgr
 %hook WCRedEnvelopesLogicMgr
 
 - (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
     %orig(arg1, arg2);
     
-    // 检查响应类型
+    // 检查响应类型 (从头文件看是NSInteger类型)
     NSInteger cgiCmdid = [[arg1 valueForKey:@"cgiCmdid"] integerValue];
-    if (cgiCmdid != 3) return;
+    if (cgiCmdid != 3) return; // 3是查询响应
     
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     if (!config.autoRedEnvelop) return;
@@ -636,15 +633,15 @@
     NSInteger hbStatus = [responseDict[@"hbStatus"] integerValue];
     NSString *timingIdentifier = responseDict[@"timingIdentifier"];
     
-    if (receiveStatus == 2) return;
-    if (hbStatus == 4) return;
-    if (!timingIdentifier) return;
+    if (receiveStatus == 2) return; // 已领取
+    if (hbStatus == 4) return;      // 红包已抢完
+    if (!timingIdentifier) return;  // 无效响应
     
     // 从队列中取出参数
     DDRedEnvelopParam *envelopParam = [[DDRedEnvelopParamQueue sharedQueue] dequeue];
     if (!envelopParam) return;
     
-    // 验证签名
+    // 验证签名 (仅非群主发送的红包)
     if (!envelopParam.isGroupSender) {
         NSData *reqData = [[arg2 valueForKey:@"reqText"] valueForKey:@"buffer"];
         if (reqData) {
@@ -664,8 +661,8 @@
                 }
             }
             
-            if (![sign isEqualToString:envelopParam.sign]) {
-                return;
+            if (sign && ![sign isEqualToString:envelopParam.sign]) {
+                return; // 签名不匹配
             }
         }
     }
@@ -677,7 +674,7 @@
     unsigned int delaySeconds = 0;
     if (config.redEnvelopDelay > 0) {
         if (config.redEnvelopMultipleCatch && ![[DDRedEnvelopTaskManager sharedManager] serialQueueIsEmpty]) {
-            delaySeconds = 15000;
+            delaySeconds = 15000; // 串行队列有任务时延迟15秒
         } else {
             delaySeconds = (unsigned int)config.redEnvelopDelay;
         }
@@ -697,44 +694,39 @@
 
 %end
 
+#pragma mark - 构造函数
 %ctor {
     @autoreleasepool {
         // 预加载配置
         [DDRedEnvelopConfig shared];
         
-        // 注册Hook
-        %init(CMessageMgr=objc_getClass("CMessageMgr"));
-        %init(WCRedEnvelopesLogicMgr=objc_getClass("WCRedEnvelopesLogicMgr"));
+        // Logos会自动初始化hook，不需要手动调用%init
         
         // 延迟注册插件入口
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
             if (!pluginsMgrClass) return;
             
-            if (![pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) return;
+            // 检查是否有sharedInstance方法
+            if (![pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
+                // 也可能是sharedManager或其他方法
+                if ([pluginsMgrClass respondsToSelector:@selector(sharedManager)]) {
+                    id pluginsMgr = [pluginsMgrClass sharedManager];
+                    if (pluginsMgr && [pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
+                        [pluginsMgr registerControllerWithTitle:@"DD红包" version:@"1.0.0" controller:@"DDRedEnvelopSettingController"];
+                    }
+                }
+                return;
+            }
             
-            id pluginsMgr = [pluginsMgrClass performSelector:@selector(sharedInstance)];
+            id pluginsMgr = [pluginsMgrClass sharedInstance];
             if (!pluginsMgr) return;
             
             if ([pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
-                [pluginsMgr performSelector:@selector(registerControllerWithTitle:version:controller:)
-                                 withObject:@"DD红包"
-                                 withObject:@"1.0.0"
-                                 withObject:@"DDRedEnvelopSettingController"];
+                [pluginsMgr registerControllerWithTitle:@"DD红包" version:@"1.0.0" controller:@"DDRedEnvelopSettingController"];
             }
         });
     }
-}
-
-// 工具函数：获取服务
-static inline id getService(Class serviceClass) {
-    Class mmServiceClass = objc_getClass("MMServiceCenter");
-    if (!mmServiceClass) return nil;
-    
-    id mmService = [mmServiceClass performSelector:@selector(defaultCenter)];
-    if (!mmService) return nil;
-    
-    return [mmService performSelector:@selector(getService:) withObject:serviceClass];
 }
 
 // 插件版本信息
