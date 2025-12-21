@@ -70,7 +70,12 @@
 @end
 
 #pragma mark - 设置控制器
-@interface DDRedEnvelopSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+@interface DDRedEnvelopSettingController : UIViewController
+
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSArray<NSDictionary *> *dataSource;
+
+- (instancetype)initWithStyle:(UITableViewStyle)style;
 
 @end
 
@@ -202,11 +207,9 @@
 }
 
 - (void)openRedEnvelop {
-    // 直接调用 OpenRedEnvelopesRequest: 方法
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (!logicMgrClass) return;
     
-    // 获取逻辑管理器
     Class mmServiceClass = objc_getClass("MMServiceCenter");
     if (!mmServiceClass) return;
     
@@ -216,7 +219,6 @@
     id logicMgr = [mmService getService:logicMgrClass];
     if (!logicMgr) return;
     
-    // 直接调用方法
     NSDictionary *params = [self.redEnvelopParam toParams];
     if ([logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
         [logicMgr OpenRedEnvelopesRequest:params];
@@ -292,9 +294,19 @@
 
 @end
 
-@implementation DDRedEnvelopSettingController {
-    UITableView *_tableView;
-    NSArray<NSDictionary *> *_dataSource;
+@implementation DDRedEnvelopSettingController
+
+- (instancetype)initWithStyle:(UITableViewStyle)style {
+    self = [super init];
+    if (self) {
+        // 使用现代iOS模态样式
+        if (@available(iOS 13.0, *)) {
+            self.modalPresentationStyle = UIModalPresentationPageSheet;
+        } else {
+            self.modalPresentationStyle = UIModalPresentationFormSheet;
+        }
+    }
+    return self;
 }
 
 - (void)viewDidLoad {
@@ -303,26 +315,43 @@
     [self setupDataSource];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    // 刷新数据
+    [self.tableView reloadData];
+}
+
 - (void)setupUI {
-    self.title = @"DD红包";
-    self.view.backgroundColor = [UIColor whiteColor];
+    self.title = @"DD红包设置";
     
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
-        initWithTitle:@"返回"
-                style:UIBarButtonItemStylePlain
-               target:self
-               action:@selector(backAction)];
+    // 使用系统颜色适配
+    if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    } else {
+        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
+    }
     
-    _tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
-    _tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    _tableView.delegate = self;
-    _tableView.dataSource = self;
-    [self.view addSubview:_tableView];
+    // 使用现代导航栏样式
+    self.navigationController.navigationBar.prefersLargeTitles = YES;
+    
+    // 设置导航栏返回按钮
+    UIBarButtonItem *doneButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                                                target:self
+                                                                                action:@selector(dismissView)];
+    self.navigationItem.rightBarButtonItem = doneButton;
+    
+    // 创建TableView
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    self.tableView.rowHeight = 60;
+    [self.view addSubview:self.tableView];
 }
 
 - (void)setupDataSource {
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
-    _dataSource = @[
+    self.dataSource = @[
         @{@"title": @"自动抢红包", @"type": @"switch", @"key": @"autoRedEnvelop"},
         @{@"title": @"延迟抢红包", @"type": @"input", @"key": @"redEnvelopDelay", 
           @"placeholder": @"毫秒", @"value": @(config.redEnvelopDelay)},
@@ -332,17 +361,21 @@
     ];
 }
 
-- (void)backAction {
+- (void)dismissView {
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 #pragma mark - UITableViewDataSource
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return _dataSource.count;
+    return self.dataSource.count;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 1;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *item = _dataSource[indexPath.row];
+    NSDictionary *item = self.dataSource[indexPath.row];
     NSString *type = item[@"type"];
     
     if ([type isEqualToString:@"switch"]) {
@@ -356,7 +389,7 @@
 
 - (UITableViewCell *)switchCellForItem:(NSDictionary *)item {
     static NSString *cellId = @"SwitchCell";
-    UITableViewCell *cell = [_tableView dequeueReusableCellWithIdentifier:cellId];
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:cellId];
     
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellId];
@@ -387,7 +420,7 @@
 
 - (UITableViewCell *)inputCellForItem:(NSDictionary *)item {
     static NSString *cellId = @"InputCell";
-    UITableViewCell *cell = [_tableView dequeueReusableCellWithIdentifier:cellId];
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:cellId];
     
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cellId];
@@ -401,7 +434,7 @@
 
 - (UITableViewCell *)normalCellForItem:(NSDictionary *)item {
     static NSString *cellId = @"NormalCell";
-    UITableViewCell *cell = [_tableView dequeueReusableCellWithIdentifier:cellId];
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:cellId];
     
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellId];
@@ -416,7 +449,7 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    NSDictionary *item = _dataSource[indexPath.row];
+    NSDictionary *item = self.dataSource[indexPath.row];
     NSString *key = item[@"key"];
     
     if ([key isEqualToString:@"redEnvelopDelay"]) {
@@ -460,7 +493,7 @@
         NSInteger delay = [textField.text integerValue];
         [DDRedEnvelopConfig shared].redEnvelopDelay = MAX(0, delay);
         [[DDRedEnvelopConfig shared] saveConfig];
-        [_tableView reloadData];
+        [self.tableView reloadData];
     }];
     
     [alert addAction:cancel];
@@ -506,22 +539,17 @@
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     if (!config.autoRedEnvelop) return;
     
-    // 检查消息类型 (从头文件看是NSInteger类型)
     NSInteger m_uiMessageType = [[wrap valueForKey:@"m_uiMessageType"] integerValue];
     if (m_uiMessageType != 49) return;
     
-    // 检查是否为红包消息
     NSString *content = [wrap valueForKey:@"m_nsContent"];
     if (![content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"]) return;
     
-    // 获取发送者和接收者
     NSString *fromUsr = [wrap valueForKey:@"m_nsFromUsr"];
     NSString *toUsr = [wrap valueForKey:@"m_nsToUsr"];
     
-    // 群聊过滤
     if ([config.redEnvelopGroupFilter containsObject:fromUsr]) return;
     
-    // 获取自己信息
     Class contactMgrClass = objc_getClass("CContactMgr");
     Class mmServiceClass = objc_getClass("MMServiceCenter");
     id mmService = [mmServiceClass defaultCenter];
@@ -535,19 +563,15 @@
     
     NSString *selfUsrName = [selfContact valueForKey:@"m_nsUsrName"];
     
-    // 判断消息类型
     BOOL isSender = [fromUsr isEqualToString:selfUsrName];
     BOOL isGroupSender = isSender && [toUsr containsString:@"chatroom"];
     BOOL isGroupReceiver = [fromUsr containsString:@"chatroom"];
     
-    // 是否抢自己红包
     if (isGroupSender && !config.redEnvelopCatchMe) return;
     
-    // 判断是否需要抢红包
     BOOL shouldReceive = isGroupReceiver || (isGroupSender && config.redEnvelopCatchMe);
     if (!shouldReceive) return;
     
-    // 解析红包参数
     id m_oWCPayInfoItem = [wrap valueForKey:@"m_oWCPayInfoItem"];
     if (!m_oWCPayInfoItem) return;
     
@@ -568,7 +592,6 @@
         }
     }
     
-    // 创建红包参数
     DDRedEnvelopParam *envelopParam = [[DDRedEnvelopParam alloc] init];
     envelopParam.msgType = paramDict[@"msgtype"];
     envelopParam.sendId = paramDict[@"sendid"];
@@ -580,7 +603,6 @@
     envelopParam.nickName = [selfContact valueForKey:@"m_nsNickName"] ?: @"";
     envelopParam.headImg = [selfContact valueForKey:@"m_nsHeadImgUrl"] ?: @"";
     
-    // 查询红包信息
     NSDictionary *queryParams = @{
         @"agreeDuty": @"0",
         @"channelId": envelopParam.channelId ?: @"",
@@ -596,7 +618,6 @@
         [logicMgr ReceiverQueryRedEnvelopesRequest:queryParams];
     }
     
-    // 加入队列
     [[DDRedEnvelopParamQueue sharedQueue] enqueue:envelopParam];
 }
 
@@ -608,14 +629,12 @@
 - (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
     %orig(arg1, arg2);
     
-    // 检查响应类型 (从头文件看是NSInteger类型)
     NSInteger cgiCmdid = [[arg1 valueForKey:@"cgiCmdid"] integerValue];
-    if (cgiCmdid != 3) return; // 3是查询响应
+    if (cgiCmdid != 3) return;
     
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     if (!config.autoRedEnvelop) return;
     
-    // 解析响应数据
     NSData *retData = [[arg1 valueForKey:@"retText"] valueForKey:@"buffer"];
     if (!retData) return;
     
@@ -628,20 +647,17 @@
                                                                  error:&error];
     if (error || !responseDict) return;
     
-    // 检查红包状态
     NSInteger receiveStatus = [responseDict[@"receiveStatus"] integerValue];
     NSInteger hbStatus = [responseDict[@"hbStatus"] integerValue];
     NSString *timingIdentifier = responseDict[@"timingIdentifier"];
     
-    if (receiveStatus == 2) return; // 已领取
-    if (hbStatus == 4) return;      // 红包已抢完
-    if (!timingIdentifier) return;  // 无效响应
+    if (receiveStatus == 2) return;
+    if (hbStatus == 4) return;
+    if (!timingIdentifier) return;
     
-    // 从队列中取出参数
     DDRedEnvelopParam *envelopParam = [[DDRedEnvelopParamQueue sharedQueue] dequeue];
     if (!envelopParam) return;
     
-    // 验证签名 (仅非群主发送的红包)
     if (!envelopParam.isGroupSender) {
         NSData *reqData = [[arg2 valueForKey:@"reqText"] valueForKey:@"buffer"];
         if (reqData) {
@@ -662,25 +678,22 @@
             }
             
             if (sign && ![sign isEqualToString:envelopParam.sign]) {
-                return; // 签名不匹配
+                return;
             }
         }
     }
     
-    // 设置定时标识
     envelopParam.timingIdentifier = timingIdentifier;
     
-    // 计算延迟时间
     unsigned int delaySeconds = 0;
     if (config.redEnvelopDelay > 0) {
         if (config.redEnvelopMultipleCatch && ![[DDRedEnvelopTaskManager sharedManager] serialQueueIsEmpty]) {
-            delaySeconds = 15000; // 串行队列有任务时延迟15秒
+            delaySeconds = 15000;
         } else {
             delaySeconds = (unsigned int)config.redEnvelopDelay;
         }
     }
     
-    // 创建并添加领取任务
     DDReceiveRedEnvelopOperation *operation = [[DDReceiveRedEnvelopOperation alloc] 
         initWithRedEnvelopParam:envelopParam 
                          delay:delaySeconds];
@@ -694,36 +707,47 @@
 
 %end
 
+#pragma mark - 插件入口和设置页面控制器
+
+// 插件设置页面控制器 - 用于包装DDRedEnvelopSettingController
+@interface DDPluginSettingsController : UINavigationController
+@end
+
+@implementation DDPluginSettingsController
+
+- (instancetype)init {
+    DDRedEnvelopSettingController *settingsVC = [[DDRedEnvelopSettingController alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    self = [super initWithRootViewController:settingsVC];
+    if (self) {
+        // 设置现代导航样式
+        if (@available(iOS 13.0, *)) {
+            self.modalPresentationStyle = UIModalPresentationPageSheet;
+        } else {
+            self.modalPresentationStyle = UIModalPresentationFormSheet;
+        }
+    }
+    return self;
+}
+
+@end
+
 #pragma mark - 构造函数
 %ctor {
     @autoreleasepool {
         // 预加载配置
         [DDRedEnvelopConfig shared];
         
-        // Logos会自动初始化hook，不需要手动调用%init
-        
         // 延迟注册插件入口
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
-            if (!pluginsMgrClass) return;
-            
-            // 检查是否有sharedInstance方法
-            if (![pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
-                // 也可能是sharedManager或其他方法
-                if ([pluginsMgrClass respondsToSelector:@selector(sharedManager)]) {
-                    id pluginsMgr = [pluginsMgrClass sharedManager];
-                    if (pluginsMgr && [pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
-                        [pluginsMgr registerControllerWithTitle:@"DD红包" version:@"1.0.0" controller:@"DDRedEnvelopSettingController"];
-                    }
-                }
-                return;
-            }
-            
-            id pluginsMgr = [pluginsMgrClass sharedInstance];
-            if (!pluginsMgr) return;
-            
-            if ([pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
-                [pluginsMgr registerControllerWithTitle:@"DD红包" version:@"1.0.0" controller:@"DDRedEnvelopSettingController"];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            // 使用总开关作为插件入口
+            if (NSClassFromString(@"WCPluginsMgr")) {
+                // 只注册一个总开关
+                [[objc_getClass("WCPluginsMgr") sharedInstance] registerSwitchWithTitle:@"DD红包" key:@"DD_autoRedEnvelop"];
+                
+                // 同时注册设置页面控制器，这样用户可以从插件管理界面进入详细设置
+                [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD红包设置" 
+                                                                                   version:@"1.0.0" 
+                                                                                controller:@"DDPluginSettingsController"];
             }
         });
     }
