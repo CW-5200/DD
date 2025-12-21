@@ -1,8 +1,4 @@
-// ============================
 // DDHongBaoHelper.m
-// DD红包助手 v1.0
-// ============================
-
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
@@ -312,23 +308,21 @@ static NSString *const kDDConfigRedEnvelopGroupFiterKey = @"DD_redEnvelopGroupFi
     params[@"sendId"] = _redEnvelopParam.sendId;
     params[@"timingIdentifier"] = _redEnvelopParam.timingIdentifier;
     
+    // 使用正确的类名和方法
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (!logicMgrClass) return;
     
+    // 获取服务 - 根据头文件，应该使用 MMServiceCenter.defaultCenter.getService:
     id serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
     if (!serviceCenter) return;
     
-    id logicMgr = [serviceCenter getService:logicMgrClass];
+    // 使用正确的消息发送方式
+    id logicMgr = ((id (*)(id, SEL, Class))objc_msgSend)(serviceCenter, NSSelectorFromString(@"getService:"), logicMgrClass);
     if (!logicMgr) return;
     
     SEL selector = NSSelectorFromString(@"OpenRedEnvelopesRequest:");
     if ([logicMgr respondsToSelector:selector]) {
-        NSMethodSignature *signature = [logicMgr methodSignatureForSelector:selector];
-        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-        [invocation setTarget:logicMgr];
-        [invocation setSelector:selector];
-        [invocation setArgument:&params atIndex:2];
-        [invocation invoke];
+        ((void (*)(id, SEL, id))objc_msgSend)(logicMgr, selector, params);
     }
 }
 
@@ -718,19 +712,19 @@ static NSString *const kDDConfigRedEnvelopGroupFiterKey = @"DD_redEnvelopGroupFi
         return;
     }
     
-    // 获取自己信息
-    id contactMgr = [[objc_getClass("MMServiceCenter") defaultCenter] 
-                     getService:objc_getClass("CContactMgr")];
+    // 获取自己信息 - 使用正确的消息发送方式
+    id serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
+    id contactMgr = ((id (*)(id, SEL, Class))objc_msgSend)(serviceCenter, NSSelectorFromString(@"getService:"), objc_getClass("CContactMgr"));
+    
     if (!contactMgr) return;
     
-    id selfContact = [contactMgr getSelfContact];
+    id selfContact = ((id (*)(id, SEL))objc_msgSend)(contactMgr, NSSelectorFromString(@"getSelfContact"));
     if (!selfContact) return;
     
     NSString *selfUsrName = [selfContact valueForKey:@"m_nsUsrName"];
     if (!selfUsrName) return;
     
     // 判断红包类型
-    BOOL isGroupReceiver = [fromUsr containsString:@"@chatroom"];
     BOOL isGroupSender = [selfUsrName isEqualToString:fromUsr] && [toUsr containsString:@"chatroom"];
     
     // 检查是否抢自己红包
@@ -759,15 +753,7 @@ static NSString *const kDDConfigRedEnvelopGroupFiterKey = @"DD_redEnvelopGroupFi
     SEL dictionarySelector = NSSelectorFromString(@"dictionaryWithDecodedComponets:separator:");
     
     if ([wcBizUtilClass respondsToSelector:dictionarySelector]) {
-        NSMethodSignature *signature = [wcBizUtilClass methodSignatureForSelector:dictionarySelector];
-        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-        [invocation setTarget:wcBizUtilClass];
-        [invocation setSelector:dictionarySelector];
-        [invocation setArgument:&queryString atIndex:2];
-        NSString *separator = @"&";
-        [invocation setArgument:&separator atIndex:3];
-        [invocation invoke];
-        [invocation getReturnValue:&nativeUrlDict];
+        nativeUrlDict = ((id (*)(id, SEL, id, id))objc_msgSend)(wcBizUtilClass, dictionarySelector, queryString, @"&");
     }
     
     if (!nativeUrlDict) return;
@@ -811,17 +797,12 @@ static NSString *const kDDConfigRedEnvelopGroupFiterKey = @"DD_redEnvelopGroupFi
     id serviceCenter = [objc_getClass("MMServiceCenter") defaultCenter];
     if (!serviceCenter) return;
     
-    id logicMgr = [serviceCenter getService:logicMgrClass];
+    id logicMgr = ((id (*)(id, SEL, Class))objc_msgSend)(serviceCenter, NSSelectorFromString(@"getService:"), logicMgrClass);
     if (!logicMgr) return;
     
     SEL selector = NSSelectorFromString(@"ReceiverQueryRedEnvelopesRequest:");
     if ([logicMgr respondsToSelector:selector]) {
-        NSMethodSignature *signature = [logicMgr methodSignatureForSelector:selector];
-        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-        [invocation setTarget:logicMgr];
-        [invocation setSelector:selector];
-        [invocation setArgument:&queryParams atIndex:2];
-        [invocation invoke];
+        ((void (*)(id, SEL, id))objc_msgSend)(logicMgr, selector, queryParams);
     }
 }
 
@@ -918,7 +899,8 @@ __attribute__((constructor)) static void DDHongBaoHelperInitialize(void) {
         // 注册到微信插件系统
         Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
         if (pluginsMgrClass) {
-            id pluginsMgr = [pluginsMgrClass sharedInstance];
+            // 注意：根据您提供的插件管理示例，应该使用 sharedInstance 方法
+            id pluginsMgr = ((id (*)(Class, SEL))objc_msgSend)(pluginsMgrClass, NSSelectorFromString(@"sharedInstance"));
             if (pluginsMgr) {
                 SEL registerSelector = NSSelectorFromString(@"registerControllerWithTitle:version:controller:");
                 if ([pluginsMgr respondsToSelector:registerSelector]) {
@@ -926,14 +908,8 @@ __attribute__((constructor)) static void DDHongBaoHelperInitialize(void) {
                     NSString *version = @"1.0";
                     NSString *controller = @"DDHongBaoSettingController";
                     
-                    NSMethodSignature *signature = [pluginsMgr methodSignatureForSelector:registerSelector];
-                    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-                    [invocation setTarget:pluginsMgr];
-                    [invocation setSelector:registerSelector];
-                    [invocation setArgument:&title atIndex:2];
-                    [invocation setArgument:&version atIndex:3];
-                    [invocation setArgument:&controller atIndex:4];
-                    [invocation invoke];
+                    // 直接使用 objc_msgSend 调用
+                    ((void (*)(id, SEL, NSString *, NSString *, NSString *))objc_msgSend)(pluginsMgr, registerSelector, title, version, controller);
                     
                     NSLog(@"[DDHongBaoHelper] 已注册到插件系统");
                 }
