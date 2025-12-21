@@ -4,6 +4,28 @@
 
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
+
+#pragma mark - 微信类前置声明
+@interface MMServiceCenter : NSObject
++ (instancetype)defaultCenter;
+- (id)getService:(Class)service;
+@end
+
+@interface CContactMgr : NSObject
+- (id)getSelfContact;
+@end
+
+@interface WCRedEnvelopesLogicMgr : NSObject
+- (void)ReceiverQueryRedEnvelopesRequest:(NSDictionary *)arg1;
+- (void)OpenRedEnvelopesRequest:(NSDictionary *)arg1;
+@end
+
+@interface WCPluginsMgr : NSObject
++ (instancetype)sharedInstance;
+- (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
+- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
+@end
 
 #pragma mark - 配置管理
 @interface DDRedEnvelopConfig : NSObject
@@ -70,7 +92,7 @@
 @end
 
 #pragma mark - 设置控制器
-@interface DDRedEnvelopSettingController : UIViewController
+@interface DDRedEnvelopSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSArray<NSDictionary *> *dataSource;
@@ -328,7 +350,7 @@
     if (@available(iOS 13.0, *)) {
         self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     } else {
-        self.view.backgroundColor = [UIColor groupTableViewBackgroundColor];
+        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     }
     
     // 使用现代导航栏样式
@@ -716,7 +738,7 @@
 @implementation DDPluginSettingsController
 
 - (instancetype)init {
-    DDRedEnvelopSettingController *settingsVC = [[DDRedEnvelopSettingController alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    DDRedEnvelopSettingController *settingsVC = [[DDRedEnvelopSettingController alloc] init];
     self = [super initWithRootViewController:settingsVC];
     if (self) {
         // 设置现代导航样式
@@ -741,13 +763,24 @@
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             // 使用总开关作为插件入口
             if (NSClassFromString(@"WCPluginsMgr")) {
-                // 只注册一个总开关
-                [[objc_getClass("WCPluginsMgr") sharedInstance] registerSwitchWithTitle:@"DD红包" key:@"DD_autoRedEnvelop"];
+                Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
                 
-                // 同时注册设置页面控制器，这样用户可以从插件管理界面进入详细设置
-                [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD红包设置" 
-                                                                                   version:@"1.0.0" 
-                                                                                controller:@"DDPluginSettingsController"];
+                // 检查是否有sharedInstance方法
+                if ([pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
+                    id pluginsMgr = [pluginsMgrClass sharedInstance];
+                    
+                    // 只注册一个总开关
+                    if ([pluginsMgr respondsToSelector:@selector(registerSwitchWithTitle:key:)]) {
+                        [pluginsMgr registerSwitchWithTitle:@"DD红包" key:@"DD_autoRedEnvelop"];
+                    }
+                    
+                    // 同时注册设置页面控制器，这样用户可以从插件管理界面进入详细设置
+                    if ([pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
+                        [pluginsMgr registerControllerWithTitle:@"DD红包设置" 
+                                                       version:@"1.0.0" 
+                                                    controller:@"DDPluginSettingsController"];
+                    }
+                }
             }
         });
     }
