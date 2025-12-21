@@ -21,12 +21,6 @@
 - (void)OpenRedEnvelopesRequest:(NSDictionary *)arg1;
 @end
 
-@interface WCPluginsMgr : NSObject
-+ (instancetype)sharedInstance;
-- (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
-- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
-@end
-
 #pragma mark - 配置管理
 @interface DDRedEnvelopConfig : NSObject
 
@@ -92,12 +86,10 @@
 @end
 
 #pragma mark - 设置控制器
-@interface DDRedEnvelopSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+@interface DDRedEnvelopSettingsViewController : UIViewController
 
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) NSArray<NSDictionary *> *dataSource;
-
-- (instancetype)initWithStyle:(UITableViewStyle)style;
+@property (nonatomic, strong) NSArray<NSArray<NSDictionary *> *> *dataSource;
 
 @end
 
@@ -316,20 +308,7 @@
 
 @end
 
-@implementation DDRedEnvelopSettingController
-
-- (instancetype)initWithStyle:(UITableViewStyle)style {
-    self = [super init];
-    if (self) {
-        // 使用现代iOS模态样式
-        if (@available(iOS 13.0, *)) {
-            self.modalPresentationStyle = UIModalPresentationPageSheet;
-        } else {
-            self.modalPresentationStyle = UIModalPresentationFormSheet;
-        }
-    }
-    return self;
-}
+@implementation DDRedEnvelopSettingsViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -337,26 +316,11 @@
     [self setupDataSource];
 }
 
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    // 刷新数据
-    [self.tableView reloadData];
-}
-
 - (void)setupUI {
     self.title = @"DD红包设置";
+    self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     
-    // 使用系统颜色适配
-    if (@available(iOS 13.0, *)) {
-        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    } else {
-        self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    }
-    
-    // 使用现代导航栏样式
-    self.navigationController.navigationBar.prefersLargeTitles = YES;
-    
-    // 设置导航栏返回按钮
+    // 创建返回按钮
     UIBarButtonItem *doneButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
                                                                                 target:self
                                                                                 action:@selector(dismissView)];
@@ -374,12 +338,16 @@
 - (void)setupDataSource {
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     self.dataSource = @[
-        @{@"title": @"自动抢红包", @"type": @"switch", @"key": @"autoRedEnvelop"},
-        @{@"title": @"延迟抢红包", @"type": @"input", @"key": @"redEnvelopDelay", 
-          @"placeholder": @"毫秒", @"value": @(config.redEnvelopDelay)},
-        @{@"title": @"群聊过滤", @"type": @"group", @"key": @"redEnvelopGroupFilter"},
-        @{@"title": @"抢自己红包", @"type": @"switch", @"key": @"redEnvelopCatchMe"},
-        @{@"title": @"防止同时抢多个红包", @"type": @"switch", @"key": @"redEnvelopMultipleCatch"}
+        @[
+            @{@"title": @"自动抢红包", @"type": @"switch", @"key": @"autoRedEnvelop"},
+            @{@"title": @"延迟抢红包", @"type": @"input", @"key": @"redEnvelopDelay", 
+              @"placeholder": @"毫秒", @"value": @(config.redEnvelopDelay)},
+            @{@"title": @"抢自己红包", @"type": @"switch", @"key": @"redEnvelopCatchMe"},
+            @{@"title": @"防止同时抢多个红包", @"type": @"switch", @"key": @"redEnvelopMultipleCatch"}
+        ],
+        @[
+            @{@"title": @"群聊过滤", @"type": @"group", @"key": @"redEnvelopGroupFilter"}
+        ]
     ];
 }
 
@@ -388,16 +356,23 @@
 }
 
 #pragma mark - UITableViewDataSource
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return self.dataSource.count;
 }
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 1;
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.dataSource[section].count;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 1) {
+        return @"在此输入要过滤的群聊ID，多个用逗号分隔";
+    }
+    return nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *item = self.dataSource[indexPath.row];
+    NSDictionary *item = self.dataSource[indexPath.section][indexPath.row];
     NSString *type = item[@"type"];
     
     if ([type isEqualToString:@"switch"]) {
@@ -471,7 +446,7 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    NSDictionary *item = self.dataSource[indexPath.row];
+    NSDictionary *item = self.dataSource[indexPath.section][indexPath.row];
     NSString *key = item[@"key"];
     
     if ([key isEqualToString:@"redEnvelopDelay"]) {
@@ -729,29 +704,42 @@
 
 %end
 
-#pragma mark - 插件入口和设置页面控制器
+#pragma mark - 插件设置页面显示
+// 全局变量存储设置页面
+static UIViewController *settingsViewController = nil;
 
-// 插件设置页面控制器 - 用于包装DDRedEnvelopSettingController
-@interface DDPluginSettingsController : UINavigationController
-@end
-
-@implementation DDPluginSettingsController
-
-- (instancetype)init {
-    DDRedEnvelopSettingController *settingsVC = [[DDRedEnvelopSettingController alloc] init];
-    self = [super initWithRootViewController:settingsVC];
-    if (self) {
-        // 设置现代导航样式
-        if (@available(iOS 13.0, *)) {
-            self.modalPresentationStyle = UIModalPresentationPageSheet;
-        } else {
-            self.modalPresentationStyle = UIModalPresentationFormSheet;
-        }
+// 显示设置页面
+static void showSettings() {
+    if (settingsViewController) {
+        [settingsViewController dismissViewControllerAnimated:NO completion:nil];
+        settingsViewController = nil;
     }
-    return self;
+    
+    DDRedEnvelopSettingsViewController *settingsVC = [[DDRedEnvelopSettingsViewController alloc] init];
+    UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+    
+    // 设置现代模态样式
+    if (@available(iOS 13.0, *)) {
+        navController.modalPresentationStyle = UIModalPresentationPageSheet;
+    } else {
+        navController.modalPresentationStyle = UIModalPresentationFormSheet;
+    }
+    
+    // 获取当前显示的视图控制器
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    if (!window) {
+        window = [[UIApplication sharedApplication].windows firstObject];
+    }
+    
+    UIViewController *rootVC = window.rootViewController;
+    UIViewController *presentedVC = rootVC;
+    while (presentedVC.presentedViewController) {
+        presentedVC = presentedVC.presentedViewController;
+    }
+    
+    [presentedVC presentViewController:navController animated:YES completion:nil];
+    settingsViewController = navController;
 }
-
-@end
 
 #pragma mark - 构造函数
 %ctor {
@@ -761,26 +749,50 @@
         
         // 延迟注册插件入口
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            // 使用总开关作为插件入口
-            if (NSClassFromString(@"WCPluginsMgr")) {
-                Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
+            // 添加设置菜单到微信的更多功能中
+            Class contactsViewController = objc_getClass("MoreViewController");
+            if (contactsViewController) {
+                // 使用method swizzling添加设置菜单
+                SEL viewDidLoadSel = @selector(viewDidLoad);
+                Method originalMethod = class_getInstanceMethod(contactsViewController, viewDidLoadSel);
+                IMP originalImp = method_getImplementation(originalMethod);
                 
-                // 检查是否有sharedInstance方法
-                if ([pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
-                    id pluginsMgr = [pluginsMgrClass sharedInstance];
+                id block = ^(id self) {
+                    // 调用原始方法
+                    ((void (*)(id, SEL))originalImp)(self, viewDidLoadSel);
                     
-                    // 只注册一个总开关
-                    if ([pluginsMgr respondsToSelector:@selector(registerSwitchWithTitle:key:)]) {
-                        [pluginsMgr registerSwitchWithTitle:@"DD红包" key:@"DD_autoRedEnvelop"];
+                    // 添加设置按钮
+                    if ([self respondsToSelector:@selector(registerPlugins)]) {
+                        [self performSelector:@selector(registerPlugins)];
                     }
                     
-                    // 同时注册设置页面控制器，这样用户可以从插件管理界面进入详细设置
-                    if ([pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
-                        [pluginsMgr registerControllerWithTitle:@"DD红包设置" 
-                                                       version:@"1.0.0" 
-                                                    controller:@"DDPluginSettingsController"];
+                    // 添加DD红包设置项
+                    Class pluginCellClass = objc_getClass("PluginCell");
+                    if (pluginCellClass) {
+                        // 创建设置项
+                        id pluginCell = [[pluginCellClass alloc] init];
+                        [pluginCell setTitle:@"DD红包设置"];
+                        [pluginCell setImage:[UIImage imageNamed:@"plugin_icon"]];
+                        
+                        // 添加点击事件
+                        [pluginCell setTarget:self];
+                        [pluginCell setAction:@selector(showDDRedEnvelopSettings)];
+                        
+                        // 添加到插件列表
+                        if ([self respondsToSelector:@selector(addPluginCell:)]) {
+                            [self performSelector:@selector(addPluginCell:) withObject:pluginCell];
+                        }
                     }
-                }
+                };
+                
+                IMP newImp = imp_implementationWithBlock(block);
+                method_setImplementation(originalMethod, newImp);
+                
+                // 添加显示设置的方法
+                SEL showSettingsSel = sel_registerName("showDDRedEnvelopSettings");
+                class_addMethod(contactsViewController, showSettingsSel, imp_implementationWithBlock(^(id self) {
+                    showSettings();
+                }), "v@:");
             }
         });
     }
