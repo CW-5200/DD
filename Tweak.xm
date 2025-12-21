@@ -1,21 +1,18 @@
-//  DD红包助手 v1.0.0
-//  Created by DDHelper
-//  功能：自动抢红包、延迟抢红包、群聊过滤、抢自己红包、防止同时抢多个红包
+// DD红包 v1.0.0
+// Created by DDHelper
+// 功能：自动抢红包、延迟抢红包、群聊过滤、抢自己红包、防止同时抢多个红包
 
-#import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <objc/runtime.h>
-#import <objc/message.h>
-#import <CaptainHook/CaptainHook.h>
+#import <Foundation/Foundation.h>
 
 #pragma mark - 配置管理
 @interface DDRedEnvelopConfig : NSObject
 
-@property (nonatomic, assign) BOOL autoRedEnvelop;           // 自动抢红包开关
-@property (nonatomic, assign) NSInteger redEnvelopDelay;     // 延迟时间（毫秒）
-@property (nonatomic, strong) NSArray *redEnvelopGroupFilter;// 群聊过滤列表
-@property (nonatomic, assign) BOOL redEnvelopCatchMe;        // 是否抢自己红包
-@property (nonatomic, assign) BOOL redEnvelopMultipleCatch;  // 防止同时抢多个红包
+@property (nonatomic, assign) BOOL autoRedEnvelop;
+@property (nonatomic, assign) NSInteger redEnvelopDelay;
+@property (nonatomic, strong) NSArray *redEnvelopGroupFilter;
+@property (nonatomic, assign) BOOL redEnvelopCatchMe;
+@property (nonatomic, assign) BOOL redEnvelopMultipleCatch;
 
 + (instancetype)shared;
 - (void)saveConfig;
@@ -75,31 +72,6 @@
 #pragma mark - 设置控制器
 @interface DDRedEnvelopSettingController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 
-@end
-
-#pragma mark - 微信类前置声明（简化）
-@interface CMessageWrap : NSObject
-@property (assign, nonatomic) NSInteger m_uiMessageType;
-@property (strong, nonatomic) NSString *m_nsContent;
-@property (strong, nonatomic) NSString *m_nsFromUsr;
-@property (strong, nonatomic) NSString *m_nsToUsr;
-@property (strong, nonatomic) id m_oWCPayInfoItem;
-@end
-
-@interface CContact : NSObject
-@property (strong, nonatomic) NSString *m_nsUsrName;
-@property (strong, nonatomic) NSString *m_nsHeadImgUrl;
-- (NSString *)getContactDisplayName;
-@end
-
-@interface MMServiceCenter : NSObject
-+ (instancetype)defaultCenter;
-- (id)getService:(Class)service;
-@end
-
-// 微信服务类
-@protocol WeChatServices
-- (CContact *)getSelfContact;
 @end
 
 #pragma mark - 实现部分
@@ -239,7 +211,6 @@
     
     void (*openFunc)(id, SEL, NSDictionary *) = (void (*)(id, SEL, NSDictionary *))openIMP;
     
-    // 获取红包逻辑管理器
     Class mmServiceClass = objc_getClass("MMServiceCenter");
     if (!mmServiceClass) return;
     
@@ -254,7 +225,7 @@
     IMP getServiceIMP = class_getMethodImplementation([mmService class], getServiceSel);
     if (!getServiceIMP) return;
     
-    id (*getServiceFunc)(id, SEL, Class) = (id (*)(id, SEL, Class))getServiceIMP;
+    id (*getServiceFunc)(id, SEL, Class) = (id (*)(id, SEL, Class))getServiceFunc;
     id logicMgr = getServiceFunc(mmService, getServiceSel, logicMgrClass);
     
     if (logicMgr) {
@@ -343,7 +314,7 @@
 }
 
 - (void)setupUI {
-    self.title = @"DD红包助手";
+    self.title = @"DD红包";
     self.view.backgroundColor = [UIColor whiteColor];
     
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
@@ -360,10 +331,11 @@
 }
 
 - (void)setupDataSource {
+    DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     _dataSource = @[
         @{@"title": @"自动抢红包", @"type": @"switch", @"key": @"autoRedEnvelop"},
         @{@"title": @"延迟抢红包", @"type": @"input", @"key": @"redEnvelopDelay", 
-          @"placeholder": @"毫秒", @"value": @([DDRedEnvelopConfig shared].redEnvelopDelay)},
+          @"placeholder": @"毫秒", @"value": @(config.redEnvelopDelay)},
         @{@"title": @"群聊过滤", @"type": @"group", @"key": @"redEnvelopGroupFilter"},
         @{@"title": @"抢自己红包", @"type": @"switch", @"key": @"redEnvelopCatchMe"},
         @{@"title": @"防止同时抢多个红包", @"type": @"switch", @"key": @"redEnvelopMultipleCatch"}
@@ -409,14 +381,15 @@
     UISwitch *switchView = (UISwitch *)cell.accessoryView;
     switchView.accessibilityIdentifier = item[@"key"];
     
-    // 设置开关状态
     NSString *key = item[@"key"];
+    DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
+    
     if ([key isEqualToString:@"autoRedEnvelop"]) {
-        switchView.on = [DDRedEnvelopConfig shared].autoRedEnvelop;
+        switchView.on = config.autoRedEnvelop;
     } else if ([key isEqualToString:@"redEnvelopCatchMe"]) {
-        switchView.on = [DDRedEnvelopConfig shared].redEnvelopCatchMe;
+        switchView.on = config.redEnvelopCatchMe;
     } else if ([key isEqualToString:@"redEnvelopMultipleCatch"]) {
-        switchView.on = [DDRedEnvelopConfig shared].redEnvelopMultipleCatch;
+        switchView.on = config.redEnvelopMultipleCatch;
     }
     
     return cell;
@@ -532,61 +505,39 @@
 
 @end
 
-#pragma mark - Hook微信方法
-CHDeclareClass(CMessageMgr);
-CHDeclareClass(WCRedEnvelopesLogicMgr);
+#pragma mark - Logos Hook部分
+%hook CMessageMgr
 
-// 工具函数：安全调用微信服务
-static inline id DDGetWeChatService(Class serviceClass) {
-    Class mmServiceClass = objc_getClass("MMServiceCenter");
-    if (!mmServiceClass) return nil;
-    
-    SEL defaultSel = @selector(defaultCenter);
-    IMP defaultIMP = class_getMethodImplementation(mmServiceClass, defaultSel);
-    if (!defaultIMP) return nil;
-    
-    id (*defaultFunc)(id, SEL) = (id (*)(id, SEL))defaultIMP;
-    id mmService = defaultFunc(mmServiceClass, defaultSel);
-    
-    SEL getServiceSel = @selector(getService:);
-    IMP getServiceIMP = class_getMethodImplementation([mmService class], getServiceSel);
-    if (!getServiceIMP) return nil;
-    
-    id (*getServiceFunc)(id, SEL, Class) = (id (*)(id, SEL, Class))getServiceIMP;
-    return getServiceFunc(mmService, getServiceSel, serviceClass);
-}
-
-// Hook消息管理器
-CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, MsgWrap, CMessageWrap *, wrap)
-{
-    CHSuper(2, CMessageMgr, AsyncOnAddMsg, msg, MsgWrap, wrap);
+- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
+    %orig;
     
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     if (!config.autoRedEnvelop) return;
     
     // 检查消息类型
-    if (wrap.m_uiMessageType != 49) return; // AppNode消息
+    NSInteger m_uiMessageType = [[wrap valueForKey:@"m_uiMessageType"] integerValue];
+    if (m_uiMessageType != 49) return;
     
     // 检查是否为红包消息
-    NSString *content = wrap.m_nsContent;
+    NSString *content = [wrap valueForKey:@"m_nsContent"];
     if (![content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"]) return;
     
     // 获取发送者和接收者
-    NSString *fromUsr = wrap.m_nsFromUsr;
-    NSString *toUsr = wrap.m_nsToUsr;
+    NSString *fromUsr = [wrap valueForKey:@"m_nsFromUsr"];
+    NSString *toUsr = [wrap valueForKey:@"m_nsToUsr"];
     
     // 群聊过滤
     if ([config.redEnvelopGroupFilter containsObject:fromUsr]) return;
     
     // 获取自己信息
     Class contactMgrClass = objc_getClass("CContactMgr");
-    id contactMgr = DDGetWeChatService(contactMgrClass);
+    id contactMgr = [self getService:contactMgrClass];
     if (!contactMgr) return;
     
-    CContact *selfContact = [contactMgr getSelfContact];
+    id selfContact = [contactMgr getSelfContact];
     if (!selfContact) return;
     
-    NSString *selfUsrName = selfContact.m_nsUsrName;
+    NSString *selfUsrName = [selfContact valueForKey:@"m_nsUsrName"];
     
     // 判断消息类型
     BOOL isSender = [fromUsr isEqualToString:selfUsrName];
@@ -601,7 +552,10 @@ CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, Ms
     if (!shouldReceive) return;
     
     // 解析红包参数
-    NSString *nativeUrl = [[wrap.m_oWCPayInfoItem valueForKey:@"m_c2cNativeUrl"] stringByRemovingPercentEncoding];
+    id m_oWCPayInfoItem = [wrap valueForKey:@"m_oWCPayInfoItem"];
+    if (!m_oWCPayInfoItem) return;
+    
+    NSString *nativeUrl = [[m_oWCPayInfoItem valueForKey:@"m_c2cNativeUrl"] stringByRemovingPercentEncoding];
     if (!nativeUrl) return;
     
     NSRange range = [nativeUrl rangeOfString:@"?"];
@@ -627,8 +581,8 @@ CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, Ms
     envelopParam.sessionUserName = isGroupSender ? toUsr : fromUsr;
     envelopParam.sign = paramDict[@"sign"];
     envelopParam.isGroupSender = isGroupSender;
-    envelopParam.nickName = [selfContact getContactDisplayName];
-    envelopParam.headImg = selfContact.m_nsHeadImgUrl;
+    envelopParam.nickName = [selfContact valueForKey:@"m_nsNickName"] ?: @"";
+    envelopParam.headImg = [selfContact valueForKey:@"m_nsHeadImgUrl"] ?: @"";
     
     // 查询红包信息
     NSDictionary *queryParams = @{
@@ -641,7 +595,7 @@ CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, Ms
     };
     
     Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
-    id logicMgr = DDGetWeChatService(logicMgrClass);
+    id logicMgr = [self getService:logicMgrClass];
     if ([logicMgr respondsToSelector:@selector(ReceiverQueryRedEnvelopesRequest:)]) {
         [logicMgr performSelector:@selector(ReceiverQueryRedEnvelopesRequest:) withObject:queryParams];
     }
@@ -650,14 +604,16 @@ CHOptimizedMethod(2, self, void, CMessageMgr, AsyncOnAddMsg, NSString *, msg, Ms
     [[DDRedEnvelopParamQueue sharedQueue] enqueue:envelopParam];
 }
 
-// Hook红包逻辑管理器
-CHOptimizedMethod(2, self, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, id, arg1, Request, id, arg2)
-{
-    CHSuper(2, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, arg1, Request, arg2);
+%end
+
+%hook WCRedEnvelopesLogicMgr
+
+- (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
+    %orig(arg1, arg2);
     
     // 检查响应类型
     NSInteger cgiCmdid = [[arg1 valueForKey:@"cgiCmdid"] integerValue];
-    if (cgiCmdid != 3) return; // 仅处理查询响应
+    if (cgiCmdid != 3) return;
     
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig shared];
     if (!config.autoRedEnvelop) return;
@@ -680,15 +636,15 @@ CHOptimizedMethod(2, self, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResp
     NSInteger hbStatus = [responseDict[@"hbStatus"] integerValue];
     NSString *timingIdentifier = responseDict[@"timingIdentifier"];
     
-    if (receiveStatus == 2) return; // 已领取
-    if (hbStatus == 4) return;      // 红包已抢完
-    if (!timingIdentifier) return;  // 无效响应
+    if (receiveStatus == 2) return;
+    if (hbStatus == 4) return;
+    if (!timingIdentifier) return;
     
     // 从队列中取出参数
     DDRedEnvelopParam *envelopParam = [[DDRedEnvelopParamQueue sharedQueue] dequeue];
     if (!envelopParam) return;
     
-    // 验证签名（仅非群主发送的红包）
+    // 验证签名
     if (!envelopParam.isGroupSender) {
         NSData *reqData = [[arg2 valueForKey:@"reqText"] valueForKey:@"buffer"];
         if (reqData) {
@@ -709,7 +665,7 @@ CHOptimizedMethod(2, self, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResp
             }
             
             if (![sign isEqualToString:envelopParam.sign]) {
-                return; // 签名不匹配
+                return;
             }
         }
     }
@@ -721,7 +677,7 @@ CHOptimizedMethod(2, self, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResp
     unsigned int delaySeconds = 0;
     if (config.redEnvelopDelay > 0) {
         if (config.redEnvelopMultipleCatch && ![[DDRedEnvelopTaskManager sharedManager] serialQueueIsEmpty]) {
-            delaySeconds = 15000; // 串行队列有任务时延迟15秒
+            delaySeconds = 15000;
         } else {
             delaySeconds = (unsigned int)config.redEnvelopDelay;
         }
@@ -739,49 +695,47 @@ CHOptimizedMethod(2, self, void, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResp
     }
 }
 
-#pragma mark - 插件初始化
-CHConstructor {
+%end
+
+%ctor {
     @autoreleasepool {
         // 预加载配置
         [DDRedEnvelopConfig shared];
         
         // 注册Hook
-        CHLoadLateClass(CMessageMgr);
-        CHHook(2, CMessageMgr, AsyncOnAddMsg, MsgWrap);
-        
-        CHLoadLateClass(WCRedEnvelopesLogicMgr);
-        CHHook(2, WCRedEnvelopesLogicMgr, OnWCToHongbaoCommonResponse, Request);
+        %init(CMessageMgr=objc_getClass("CMessageMgr"));
+        %init(WCRedEnvelopesLogicMgr=objc_getClass("WCRedEnvelopesLogicMgr"));
         
         // 延迟注册插件入口
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             Class pluginsMgrClass = objc_getClass("WCPluginsMgr");
             if (!pluginsMgrClass) return;
             
-            SEL sharedSel = @selector(sharedInstance);
-            if (![pluginsMgrClass respondsToSelector:sharedSel]) return;
+            if (![pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) return;
             
-            // 获取sharedInstance方法
-            IMP sharedIMP = class_getMethodImplementation(pluginsMgrClass, sharedSel);
-            if (!sharedIMP) return;
-            
-            id (*sharedFunc)(id, SEL) = (id (*)(id, SEL))sharedIMP;
-            id pluginsMgr = sharedFunc(pluginsMgrClass, sharedSel);
+            id pluginsMgr = [pluginsMgrClass performSelector:@selector(sharedInstance)];
             if (!pluginsMgr) return;
             
-            // 注册插件
-            SEL registerSel = @selector(registerControllerWithTitle:version:controller:);
-            if (![pluginsMgr respondsToSelector:registerSel]) return;
-            
-            IMP registerIMP = class_getMethodImplementation([pluginsMgr class], registerSel);
-            if (!registerIMP) return;
-            
-            void (*registerFunc)(id, SEL, NSString *, NSString *, NSString *) = 
-                (void (*)(id, SEL, NSString *, NSString *, NSString *))registerIMP;
-            
-            registerFunc(pluginsMgr, registerSel, @"DD红包助手", @"1.0.0", @"DDRedEnvelopSettingController");
+            if ([pluginsMgr respondsToSelector:@selector(registerControllerWithTitle:version:controller:)]) {
+                [pluginsMgr performSelector:@selector(registerControllerWithTitle:version:controller:)
+                                 withObject:@"DD红包"
+                                 withObject:@"1.0.0"
+                                 withObject:@"DDRedEnvelopSettingController"];
+            }
         });
     }
 }
 
+// 工具函数：获取服务
+static inline id getService(Class serviceClass) {
+    Class mmServiceClass = objc_getClass("MMServiceCenter");
+    if (!mmServiceClass) return nil;
+    
+    id mmService = [mmServiceClass performSelector:@selector(defaultCenter)];
+    if (!mmService) return nil;
+    
+    return [mmService performSelector:@selector(getService:) withObject:serviceClass];
+}
+
 // 插件版本信息
-__attribute__((visibility("default"))) NSString *DDRedEnvelopHelperVersion = @"1.0.0";
+__attribute__((visibility("default"))) NSString *DDRedEnvelopVersion = @"1.0.0";
