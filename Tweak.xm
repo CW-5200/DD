@@ -226,25 +226,61 @@
 
 @end
 
-// 红包逻辑管理器钩子
+// 修复方法名和属性访问问题
 %hook WCRedEnvelopesLogicMgr
 
 - (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
     %orig;
     
+    // 使用更安全的方法访问
+    NSInteger cgiCmdid = 0;
+    if ([arg1 respondsToSelector:@selector(cgiCmdid)]) {
+        cgiCmdid = [arg1 cgiCmdid];
+    } else {
+        // 尝试其他方式获取命令ID
+        if ([arg1 respondsToSelector:@selector(getCgiCmdid)]) {
+            cgiCmdid = [arg1 getCgiCmdid];
+        }
+    }
+    
     // 非参数查询请求
-    if ([arg1 cgiCmdid] != 3) { return; }
+    if (cgiCmdid != 3) { return; }
     
     NSString *(^parseRequestSign)(void) = ^NSString *{
-        NSString *requestString = [[NSString alloc] initWithData:[[arg2 reqText] buffer] encoding:NSUTF8StringEncoding];
+        // 安全地获取请求数据
+        NSData *requestData = nil;
+        if ([arg2 respondsToSelector:@selector(reqText)]) {
+            id reqText = [arg2 reqText];
+            if ([reqText respondsToSelector:@selector(buffer)]) {
+                requestData = [reqText buffer];
+            }
+        }
+        
+        if (!requestData) return nil;
+        
+        NSString *requestString = [[NSString alloc] initWithData:requestData encoding:NSUTF8StringEncoding];
         NSDictionary *requestDictionary = [%c(WCBizUtil) dictionaryWithDecodedComponets:requestString separator:@"&"];
         NSString *nativeUrl = [[requestDictionary stringForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
-        NSDictionary *nativeUrlDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
+        if (!nativeUrl) return nil;
         
+        NSDictionary *nativeUrlDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
         return [nativeUrlDict stringForKey:@"sign"];
     };
     
-    NSDictionary *responseDict = [[[NSString alloc] initWithData:[[arg1 retText] buffer] encoding:NSUTF8StringEncoding] JSONDictionary];
+    // 安全地获取响应数据
+    NSData *responseData = nil;
+    if ([arg1 respondsToSelector:@selector(retText)]) {
+        id retText = [arg1 retText];
+        if ([retText respondsToSelector:@selector(buffer)]) {
+            responseData = [retText buffer];
+        }
+    }
+    
+    if (!responseData) return;
+    
+    NSString *responseString = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
+    NSDictionary *responseDict = [responseString JSONDictionary];
+    if (!responseDict) return;
     
     WeChatRedEnvelopParam *mgrParams = [[%c(WCPLRedEnvelopParamQueue) sharedQueue] dequeue];
     
@@ -261,21 +297,36 @@
         // 没有这个字段会被判定为使用外挂
         if (!responseDict[@"timingIdentifier"]) { return NO; }  
         
+        WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
+        
         if (mgrParams.isGroupSender) { 
             // 自己发红包的时候没有 sign 字段
-            return [%c(WCPLRedEnvelopConfig) sharedConfig].autoReceiveEnable;
+            return config.autoReceiveEnable;
         } else {
-            return [parseRequestSign() isEqualToString:mgrParams.sign] && [%c(WCPLRedEnvelopConfig) sharedConfig].autoReceiveEnable;
+            NSString *sign = parseRequestSign();
+            return sign && [sign isEqualToString:mgrParams.sign] && config.autoReceiveEnable;
         }
     };
     
     if (shouldReceiveRedEnvelop()) {
         mgrParams.timingIdentifier = responseDict[@"timingIdentifier"];
         
-        unsigned int delaySeconds = [self wcpl_calculateDelaySeconds];
+        WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
+        unsigned int delaySeconds = 0;
+        
+        if (config.serialReceive) {
+            if ([[%c(WCPLRedEnvelopTaskManager) sharedManager] serialQueueIsEmpty]) {
+                delaySeconds = (unsigned int)config.delaySeconds;
+            } else {
+                delaySeconds = 5;
+            }
+        } else {
+            delaySeconds = (unsigned int)config.delaySeconds;
+        }
+        
         WCPLReceiveRedEnvelopOperation *operation = [[%c(WCPLReceiveRedEnvelopOperation) alloc] initWithRedEnvelopParam:mgrParams delay:delaySeconds];
         
-        if ([%c(WCPLRedEnvelopConfig) sharedConfig].serialReceive) {
+        if (config.serialReceive) {
             [[%c(WCPLRedEnvelopTaskManager) sharedManager] addSerialTask:operation];
         } else {
             [[%c(WCPLRedEnvelopTaskManager) sharedManager] addNormalTask:operation];
@@ -283,84 +334,112 @@
     }
 }
 
-%new
-- (unsigned int)wcpl_calculateDelaySeconds {
-    NSInteger configDelaySeconds = [%c(WCPLRedEnvelopConfig) sharedConfig].delaySeconds;
-    
-    if ([%c(WCPLRedEnvelopConfig) sharedConfig].serialReceive) {
-        unsigned int serialDelaySeconds;
-        if ([[%c(WCPLRedEnvelopTaskManager) sharedManager] serialQueueIsEmpty]) {
-            serialDelaySeconds = configDelaySeconds;
-        } else {
-            serialDelaySeconds = 5;
-        }
-        
-        return serialDelaySeconds;
-    } else {
-        return (unsigned int)configDelaySeconds;
-    }
-}
-
 %end
 
-// 消息管理器钩子
+// 修复消息管理器钩子
 %hook CMessageMgr
 
 - (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
     %orig;
     
-    NSInteger messageType = [wrap m_uiMessageType];
-    switch(messageType) {
-        case 49: { // AppNode
-            /** 是否为红包消息 */
-            BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
-                return [[wrap m_nsContent] rangeOfString:@"wxpay://"].location != NSNotFound;
+    // 安全地获取消息类型
+    NSInteger messageType = 0;
+    if ([wrap respondsToSelector:@selector(m_uiMessageType)]) {
+        messageType = [wrap m_uiMessageType];
+    }
+    
+    if (messageType == 49) { // AppNode
+        /** 是否为红包消息 */
+        BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
+            NSString *content = nil;
+            if ([wrap respondsToSelector:@selector(m_nsContent)]) {
+                content = [wrap m_nsContent];
+            }
+            return content && [content rangeOfString:@"wxpay://"].location != NSNotFound;
+        };
+        
+        if (isRedEnvelopMessage()) { // 红包
+            Class contactMgrClass = %c(CContactMgr);
+            Class serviceCenterClass = %c(MMServiceCenter);
+            
+            id contactManager = nil;
+            if ([serviceCenterClass respondsToSelector:@selector(defaultCenter)]) {
+                id center = [serviceCenterClass defaultCenter];
+                if ([center respondsToSelector:@selector(getService:)]) {
+                    contactManager = [center getService:contactMgrClass];
+                }
+            }
+            
+            id selfContact = nil;
+            if ([contactManager respondsToSelector:@selector(getSelfContact)]) {
+                selfContact = [contactManager getSelfContact];
+            }
+            
+            BOOL (^isSender)(void) = ^BOOL {
+                NSString *fromUser = nil;
+                NSString *selfUserName = nil;
+                
+                if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
+                    fromUser = [wrap m_nsFromUsr];
+                }
+                if ([selfContact respondsToSelector:@selector(m_nsUsrName)]) {
+                    selfUserName = [selfContact m_nsUsrName];
+                }
+                
+                return fromUser && selfUserName && [fromUser isEqualToString:selfUserName];
             };
             
-            if (isRedEnvelopMessage()) { // 红包
-                Class contactMgrClass = %c(CContactMgr);
-                Class serviceCenterClass = %c(MMServiceCenter);
+            /** 是否别人在群聊中发消息 */
+            BOOL (^isGroupReceiver)(void) = ^BOOL {
+                NSString *fromUser = nil;
+                if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
+                    fromUser = [wrap m_nsFromUsr];
+                }
+                return fromUser && [fromUser rangeOfString:@"@chatroom"].location != NSNotFound;
+            };
+            
+            /** 是否自己在群聊中发消息 */
+            BOOL (^isGroupSender)(void) = ^BOOL {
+                NSString *toUser = nil;
+                if ([wrap respondsToSelector:@selector(m_nsToUsr)]) {
+                    toUser = [wrap m_nsToUsr];
+                }
+                return isSender() && toUser && [toUser rangeOfString:@"chatroom"].location != NSNotFound;
+            };
+            
+            /** 是否抢自己发的红包 */
+            BOOL (^isReceiveSelfRedEnvelop)(void) = ^BOOL {
+                return [%c(WCPLRedEnvelopConfig) sharedConfig].receiveSelfRedEnvelop;
+            };
+            
+            /** 是否在黑名单中 */
+            BOOL (^isGroupInBlackList)(void) = ^BOOL {
+                NSString *fromUser = nil;
+                if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
+                    fromUser = [wrap m_nsFromUsr];
+                }
+                return fromUser && [[%c(WCPLRedEnvelopConfig) sharedConfig].blackList containsObject:fromUser];
+            };
+            
+            /** 是否自动抢红包 */
+            BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
+                WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
+                if (!config.autoReceiveEnable) { return NO; }
+                if (isGroupInBlackList()) { return NO; }
                 
-                id contactManager = [[serviceCenterClass defaultCenter] getService:contactMgrClass];
-                id selfContact = [contactManager getSelfContact];
+                return isGroupReceiver() || 
+                       (isGroupSender() && isReceiveSelfRedEnvelop()) || 
+                       (!isGroupReceiver() && !isGroupSender() && config.personalRedEnvelopEnable); 
+            };
+            
+            if (shouldReceiveRedEnvelop()) {
+                // 解析红包参数并加入队列
+                NSString *content = nil;
+                if ([wrap respondsToSelector:@selector(m_nsContent)]) {
+                    content = [wrap m_nsContent];
+                }
                 
-                BOOL (^isSender)(void) = ^BOOL {
-                    return [[wrap m_nsFromUsr] isEqualToString:[selfContact m_nsUsrName]];
-                };
-                
-                /** 是否别人在群聊中发消息 */
-                BOOL (^isGroupReceiver)(void) = ^BOOL {
-                    return [[wrap m_nsFromUsr] rangeOfString:@"@chatroom"].location != NSNotFound;
-                };
-                
-                /** 是否自己在群聊中发消息 */
-                BOOL (^isGroupSender)(void) = ^BOOL {
-                    return isSender() && [[wrap m_nsToUsr] rangeOfString:@"chatroom"].location != NSNotFound;
-                };
-                
-                /** 是否抢自己发的红包 */
-                BOOL (^isReceiveSelfRedEnvelop)(void) = ^BOOL {
-                    return [%c(WCPLRedEnvelopConfig) sharedConfig].receiveSelfRedEnvelop;
-                };
-                
-                /** 是否在黑名单中 */
-                BOOL (^isGroupInBlackList)(void) = ^BOOL {
-                    return [[%c(WCPLRedEnvelopConfig) sharedConfig].blackList containsObject:[wrap m_nsFromUsr]];
-                };
-                
-                /** 是否自动抢红包 */
-                BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
-                    if ( sharedConfig].autoReceiveEnable) { return NO; }
-                    if (isGroupInBlackList()) { return NO; }
-                    
-                    return isGroupReceiver() || 
-                           (isGroupSender() && isReceiveSelfRedEnvelop()) || 
-                           (!isGroupReceiver() && !isGroupSender() && [%c(WCPLRedEnvelopConfig) sharedConfig].personalRedEnvelopEnable); 
-                };
-                
-                if (shouldReceiveRedEnvelop()) {
-                    // 解析红包参数并加入队列
-                    NSString *content = [wrap m_nsContent];
+                if (content) {
                     NSDictionary *messageDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:content separator:@"="];
                     NSString *nativeUrl = [messageDict stringForKey:@"nativeurl"];
                     
@@ -374,7 +453,12 @@
                         param.nickName = [nativeUrlDict stringForKey:@"nickname"];
                         param.headImg = [nativeUrlDict stringForKey:@"headimg"];
                         param.nativeUrl = nativeUrl;
-                        param.sessionUserName = [wrap m_nsFromUsr];
+                        
+                        NSString *fromUser = nil;
+                        if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
+                            fromUser = [wrap m_nsFromUsr];
+                        }
+                        param.sessionUserName = fromUser;
                         param.sign = [nativeUrlDict stringForKey:@"sign"];
                         param.isGroupSender = isGroupSender();
                         
@@ -382,10 +466,7 @@
                     }
                 }
             }
-            break;
         }
-        default:
-            break;
     }
 }
 
@@ -414,8 +495,6 @@
     ];
     
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"SwitchCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TextFieldCell"];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -432,68 +511,51 @@
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
+    cell.textLabel.text = _cellTitles[indexPath.section][indexPath.row];
     
     if (indexPath.section == 1) {
         // 延迟时间设置
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TextFieldCell" forIndexPath:indexPath];
-        cell.textLabel.text = _cellTitles[indexPath.section][indexPath.row];
-        
         UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(150, 10, 100, 30)];
         textField.textAlignment = NSTextAlignmentRight;
         textField.keyboardType = UIKeyboardTypeNumberPad;
         textField.text = [NSString stringWithFormat:@"%ld", (long)config.delaySeconds];
         textField.placeholder = @"0";
         [textField addTarget:self action:@selector(delayTimeChanged:) forControlEvents:UIControlEventEditingChanged];
-        
         cell.accessoryView = textField;
-        return cell;
     } else if (indexPath.section == 2) {
         // 黑名单管理
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
-        cell.textLabel.text = _cellTitles[indexPath.section][indexPath.row];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        return cell;
     } else {
         // 开关设置
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"SwitchCell" forIndexPath:indexPath];
-        cell.textLabel.text = _cellTitles[indexPath.section][indexPath.row];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         
         UISwitch *switchView = [[UISwitch alloc] init];
         switchView.onTintColor = [UIColor colorWithRed:0.0 green:0.5 blue:1.0 alpha:1.0];
         
-        switch (indexPath.section) {
-            case 0:
-                switch (indexPath.row) {
-                    case 0: switchView.on = config.autoReceiveEnable; break;
-                    case 1: switchView.on = config.serialReceive; break;
-                    case 2: switchView.on = config.personalRedEnvelopEnable; break;
-                    case 3: switchView.on = config.receiveSelfRedEnvelop; break;
-                }
-                break;
+        switch (indexPath.row) {
+            case 0: switchView.on = config.autoReceiveEnable; break;
+            case 1: switchView.on = config.serialReceive; break;
+            case 2: switchView.on = config.personalRedEnvelopEnable; break;
+            case 3: switchView.on = config.receiveSelfRedEnvelop; break;
         }
         
+        switchView.tag = indexPath.row;
         [switchView addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = switchView;
-        return cell;
     }
+    
+    return cell;
 }
 
 - (void)switchChanged:(UISwitch *)sender {
-    UITableViewCell *cell = (UITableViewCell *)sender.superview;
-    NSIndexPath *indexPath = [self.tableView indexPathForCell:cell];
-    
     WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
     
-    switch (indexPath.section) {
-        case 0:
-            switch (indexPath.row) {
-                case 0: config.autoReceiveEnable = sender.on; break;
-                case 1: config.serialReceive = sender.on; break;
-                case 2: config.personalRedEnvelopEnable = sender.on; break;
-                case 3: config.receiveSelfRedEnvelop = sender.on; break;
-            }
-            break;
+    switch (sender.tag) {
+        case 0: config.autoReceiveEnable = sender.on; break;
+        case 1: config.serialReceive = sender.on; break;
+        case 2: config.personalRedEnvelopEnable = sender.on; break;
+        case 3: config.receiveSelfRedEnvelop = sender.on; break;
     }
     
     [config saveConfig];
