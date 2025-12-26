@@ -39,7 +39,6 @@ static BOOL gFriendsCountEnabled = NO;
 static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
-static BOOL g_hasPluginsMgr = NO;
 static BOOL gCustomStepsEnabled = NO;
 static NSInteger gCustomStepsValue = 8888;
 static NSDate *gLastStepsUpdateDate = nil;
@@ -954,7 +953,7 @@ static void loadAllSettings() {
     return cell;
 }
 
-1UITableViewCell *)createCustomStepsSwitchCell:(NSUserDefaults *)defaults {
+- (UITableViewCell *)createCustomStepsSwitchCell:(NSUserDefaults *)defaults {
     UITableViewCell *cell = [self createSwitchCellWithIdentifier:@"CustomStepsSwitchCell" title:@"运动步数自定义"];
     UISwitch *switchView = (UISwitch *)cell.accessoryView;
     switchView.on = [defaults boolForKey:kCustomStepsEnabledKey];
@@ -1654,7 +1653,6 @@ static void loadAllSettings() {
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
-    return;
 }
 %end
 
@@ -2363,10 +2361,7 @@ static void loadAllSettings() {
         
         Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
         if (pluginsMgrClass && [pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
-            g_hasPluginsMgr = YES;
             [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:PLUGIN_NAME version:PLUGIN_VERSION controller:@"DDAssistantSettingsViewController"];
-        } else {
-            g_hasPluginsMgr = NO;
         }
     }
 }
