@@ -1,9 +1,14 @@
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
 
-// 从头文件获取正确的类型定义
-typedef NS_ENUM(NSInteger, MessageType) {
-    MessageTypeAppNode = 49
-};
+// 微信类的前向声明
+@class CMessageWrap;
+@class CContact;
+@class CContactMgr;
+@class MMServiceCenter;
+@class WCRedEnvelopesLogicMgr;
+@class WCBizUtil;
 
 // 配置类
 @interface WCPLRedEnvelopConfig : NSObject
@@ -33,7 +38,7 @@ typedef NS_ENUM(NSInteger, MessageType) {
 }
 @end
 
-// 红包参数类 - 根据头文件调整
+// 红包参数类
 @interface WeChatRedEnvelopParam : NSObject
 @property (nonatomic, copy) NSString *msgType;
 @property (nonatomic, copy) NSString *sendId;
@@ -45,6 +50,9 @@ typedef NS_ENUM(NSInteger, MessageType) {
 @property (nonatomic, copy) NSString *sign;
 @property (nonatomic, assign) BOOL isGroupSender;
 @property (nonatomic, copy) NSString *timingIdentifier;
+@end
+
+@implementation WeChatRedEnvelopParam
 @end
 
 // 参数队列
@@ -251,7 +259,7 @@ typedef NS_ENUM(NSInteger, MessageType) {
         }
     } else {
         cell.textLabel.text = @"关于";
-        cell.textLabel.textColor = [UIColor systemBlueColor];
+        cell.textColor = [UIColor systemBlueColor];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     
@@ -463,17 +471,17 @@ typedef NS_ENUM(NSInteger, MessageType) {
 
 %hook CMessageMgr
 
-- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap {
+- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
     %orig;
     
     // 检查消息类型是否为AppNode（红包消息）
-    NSUInteger messageType = (NSUInteger)[wrap m_uiMessageType];
+    NSUInteger messageType = (NSUInteger)[wrap performSelector:@selector(m_uiMessageType)];
     if (messageType != 49) { // AppNode类型
         return;
     }
     
     // 检查是否为红包消息
-    NSString *content = [wrap m_nsContent];
+    NSString *content = [wrap performSelector:@selector(m_nsContent)];
     if (![content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"]) {
         return;
     }
@@ -484,16 +492,16 @@ typedef NS_ENUM(NSInteger, MessageType) {
     
     if (!MMServiceCenter || !CContactMgr) return;
     
-    MMServiceCenter *serviceCenter = [MMServiceCenter performSelector:@selector(defaultCenter)];
-    CContactMgr *contactMgr = [serviceCenter getService:CContactMgr];
-    CContact *selfContact = [contactMgr getSelfContact];
+    id serviceCenter = [MMServiceCenter performSelector:@selector(defaultCenter)];
+    id contactMgr = [serviceCenter performSelector:@selector(getService:) withObject:CContactMgr];
+    id selfContact = [contactMgr performSelector:@selector(getSelfContact)];
     
     if (!selfContact) return;
     
     // 解析消息相关信息
-    NSString *fromUsr = [wrap m_nsFromUsr];
-    NSString *toUsr = [wrap m_nsToUsr];
-    NSString *selfUsrName = [selfContact m_nsUsrName];
+    NSString *fromUsr = [wrap performSelector:@selector(m_nsFromUsr)];
+    NSString *toUsr = [wrap performSelector:@selector(m_nsToUsr)];
+    NSString *selfUsrName = [selfContact performSelector:@selector(m_nsUsrName)];
     
     // 判断消息发送者
     BOOL isSender = [fromUsr isEqualToString:selfUsrName];
@@ -553,9 +561,9 @@ typedef NS_ENUM(NSInteger, MessageType) {
     param.msgType = nativeUrlDict[@"msgtype"];
     param.sendId = nativeUrlDict[@"sendid"];
     param.channelId = nativeUrlDict[@"channelid"];
-    param.nickName = [selfContact getContactDisplayName];
-    param.headImg = [selfContact m_nsHeadImgUrl];
-    param.nativeUrl = [wrap m_nsContent];
+    param.nickName = [selfContact performSelector:@selector(getContactDisplayName)];
+    param.headImg = [selfContact performSelector:@selector(m_nsHeadImgUrl)];
+    param.nativeUrl = content;
     param.sessionUserName = isGroupSender ? toUsr : fromUsr;
     param.sign = nativeUrlDict[@"sign"];
     param.isGroupSender = isGroupSender;
@@ -566,8 +574,8 @@ typedef NS_ENUM(NSInteger, MessageType) {
     // 触发抢红包请求
     Class WCRedEnvelopesLogicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (WCRedEnvelopesLogicMgrClass) {
-        MMServiceCenter *serviceCenter = [MMServiceCenter performSelector:@selector(defaultCenter)];
-        id logicMgr = [serviceCenter getService:WCRedEnvelopesLogicMgrClass];
+        id serviceCenter = [MMServiceCenter performSelector:@selector(defaultCenter)];
+        id logicMgr = [serviceCenter performSelector:@selector(getService:) withObject:WCRedEnvelopesLogicMgrClass];
         if (logicMgr && [logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
             [logicMgr OpenRedEnvelopesRequest:param];
         }
