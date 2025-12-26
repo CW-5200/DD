@@ -1,521 +1,341 @@
-#import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
-#import <objc/runtime.h>
-
-// 配置类
-@interface WCPLRedEnvelopConfig : NSObject
-@property (nonatomic, assign) BOOL autoReceiveEnable;
-@property (nonatomic, assign) BOOL serialReceive;
-@property (nonatomic, assign) BOOL personalRedEnvelopEnable;
-@property (nonatomic, assign) BOOL receiveSelfRedEnvelop;
-@property (nonatomic, assign) NSInteger delaySeconds;
-@property (nonatomic, strong) NSArray *blackList;
-+ (instancetype)sharedConfig;
-@end
-
-@implementation WCPLRedEnvelopConfig
-+ (instancetype)sharedConfig {
-    static WCPLRedEnvelopConfig *config = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        config = [[WCPLRedEnvelopConfig alloc] init];
-        config.autoReceiveEnable = YES;
-        config.serialReceive = YES;
-        config.personalRedEnvelopEnable = YES;
-        config.receiveSelfRedEnvelop = NO;
-        config.delaySeconds = 0;
-        config.blackList = @[];
-    });
-    return config;
-}
-@end
-
-// 红包参数类
-@interface WeChatRedEnvelopParam : NSObject
-@property (nonatomic, copy) NSString *msgType;
-@property (nonatomic, copy) NSString *sendId;
-@property (nonatomic, copy) NSString *channelId;
-@property (nonatomic, copy) NSString *nickName;
-@property (nonatomic, copy) NSString *headImg;
-@property (nonatomic, copy) NSString *nativeUrl;
-@property (nonatomic, copy) NSString *sessionUserName;
-@property (nonatomic, copy) NSString *sign;
-@property (nonatomic, assign) BOOL isGroupSender;
-@property (nonatomic, copy) NSString *timingIdentifier;
-@end
-
-@implementation WeChatRedEnvelopParam
-@end
-
-// 红包参数队列
-@interface WCPLRedEnvelopParamQueue : NSObject
-@property (nonatomic, strong) NSMutableArray *queue;
-+ (instancetype)sharedQueue;
-- (void)enqueue:(WeChatRedEnvelopParam *)param;
-- (WeChatRedEnvelopParam *)dequeue;
-- (BOOL)isEmpty;
-@end
-
-@implementation WCPLRedEnvelopParamQueue
-+ (instancetype)sharedQueue {
-    static WCPLRedEnvelopParamQueue *queue = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        queue = [[WCPLRedEnvelopParamQueue alloc] init];
-        queue.queue = [NSMutableArray array];
-    });
-    return queue;
-}
-
-- (void)enqueue:(WeChatRedEnvelopParam *)param {
-    [self.queue addObject:param];
-}
-
-- (WeChatRedEnvelopParam *)dequeue {
-    if (self.queue.count == 0) {
-        return nil;
-    }
-    WeChatRedEnvelopParam *first = self.queue.firstObject;
-    [self.queue removeObjectAtIndex:0];
-    return first;
-}
-
-- (BOOL)isEmpty {
-    return self.queue.count == 0;
-}
-@end
-
-// 红包任务管理器
-@interface WCPLRedEnvelopTaskManager : NSObject
-@property (nonatomic, assign) BOOL serialQueueIsEmpty;
-+ (instancetype)sharedManager;
-- (void)addSerialTask:(id)operation;
-- (void)addNormalTask:(id)operation;
-@end
-
-@implementation WCPLRedEnvelopTaskManager
-+ (instancetype)sharedManager {
-    static WCPLRedEnvelopTaskManager *manager = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        manager = [[WCPLRedEnvelopTaskManager alloc] init];
-        manager.serialQueueIsEmpty = YES;
-    });
-    return manager;
-}
-
-- (void)addSerialTask:(id)operation {
-    NSLog(@"DD红包: 添加串行任务");
-    self.serialQueueIsEmpty = NO;
-}
-
-- (void)addNormalTask:(id)operation {
-    NSLog(@"DD红包: 添加普通任务");
-}
-@end
-
-// 红包操作类
-@interface WCPLReceiveRedEnvelopOperation : NSObject
-- (instancetype)initWithRedEnvelopParam:(WeChatRedEnvelopParam *)param delay:(unsigned int)delay;
-@end
-
-@implementation WCPLReceiveRedEnvelopOperation
-- (instancetype)initWithRedEnvelopParam:(WeChatRedEnvelopParam *)param delay:(unsigned int)delay {
-    NSLog(@"DD红包: 创建抢红包操作，延迟: %u秒", delay);
-    return [super init];
-}
-@end
-
-// 工具类
-@interface WCBizUtil : NSObject
-+ (NSDictionary *)dictionaryWithDecodedComponets:(NSString *)string separator:(NSString *)separator;
-@end
-
-@implementation WCBizUtil
-+ (NSDictionary *)dictionaryWithDecodedComponets:(NSString *)string separator:(NSString *)separator {
-    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-    NSArray *components = [string componentsSeparatedByString:separator];
-    for (NSString *component in components) {
-        NSArray *keyValue = [component componentsSeparatedByString:@"="];
-        if (keyValue.count == 2) {
-            NSString *key = [keyValue[0] stringByRemovingPercentEncoding];
-            NSString *value = [keyValue[1] stringByRemovingPercentEncoding];
-            if (key && value) {
-                dict[key] = value;
-            }
+%config(generator=internal)
+%hookf(IMP, class_getMethodImplementation, Class cls, SEL sel) {
+    const char *name = sel_getName(sel);
+    if (strcmp(name, "redEnvelopDelay") == 0) {
+        static IMP redEnvelopDelayIMP = NULL;
+        if (!redEnvelopDelayIMP) {
+            redEnvelopDelayIMP = imp_implementationWithBlock(^NSUInteger(id self) {
+                return 0;
+            });
         }
+        return redEnvelopDelayIMP;
     }
-    return dict;
+    return %orig;
 }
-@end
 
-// 分类扩展
-@interface NSString (DDAdditions)
-- (NSString *)JSONString;
-@end
-
-@implementation NSString (DDAdditions)
-- (NSDictionary *)JSONDictionary {
-    NSData *jsonData = [self dataUsingEncoding:NSUTF8StringEncoding];
-    if (!jsonData) return nil;
+// 注册到插件管理器
+%ctor {
+    if (NSClassFromString(@"WCPluginsMgr")) {
+        [[objc_getClass("WCPluginsMgr") sharedInstance] 
+            registerSwitchWithTitle:@"DD红包" 
+                                key:@"DD_RedEnvelop_Enabled"];
+    }
     
-    NSError *error = nil;
-    NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
-    if (error) {
-        NSLog(@"DD红包: JSON解析错误: %@", error);
-        return nil;
-    }
-    return dict;
+    NSLog(@"[DD红包] 插件已加载 v1.0.0");
 }
+
+// MARK: - 工具函数
+@interface WCBizUtil : NSObject
++ (NSDictionary *)dictionaryWithDecodedComponets:(NSString *)str separator:(NSString *)sep;
 @end
 
-// 主逻辑 - Hook WCRedEnvelopesLogicMgr
+// MARK: - Hook红包逻辑管理器
 %hook WCRedEnvelopesLogicMgr
 
 - (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
     %orig;
     
-    // 非参数查询请求
-    if ([arg1 cgiCmdid] != 3) { return; }
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL pluginEnabled = [defaults boolForKey:@"DD_RedEnvelop_Enabled"];
+    if (!pluginEnabled) return;
     
-    NSString *(^parseRequestSign)(void) = ^NSString *{
-        NSString *requestString = [[NSString alloc] initWithData:[[arg2 reqText] buffer] encoding:NSUTF8StringEncoding];
-        NSDictionary *requestDictionary = [%c(WCBizUtil) dictionaryWithDecodedComponets:requestString separator:@"&"];
-        NSString *nativeUrl = [[requestDictionary objectForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
-        NSDictionary *nativeUrlDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
-        
-        return [nativeUrlDict objectForKey:@"sign"];
-    };
-    
-    NSDictionary *responseDict = [[[NSString alloc] initWithData:[[arg1 retText] buffer] encoding:NSUTF8StringEncoding] JSONDictionary];
-    
-    WeChatRedEnvelopParam *mgrParams = [[WCPLRedEnvelopParamQueue sharedQueue] dequeue];
-    
-    BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
-        // 手动抢红包
-        if (!mgrParams) { 
-            NSLog(@"DD红包: 没有红包参数，可能是手动抢红包");
-            return NO; 
+    @try {
+        // 获取cgiCmdid
+        unsigned int cgiCmdid = 0;
+        if ([arg1 respondsToSelector:@selector(cgiCmdid)]) {
+            cgiCmdid = (unsigned int)[arg1 performSelector:@selector(cgiCmdid)];
         }
         
-        // 自己已经抢过
-        if ([[responseDict objectForKey:@"receiveStatus"] integerValue] == 2) { 
-            NSLog(@"DD红包: 已经抢过这个红包");
-            return NO; 
+        // 只处理查询请求(cgiCmdid == 3)
+        if (cgiCmdid != 3) return;
+        
+        // 解析响应数据
+        NSString *responseString = @"";
+        if ([arg1 respondsToSelector:@selector(retText)]) {
+            id retText = [arg1 performSelector:@selector(retText)];
+            if ([retText respondsToSelector:@selector(buffer)]) {
+                NSData *buffer = [retText performSelector:@selector(buffer)];
+                if (buffer) {
+                    responseString = [[NSString alloc] initWithData:buffer encoding:NSUTF8StringEncoding];
+                }
+            }
         }
         
-        // 红包被抢完
-        if ([[responseDict objectForKey:@"hbStatus"] integerValue] == 4) { 
-            NSLog(@"DD红包: 红包已被抢完");
-            return NO; 
-        }  
+        if (responseString.length == 0) return;
         
-        // 没有这个字段会被判定为使用外挂
-        if ( { 
-            NSLog(@"DD红包: 缺少timingIdentifier字段");
-            return NO; 
-        }  
+        // 解析JSON响应
+        NSData *jsonData = [responseString dataUsingEncoding:NSUTF8StringEncoding];
+        NSError *error = nil;
+        NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
         
-        if (mgrParams.isGroupSender) { 
-            // 自己发红包的时候没有 sign 字段
-            BOOL shouldReceive = [[WCPLRedEnvelopConfig sharedConfig] autoReceiveEnable];
-            NSLog(@"DD红包: 群发红包，自动抢红包状态: %@", shouldReceive ? @"开启" : @"关闭");
-            return shouldReceive;
-        } else {
-            BOOL signMatch = [parseRequestSign() isEqualToString:mgrParams.sign];
-            BOOL shouldReceive = signMatch && [[WCPLRedEnvelopConfig sharedConfig] autoReceiveEnable];
-            NSLog(@"DD红包: 接收红包，签名匹配: %@，自动抢红包状态: %@", signMatch ? @"是" : @"否", [[WCPLRedEnvelopConfig sharedConfig] autoReceiveEnable] ? @"开启" : @"关闭");
-            return shouldReceive;
-        }
-    };
-    
-    if (shouldReceiveRedEnvelop()) {
-        mgrParams.timingIdentifier = [responseDict objectForKey:@"timingIdentifier"];
+        if (error || !responseDict) return;
         
-        unsigned int delaySeconds = [self wcpl_calculateDelaySeconds];
-        WCPLReceiveRedEnvelopOperation *operation = [[WCPLReceiveRedEnvelopOperation alloc] initWithRedEnvelopParam:mgrParams delay:delaySeconds];
+        // 检查红包状态
+        NSInteger receiveStatus = [responseDict[@"receiveStatus"] integerValue];
+        NSInteger hbStatus = [responseDict[@"hbStatus"] integerValue];
+        NSString *timingIdentifier = responseDict[@"timingIdentifier"];
         
-        if ([[WCPLRedEnvelopConfig sharedConfig] serialReceive]) {
-            [[WCPLRedEnvelopTaskManager sharedManager] addSerialTask:operation];
-        } else {
-            [[WCPLRedEnvelopTaskManager sharedManager] addNormalTask:operation];
+        if (receiveStatus == 2 || hbStatus == 4 || !timingIdentifier) {
+            return;
         }
         
-        NSLog(@"DD红包: 已加入抢红包队列，延迟: %u秒", delaySeconds);
+        // 解析请求获取sign
+        NSString *requestSign = nil;
+        if ([arg2 respondsToSelector:@selector(reqText)]) {
+            id reqText = [arg2 performSelector:@selector(reqText)];
+            if ([reqText respondsToSelector:@selector(buffer)]) {
+                NSData *buffer = [reqText performSelector:@selector(buffer)];
+                if (buffer) {
+                    NSString *requestString = [[NSString alloc] initWithData:buffer encoding:NSUTF8StringEncoding];
+                    NSDictionary *requestDict = [WCBizUtil dictionaryWithDecodedComponets:requestString separator:@"&"];
+                    NSString *nativeUrl = [[requestDict objectForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
+                    NSDictionary *nativeUrlDict = [WCBizUtil dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
+                    requestSign = [nativeUrlDict objectForKey:@"sign"];
+                }
+            }
+        }
+        
+        if (!requestSign) return;
+        
+        // 检查黑名单
+        NSArray *blackList = [defaults arrayForKey:@"DD_RedEnvelop_BlackList"] ?: @[];
+        BOOL isInBlackList = NO;
+        for (NSString *blackItem in blackList) {
+            if ([responseString containsString:blackItem]) {
+                isInBlackList = YES;
+                break;
+            }
+        }
+        
+        if (isInBlackList) return;
+        
+        // 检查是否抢自己的红包
+        BOOL receiveSelf = [defaults boolForKey:@"DD_RedEnvelop_ReceiveSelf"];
+        if (!receiveSelf) {
+            // 从响应中提取发送者信息
+            NSString *senderInfo = responseDict[@"sendUserName"] ?: @"";
+            Class contactMgrClass = objc_getClass("CContactMgr");
+            if (contactMgrClass) {
+                id mmServiceCenter = objc_getClass("MMServiceCenter");
+                id defaultCenter = [mmServiceCenter performSelector:@selector(defaultCenter)];
+                id contactMgr = [defaultCenter performSelector:@selector(getService:) withObject:contactMgrClass];
+                
+                if ([contactMgr respondsToSelector:@selector(getSelfContact)]) {
+                    id selfContact = [contactMgr performSelector:@selector(getSelfContact)];
+                    if ([selfContact respondsToSelector:@selector(m_nsUsrName)]) {
+                        NSString *myUserName = [selfContact performSelector:@selector(m_nsUsrName)];
+                        if ([senderInfo isEqualToString:myUserName]) {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 延迟设置
+        NSInteger delaySeconds = [defaults integerForKey:@"DD_RedEnvelop_Delay"];
+        BOOL serialMode = [defaults boolForKey:@"DD_RedEnvelop_SerialMode"];
+        
+        // 创建红包参数
+        NSMutableDictionary *params = [NSMutableDictionary dictionary];
+        [params setObject:requestSign forKey:@"sign"];
+        [params setObject:timingIdentifier forKey:@"timingIdentifier"];
+        [params setObject:responseDict[@"sendId"] ?: @"" forKey:@"sendId"];
+        [params setObject:responseDict[@"channelId"] ?: @"" forKey:@"channelId"];
+        [params setObject:responseDict[@"msgType"] ?: @"" forKey:@"msgType"];
+        
+        // 延迟执行抢红包
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delaySeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self openRedEnvelopWithParams:params];
+        });
+        
+    } @catch (NSException *exception) {
+        NSLog(@"[DD红包] 处理响应异常: %@", exception);
     }
 }
 
 %new
-- (unsigned int)wcpl_calculateDelaySeconds {
-    NSInteger configDelaySeconds = [[WCPLRedEnvelopConfig sharedConfig] delaySeconds];
-    
-    if ([[WCPLRedEnvelopConfig sharedConfig] serialReceive]) {
-        unsigned int serialDelaySeconds;
-        if ([[WCPLRedEnvelopTaskManager sharedManager] serialQueueIsEmpty]) {
-            serialDelaySeconds = (unsigned int)configDelaySeconds;
-        } else {
-            serialDelaySeconds = 5;
+- (void)openRedEnvelopWithParams:(NSDictionary *)params {
+    @try {
+        // 调用OpenRedEnvelopesRequest方法
+        SEL openSel = @selector(OpenRedEnvelopesRequest:);
+        if ([self respondsToSelector:openSel]) {
+            [self performSelector:openSel withObject:params];
+            NSLog(@"[DD红包] 已尝试抢红包: %@", params[@"sendId"]);
         }
-        
-        NSLog(@"DD红包: 串行模式延迟: %u秒", serialDelaySeconds);
-        return serialDelaySeconds;
-    } else {
-        NSLog(@"DD红包: 普通模式延迟: %ld秒", (long)configDelaySeconds);
-        return (unsigned int)configDelaySeconds;
+    } @catch (NSException *exception) {
+        NSLog(@"[DD红包] 打开红包异常: %@", exception);
     }
 }
 
 %end
 
-// Hook CMessageMgr
+// MARK: - Hook消息管理器处理红包消息
 %hook CMessageMgr
 
 - (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
     %orig;
     
-    unsigned int messageType = [wrap m_uiMessageType];
-    switch(messageType) {
-        case 49: { // AppNode
-            /** 是否为红包消息 */
-            BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
-                NSString *content = [wrap m_nsContent];
-                return content && [content rangeOfString:@"wxpay://"].location != NSNotFound;
-            };
-            
-            if (isRedEnvelopMessage()) { // 红包
-                Class contactMgrClass = objc_getClass("CContactMgr");
-                Class serviceCenterClass = objc_getClass("MMServiceCenter");
-                
-                if (!contactMgrClass || !serviceCenterClass) {
-                    NSLog(@"DD红包: 无法获取必要的类");
-                    break;
-                }
-                
-                id contactManager = [[serviceCenterClass defaultCenter] getService:contactMgrClass];
-                id selfContact = [contactManager getSelfContact];
-                
-                BOOL (^isSender)(void) = ^BOOL {
-                    return [[wrap m_nsFromUsr] isEqualToString:[selfContact m_nsUsrName]];
-                };
-                
-                /** 是否别人在群聊中发消息 */
-                BOOL (^isGroupReceiver)(void) = ^BOOL {
-                    NSString *fromUser = [wrap m_nsFromUsr];
-                    return fromUser && [fromUser rangeOfString:@"@chatroom"].location != NSNotFound;
-                };
-                
-                /** 是否自己在群聊中发消息 */
-                BOOL (^isGroupSender)(void) = ^BOOL {
-                    return isSender() && [[wrap m_nsToUsr] rangeOfString:@"chatroom"].location != NSNotFound;
-                };
-                
-                /** 是否抢自己发的红包 */
-                BOOL (^isReceiveSelfRedEnvelop)(void) = ^BOOL {
-                    return [[WCPLRedEnvelopConfig sharedConfig] receiveSelfRedEnvelop];
-                };
-                
-                /** 是否在黑名单中 */
-                BOOL (^isGroupInBlackList)(void) = ^BOOL {
-                    NSString *fromUser = [wrap m_nsFromUsr];
-                    return fromUser && [[[WCPLRedEnvelopConfig sharedConfig] blackList] containsObject:fromUser];
-                };
-                
-                /** 是否自动抢红包 */
-                BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
-                    if ( { 
-                        NSLog(@"DD红包: 自动抢红包功能已关闭");
-                        return NO; 
-                    }
-                    if (isGroupInBlackList()) { 
-                        NSLog(@"DD红包: 群聊在黑名单中");
-                        return NO; 
-                    }
-                    
-                    BOOL shouldReceive = isGroupReceiver() || 
-                                       (isGroupSender() && isReceiveSelfRedEnvelop()) || 
-                                       (!isGroupReceiver() && !isGroupSender() && [[WCPLRedEnvelopConfig sharedConfig] personalRedEnvelopEnable]);
-                    
-                    NSLog(@"DD红包: 消息类型 - 群接收: %@, 群发送: %@, 个人红包: %@, 最终决定: %@",
-                          isGroupReceiver() ? @"是" : @"否",
-                          isGroupSender() ? @"是" : @"否",
-                          (!isGroupReceiver() && !isGroupSender()) ? @"是" : @"否",
-                          shouldReceive ? @"抢" : @"不抢");
-                    
-                    return shouldReceive;
-                };
-                
-                NSDictionary *(^parseNativeUrl)(NSString *nativeUrl) = ^NSDictionary *(NSString *nativeUrl) {
-                    NSString *prefix = @"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?";
-                    if ([nativeUrl hasPrefix:prefix]) {
-                        nativeUrl = [nativeUrl substringFromIndex:prefix.length];
-                    }
-                    return [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
-                };
-                
-                if (shouldReceiveRedEnvelop()) {
-                    NSString *content = [wrap m_nsContent];
-                    NSDictionary *nativeUrlDict = parseNativeUrl(content);
-                    
-                    if (nativeUrlDict) {
-                        WeChatRedEnvelopParam *param = [[WeChatRedEnvelopParam alloc] init];
-                        param.msgType = [nativeUrlDict objectForKey:@"msgtype"];
-                        param.sendId = [nativeUrlDict objectForKey:@"sendid"];
-                        param.channelId = [nativeUrlDict objectForKey:@"channelid"];
-                        param.nickName = [nativeUrlDict objectForKey:@"nick_name"];
-                        param.headImg = [nativeUrlDict objectForKey:@"head_img"];
-                        param.nativeUrl = content;
-                        param.sessionUserName = [wrap m_nsFromUsr];
-                        param.sign = [nativeUrlDict objectForKey:@"sign"];
-                        param.isGroupSender = isGroupSender();
-                        
-                        [[WCPLRedEnvelopParamQueue sharedQueue] enqueue:param];
-                        
-                        NSLog(@"DD红包: 检测到红包消息，已加入处理队列");
-                        NSLog(@"DD红包: 发送ID: %@, 频道ID: %@, 签名: %@", param.sendId, param.channelId, param.sign);
-                    } else {
-                        NSLog(@"DD红包: 解析红包URL失败");
-                    }
-                }
-            }
-            break;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if (![defaults boolForKey:@"DD_RedEnvelop_Enabled"]) return;
+    
+    @try {
+        // 获取消息类型
+        unsigned int msgType = 0;
+        if ([wrap respondsToSelector:@selector(m_uiMessageType)]) {
+            msgType = (unsigned int)[wrap performSelector:@selector(m_uiMessageType)];
         }
+        
+        // 只处理49类型消息(红包消息)
+        if (msgType != 49) return;
+        
+        // 获取消息内容
+        NSString *content = @"";
+        if ([wrap respondsToSelector:@selector(m_nsContent)]) {
+            content = [wrap performSelector:@selector(m_nsContent)];
+        }
+        
+        // 检查是否为红包消息
+        if (![content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"]) {
+            return;
+        }
+        
+        // 获取发送者
+        NSString *fromUsr = @"";
+        if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
+            fromUsr = [wrap performSelector:@selector(m_nsFromUsr)];
+        }
+        
+        // 获取接收者
+        NSString *toUsr = @"";
+        if ([wrap respondsToSelector:@selector(m_nsToUsr)]) {
+            toUsr = [wrap performSelector:@selector(m_nsToUsr)];
+        }
+        
+        // 检查黑名单
+        NSArray *blackList = [defaults arrayForKey:@"DD_RedEnvelop_BlackList"] ?: @[];
+        if ([blackList containsObject:fromUsr]) {
+            return;
+        }
+        
+        // 解析nativeUrl
+        NSRange range = [content rangeOfString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"];
+        if (range.location != NSNotFound) {
+            NSString *nativeUrl = [content substringFromIndex:range.location];
+            NSDictionary *urlParams = [WCBizUtil dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
+            
+            // 判断是否群聊
+            BOOL isGroupChat = [fromUsr containsString:@"@chatroom"] || [toUsr containsString:@"@chatroom"];
+            
+            // 个人红包开关
+            BOOL personalEnabled = [defaults boolForKey:@"DD_RedEnvelop_PersonalEnabled"];
+            if (!isGroupChat && !personalEnabled) {
+                return;
+            }
+            
+            // 记录日志
+            NSLog(@"[DD红包] 检测到红包消息 from: %@, to: %@", fromUsr, toUsr);
+            
+        }
+        
+    } @catch (NSException *exception) {
+        NSLog(@"[DD红包] 处理消息异常: %@", exception);
     }
 }
 
 %end
 
-// 设置界面控制器
-@interface DDRedEnvelopSettingsController : UITableViewController
+// MARK: - 提供设置界面
+@interface DDRedEnvelopSettingsController : UIViewController {
+    UISwitch *_enabledSwitch;
+    UISwitch *_receiveSelfSwitch;
+    UISwitch *_personalSwitch;
+    UISwitch *_serialSwitch;
+    UITextField *_delayField;
+    UITextField *_blackListField;
+    UIButton *_saveButton;
+}
+
 @end
 
-@implementation DDRedEnvelopSettingsController
+%hook DDRedEnvelopSettingsController
 
 - (void)viewDidLoad {
-    [super viewDidLoad];
+    %orig;
+    
     self.title = @"DD红包设置";
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 4;
-    if (section == 1) return 1;
-    return 0;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 0) return @"基本设置";
-    if (section == 1) return @"其他设置";
-    return nil;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"Cell"];
-    }
+    self.view.backgroundColor = [UIColor whiteColor];
     
-    WCPLRedEnvelopConfig *config = [WCPLRedEnvelopConfig sharedConfig];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    if (indexPath.section == 0) {
-        switch (indexPath.row) {
-            case 0: {
-                cell.textLabel.text = @"自动抢红包";
-                UISwitch *switchView = [[UISwitch alloc] init];
-                switchView.on = config.autoReceiveEnable;
-                [switchView addTarget:self action:@selector(autoReceiveSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-                cell.accessoryView = switchView;
-                break;
-            }
-            case 1: {
-                cell.textLabel.text = @"串行模式";
-                UISwitch *switchView = [[UISwitch alloc] init];
-                switchView.on = config.serialReceive;
-                [switchView addTarget:self action:@selector(serialReceiveSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-                cell.accessoryView = switchView;
-                break;
-            }
-            case 2: {
-                cell.textLabel.text = @"抢个人红包";
-                UISwitch *switchView = [[UISwitch alloc] init];
-                switchView.on = config.personalRedEnvelopEnable;
-                [switchView addTarget:self action:@selector(personalRedEnvelopSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-                cell.accessoryView = switchView;
-                break;
-            }
-            case 3: {
-                cell.textLabel.text = @"抢自己发的红包";
-                UISwitch *switchView = [[UISwitch alloc] init];
-                switchView.on = config.receiveSelfRedEnvelop;
-                [switchView addTarget:self action:@selector(receiveSelfRedEnvelopSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-                cell.accessoryView = switchView;
-                break;
-            }
-        }
-    } else if (indexPath.section == 1) {
-        cell.textLabel.text = @"延迟设置(秒)";
-        UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(150, 0, 100, 44)];
-        textField.text = [NSString stringWithFormat:@"%ld", (long)config.delaySeconds];
-        textField.keyboardType = UIKeyboardTypeNumberPad;
-        textField.textAlignment = NSTextAlignmentRight;
-        [textField addTarget:self action:@selector(delaySecondsChanged:) forControlEvents:UIControlEventEditingChanged];
-        cell.accessoryView = textField;
-    }
+    // 总开关
+    UILabel *enabledLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 100, 200, 40)];
+    enabledLabel.text = @"启用插件";
+    [self.view addSubview:enabledLabel];
     
-    return cell;
-}
-
-- (void)autoReceiveSwitchChanged:(UISwitch *)sender {
-    [WCPLRedEnvelopConfig sharedConfig].autoReceiveEnable = sender.on;
-}
-
-- (void)serialReceiveSwitchChanged:(UISwitch *)sender {
-    [WCPLRedEnvelopConfig sharedConfig].serialReceive = sender.on;
-}
-
-- (void)personalRedEnvelopSwitchChanged:(UISwitch *)sender {
-    [WCPLRedEnvelopConfig sharedConfig].personalRedEnvelopEnable = sender.on;
-}
-
-- (void)receiveSelfRedEnvelopSwitchChanged:(UISwitch *)sender {
-    [WCPLRedEnvelopConfig sharedConfig].receiveSelfRedEnvelop = sender.on;
-}
-
-- (void)delaySecondsChanged:(UITextField *)sender {
-    [WCPLRedEnvelopConfig sharedConfig].delaySeconds = [sender.text integerValue];
-}
-
-@end
-
-// 插件管理器接口
-@interface WCPluginsMgr : NSObject
-+ (instancetype)sharedInstance;
-- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
-- (void)registerSwitchWithTitle:(NSString *)title key:(NSString *)key;
-@end
-
-// 插件初始化
-__attribute__((constructor)) static void DDRedEnvelopEntry() {
-    NSLog(@"DD红包插件已加载");
+    _enabledSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(250, 100, 60, 40)];
+    [_enabledSwitch setOn:[defaults boolForKey:@"DD_RedEnvelop_Enabled"]];
+    [self.view addSubview:_enabledSwitch];
     
-    // 注册到插件管理器
-    if (NSClassFromString(@"WCPluginsMgr")) {
-        [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD红包" 
-                                                                           version:@"1.0.0" 
-                                                                       controller:@"DDRedEnvelopSettingsController"];
-    }
+    // 抢自己红包
+    UILabel *receiveSelfLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 150, 200, 40)];
+    receiveSelfLabel.text = @"抢自己发的红包";
+    [self.view addSubview:receiveSelfLabel];
     
-    // 初始化配置
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        WCPLRedEnvelopConfig *config = [WCPLRedEnvelopConfig sharedConfig];
-        NSLog(@"DD红包: 插件初始化完成");
-        NSLog(@"DD红包: 自动抢红包: %@", config.autoReceiveEnable ? @"开启" : @"关闭");
-        NSLog(@"DD红包: 串行模式: %@", config.serialReceive ? @"开启" : @"关闭");
-        NSLog(@"DD红包: 个人红包: %@", config.personalRedEnvelopEnable ? @"开启" : @"关闭");
-        NSLog(@"DD红包: 抢自己红包: %@", config.receiveSelfRedEnvelop ? @"开启" : @"关闭");
-        NSLog(@"DD红包: 延迟设置: %ld秒", (long)config.delaySeconds);
-    });
+    _receiveSelfSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(250, 150, 60, 40)];
+    [_receiveSelfSwitch setOn:[defaults boolForKey:@"DD_RedEnvelop_ReceiveSelf"]];
+    [self.view addSubview:_receiveSelfSwitch];
+    
+    // 个人红包
+    UILabel *personalLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 200, 200, 40)];
+    personalLabel.text = @"抢个人红包";
+    [self.view addSubview:personalLabel];
+    
+    _personalSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(250, 200, 60, 40)];
+    [_personalSwitch setOn:[defaults boolForKey:@"DD_RedEnvelop_PersonalEnabled"]];
+    [self.view addSubview:_personalSwitch];
+    
+    // 串行模式
+    UILabel *serialLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 250, 200, 40)];
+    serialLabel.text = @"串行模式";
+    [self.view addSubview:serialLabel];
+    
+    _serialSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(250, 250, 60, 40)];
+    [_serialSwitch setOn:[defaults boolForKey:@"DD_RedEnvelop_SerialMode"]];
+    [self.view addSubview:_serialSwitch];
+    
+    // 延迟秒数
+    UILabel *delayLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 300, 200, 40)];
+    delayLabel.text = @"延迟秒数";
+    [self.view addSubview:delayLabel];
+    
+    _delayField = [[UITextField alloc] initWithFrame:CGRectMake(150, 300, 100, 40)];
+    _delayField.borderStyle = UITextBorderStyleRoundedRect;
+    _delayField.keyboardType = UIKeyboardTypeNumberPad;
+    _delayField.text = [NSString stringWithFormat:@"%ld", [defaults integerForKey:@"DD_RedEnvelop_Delay"]];
+    [self.view addSubview:_delayField];
+    
+    // 保存按钮
+    _saveButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _saveButton.frame = CGRectMake(100, 400, 120, 44);
+    [_saveButton setTitle:@"保存设置" forState:UIControlStateNormal];
+    [_saveButton addTarget:self action:@selector(saveSettings) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:_saveButton];
 }
+
+%new
+- (void)saveSettings {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:_enabledSwitch.isOn forKey:@"DD_RedEnvelop_Enabled"];
+    [defaults setBool:_receiveSelfSwitch.isOn forKey:@"DD_RedEnvelop_ReceiveSelf"];
+    [defaults setBool:_personalSwitch.isOn forKey:@"DD_RedEnvelop_PersonalEnabled"];
+    [defaults setBool:_serialSwitch.isOn forKey:@"DD_RedEnvelop_SerialMode"];
+    [defaults setInteger:[_delayField.text integerValue] forKey:@"DD_RedEnvelop_Delay"];
+    [defaults synchronize];
+    
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"设置已保存" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+%end
