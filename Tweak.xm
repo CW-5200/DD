@@ -1,7 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
-#import <objc/message.h>
 
 #pragma mark - 微信类声明
 @interface MMServiceCenter : NSObject
@@ -36,6 +35,27 @@
 @interface HongBaoReq : NSObject
 @property(retain, nonatomic) NSData *reqText;
 @end
+
+// 定义objc_msgSend的类型
+#if __has_feature(objc_arc)
+#define OBJC_ARC_ENABLED
+#endif
+
+#ifdef OBJC_ARC_ENABLED
+    #define OBJC_MSG_SEND(ret, obj, sel) \
+        ((ret (*)(id, SEL))objc_msgSend)(obj, sel)
+    #define OBJC_MSG_SEND_1(ret, obj, sel, arg1) \
+        ((ret (*)(id, SEL, id))objc_msgSend)(obj, sel, arg1)
+    #define OBJC_MSG_SEND_2(ret, obj, sel, arg1, arg2) \
+        ((ret (*)(id, SEL, id, id))objc_msgSend)(obj, sel, arg1, arg2)
+    #define OBJC_MSG_SEND_3(ret, obj, sel, arg1, arg2, arg3) \
+        ((ret (*)(id, SEL, id, id, id))objc_msgSend)(obj, sel, arg1, arg2, arg3)
+#else
+    #define OBJC_MSG_SEND(obj, sel) objc_msgSend(obj, sel)
+    #define OBJC_MSG_SEND_1(obj, sel, arg1) objc_msgSend(obj, sel, arg1)
+    #define OBJC_MSG_SEND_2(obj, sel, arg1, arg2) objc_msgSend(obj, sel, arg1, arg2)
+    #define OBJC_MSG_SEND_3(obj, sel, arg1, arg2, arg3) objc_msgSend(obj, sel, arg1, arg2, arg3)
+#endif
 
 #pragma mark - 配置类
 @interface WCPLRedEnvelopConfig : NSObject
@@ -310,11 +330,11 @@
     %orig;
     
     // 非参数查询请求
-    int cgiCmdid = (int)objc_msgSend(arg1, @selector(cgiCmdid));
+    int cgiCmdid = [(HongBaoRes *)arg1 cgiCmdid];
     if (cgiCmdid != 3) { return; }
     
     NSString *(^parseRequestSign)(void) = ^NSString *{
-        NSData *reqTextData = objc_msgSend(objc_msgSend(arg2, @selector(reqText)), @selector(buffer));
+        NSData *reqTextData = [(HongBaoReq *)arg2 reqText].buffer;
         if (!reqTextData) return nil;
         
         NSString *requestString = [[NSString alloc] initWithData:reqTextData encoding:NSUTF8StringEncoding];
@@ -335,7 +355,7 @@
         return [nativeUrlDict objectForKey:@"sign"];
     };
     
-    NSData *retTextData = objc_msgSend(objc_msgSend(arg1, @selector(retText)), @selector(buffer));
+    NSData *retTextData = [(HongBaoRes *)arg1 retText].buffer;
     if (!retTextData) return;
     
     NSError *error = nil;
@@ -521,19 +541,32 @@
             Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
             if (pluginsMgrClass) {
                 SEL sharedInstanceSel = @selector(sharedInstance);
-                if ([pluginsMgrClass respondsToSelector:sharedInstanceSel]) {
+                SEL registerControllerSel = @selector(registerControllerWithTitle:version:controller:);
+                
+                if ([pluginsMgrClass respondsToSelector:sharedInstanceSel] && 
+                    [pluginsMgrClass instancesRespondToSelector:registerControllerSel]) {
+                    
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
                     id manager = [pluginsMgrClass performSelector:sharedInstanceSel];
                     
                     if (manager) {
-                        // 注册带设置页面的插件
-                        SEL registerControllerSel = @selector(registerControllerWithTitle:version:controller:);
-                        if ([manager respondsToSelector:registerControllerSel]) {
-                            [manager performSelector:registerControllerSel 
-                                          withObject:@"DD红包" 
-                                          withObject:@"1.0.0" 
-                                          withObject:@"DDRedEnvelopSettingsController"];
+                        // 使用NSInvocation来调用三个参数的方法
+                        NSMethodSignature *sig = [manager methodSignatureForSelector:registerControllerSel];
+                        if (sig) {
+                            NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+                            [inv setTarget:manager];
+                            [inv setSelector:registerControllerSel];
+                            
+                            NSString *title = @"DD红包";
+                            NSString *version = @"1.0.0";
+                            NSString *controller = @"DDRedEnvelopSettingsController";
+                            
+                            [inv setArgument:&title atIndex:2];
+                            [inv setArgument:&version atIndex:3];
+                            [inv setArgument:&controller atIndex:4];
+                            
+                            [inv invoke];
                         }
                     }
 #pragma clang diagnostic pop
