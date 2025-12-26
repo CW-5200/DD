@@ -1,232 +1,153 @@
+// DD红包.x
+// 仅Hook最关键的两个方法
+
 #import <Foundation/Foundation.h>
-#import <objc/runtime.h>
 #import <UIKit/UIKit.h>
 
-// MARK: - 插件配置
-@interface DDRedEnvelopConfig : NSObject
-+ (instancetype)shared;
-@property (nonatomic, assign) BOOL enabled;
-@property (nonatomic, assign) BOOL autoReceive;
-@property (nonatomic, assign) BOOL receiveSelf;
-@property (nonatomic, assign) BOOL personalEnabled;
-@property (nonatomic, assign) NSInteger delay;
-@end
+// 插件配置
+static BOOL pluginEnabled = YES;
+static NSInteger delaySeconds = 0;
+static BOOL receiveSelf = NO;
+static BOOL personalEnabled = YES;
 
-@implementation DDRedEnvelopConfig
-+ (instancetype)shared {
-    static DDRedEnvelopConfig *instance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        instance = [[self alloc] init];
-        instance.enabled = YES;
-        instance.autoReceive = YES;
-        instance.receiveSelf = NO;
-        instance.personalEnabled = YES;
-        instance.delay = 0;
-    });
-    return instance;
-}
-@end
+// Hook WCRedEnvelopesLogicMgr的OnWCToHongbaoCommonResponse方法
+%hook WCRedEnvelopesLogicMgr
 
-// MARK: - Hook WCRedEnvelopesLogicMgr
-// 根据头文件 WCRedEnvelopesLogicMgr.h，有以下关键方法：
-// - (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2;
-// - (void)OpenRedEnvelopesRequest:(id)arg1;
-
-static void (*original_OnWCToHongbaoCommonResponse)(id, SEL, id, id) = NULL;
-
-void hooked_OnWCToHongbaoCommonResponse(id self, SEL _cmd, id response, id request) {
-    // 调用原始方法
-    if (original_OnWCToHongbaoCommonResponse) {
-        original_OnWCToHongbaoCommonResponse(self, _cmd, response, request);
-    }
+- (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
+    %orig;
     
-    if (![DDRedEnvelopConfig shared].enabled || ![DDRedEnvelopConfig shared].autoReceive) {
-        return;
-    }
+    if (!pluginEnabled) return;
     
     @try {
-        // 根据头文件，arg1可能是HongBaoRes，arg2是HongBaoReq
-        // 我们假设response有cgiCmdid属性
+        // 获取cgiCmdid
         unsigned int cgiCmdid = 0;
-        
-        // 尝试获取cgiCmdid - 方法1: KVC
-        @try {
-            id cmdIdValue = [response valueForKey:@"cgiCmdid"];
-            if (cmdIdValue && [cmdIdValue respondsToSelector:@selector(unsignedIntValue)]) {
-                cgiCmdid = [cmdIdValue unsignedIntValue];
-            }
-        } @catch (NSException *e) {}
-        
-        // 方法2: 直接调用方法
-        if (cgiCmdid == 0 && [response respondsToSelector:@selector(cgiCmdid)]) {
-            cgiCmdid = (unsigned int)[response performSelector:@selector(cgiCmdid)];
+        if ([arg1 respondsToSelector:@selector(cgiCmdid)]) {
+            cgiCmdid = [(NSNumber *)[arg1 valueForKey:@"cgiCmdid"] unsignedIntValue];
         }
         
-        // 只处理查询请求 (cgiCmdid == 3)
-        if (cgiCmdid != 3) {
-            return;
-        }
+        // 只处理查询请求(cgiCmdid == 3)
+        if (cgiCmdid != 3) return;
         
         // 获取响应数据
-        NSString *responseString = nil;
-        @try {
-            if ([response respondsToSelector:@selector(retText)]) {
-                id retText = [response performSelector:@selector(retText)];
-                if ([retText respondsToSelector:@selector(buffer)]) {
-                    NSData *buffer = [retText performSelector:@selector(buffer)];
-                    if (buffer) {
-                        responseString = [[NSString alloc] initWithData:buffer encoding:NSUTF8StringEncoding];
-                    }
-                }
+        NSData *responseData = nil;
+        if ([arg1 respondsToSelector:@selector(retText)]) {
+            id retText = [arg1 performSelector:@selector(retText)];
+            if ([retText respondsToSelector:@selector(buffer)]) {
+                responseData = [retText performSelector:@selector(buffer)];
             }
-        } @catch (NSException *e) {}
-        
-        if (!responseString || responseString.length == 0) {
-            return;
         }
         
-        // 解析JSON
+        if (!responseData) return;
+        
+        NSString *responseString = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
+        
+        // 解析JSON响应
         NSData *jsonData = [responseString dataUsingEncoding:NSUTF8StringEncoding];
-        NSError *error = nil;
-        NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
+        NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
         
-        if (error || !responseDict) {
-            return;
-        }
+        if (!responseDict) return;
         
         // 检查红包状态
-        id receiveStatus = responseDict[@"receiveStatus"];
-        id hbStatus = responseDict[@"hbStatus"];
-        id timingIdentifier = responseDict[@"timingIdentifier"];
+        NSInteger receiveStatus = [responseDict[@"receiveStatus"] integerValue];
+        NSInteger hbStatus = [responseDict[@"hbStatus"] integerValue];
+        NSString *timingIdentifier = responseDict[@"timingIdentifier"];
         
-        if (!timingIdentifier || 
-            (receiveStatus && [receiveStatus intValue] == 2) || 
-            (hbStatus && [hbStatus intValue] == 4)) {
+        if (receiveStatus == 2 || hbStatus == 4 || !timingIdentifier) {
             return;
         }
         
-        // 获取sign
+        // 获取请求中的sign
         NSString *sign = nil;
-        @try {
-            if ([request respondsToSelector:@selector(reqText)]) {
-                id reqText = [request performSelector:@selector(reqText)];
-                if ([reqText respondsToSelector:@selector(buffer)]) {
-                    NSData *buffer = [reqText performSelector:@selector(buffer)];
-                    if (buffer) {
-                        NSString *requestString = [[NSString alloc] initWithData:buffer encoding:NSUTF8StringEncoding];
-                        
-                        // 解析请求参数
-                        NSArray *components = [requestString componentsSeparatedByString:@"&"];
-                        for (NSString *comp in components) {
-                            if ([comp hasPrefix:@"nativeurl="]) {
-                                NSString *nativeUrl = [[comp substringFromIndex:10] stringByRemovingPercentEncoding];
-                                NSArray *urlComponents = [nativeUrl componentsSeparatedByString:@"&"];
-                                for (NSString *urlComp in urlComponents) {
-                                    if ([urlComp hasPrefix:@"sign="]) {
-                                        sign = [urlComp substringFromIndex:5];
-                                        break;
-                                    }
+        if ([arg2 respondsToSelector:@selector(reqText)]) {
+            id reqText = [arg2 performSelector:@selector(reqText)];
+            if ([reqText respondsToSelector:@selector(buffer)]) {
+                NSData *reqData = [reqText performSelector:@selector(buffer)];
+                if (reqData) {
+                    NSString *reqString = [[NSString alloc] initWithData:reqData encoding:NSUTF8StringEncoding];
+                    
+                    // 解析请求参数
+                    NSArray *components = [reqString componentsSeparatedByString:@"&"];
+                    for (NSString *comp in components) {
+                        if ([comp hasPrefix:@"nativeurl="]) {
+                            NSString *nativeUrl = [[comp substringFromIndex:10] stringByRemovingPercentEncoding];
+                            NSArray *urlComps = [nativeUrl componentsSeparatedByString:@"&"];
+                            for (NSString *urlComp in urlComps) {
+                                if ([urlComp hasPrefix:@"sign="]) {
+                                    sign = [urlComp substringFromIndex:5];
+                                    break;
                                 }
-                                break;
                             }
-                        }
-                    }
-                }
-            }
-        } @catch (NSException *e) {}
-        
-        if (!sign) {
-            return;
-        }
-        
-        // 获取发送者
-        NSString *sendUserName = nil;
-        @try {
-            if ([request respondsToSelector:@selector(reqText)]) {
-                id reqText = [request performSelector:@selector(reqText)];
-                if ([reqText respondsToSelector:@selector(buffer)]) {
-                    NSData *buffer = [reqText performSelector:@selector(buffer)];
-                    if (buffer) {
-                        NSString *requestString = [[NSString alloc] initWithData:buffer encoding:NSUTF8StringEncoding];
-                        NSArray *components = [requestString componentsSeparatedByString:@"&"];
-                        for (NSString *comp in components) {
-                            if ([comp hasPrefix:@"sendusername="]) {
-                                sendUserName = [comp substringFromIndex:13];
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        } @catch (NSException *e) {}
-        
-        // 检查是否抢自己发的红包
-        if (sendUserName && ![DDRedEnvelopConfig shared].receiveSelf) {
-            Class contactMgrClass = objc_getClass("CContactMgr");
-            if (contactMgrClass) {
-                Class mmServiceCenterClass = objc_getClass("MMServiceCenter");
-                if (mmServiceCenterClass) {
-                    id defaultCenter = [mmServiceCenterClass performSelector:@selector(defaultCenter)];
-                    id contactMgr = [defaultCenter performSelector:@selector(getService:) withObject:contactMgrClass];
-                    if (contactMgr) {
-                        id selfContact = [contactMgr performSelector:@selector(getSelfContact)];
-                        if (selfContact) {
-                            NSString *myUserName = [selfContact performSelector:@selector(m_nsUsrName)];
-                            if ([sendUserName isEqualToString:myUserName]) {
-                                return;
-                            }
+                            break;
                         }
                     }
                 }
             }
         }
+        
+        if (!sign) return;
         
         // 延迟执行
-        NSInteger delay = [DDRedEnvelopConfig shared].delay;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self performOpenRedEnvelopWithResponse:responseDict sign:sign];
-        });
+        if (delaySeconds > 0) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delaySeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self openRedEnvelopWithDict:responseDict sign:sign];
+            });
+        } else {
+            [self openRedEnvelopWithDict:responseDict sign:sign];
+        }
         
-    } @catch (NSException *exception) {
-        NSLog(@"[DD红包] 处理异常: %@", exception);
+    } @catch (NSException *e) {
+        // 静默处理异常
     }
 }
 
-// MARK: - Hook CMessageMgr
-// 根据头文件 CMessageMgr.h，有以下关键方法：
-// - (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap;
-
-static void (*original_AsyncOnAddMsg)(id, SEL, NSString *, id) = NULL;
-
-void hooked_AsyncOnAddMsg(id self, SEL _cmd, NSString *msg, id wrap) {
-    // 调用原始方法
-    if (original_AsyncOnAddMsg) {
-        original_AsyncOnAddMsg(self, _cmd, msg, wrap);
+// 新增方法：打开红包
+%new
+- (void)openRedEnvelopWithDict:(NSDictionary *)dict sign:(NSString *)sign {
+    @try {
+        // 调用微信的OpenRedEnvelopesRequest方法
+        SEL openSel = @selector(OpenRedEnvelopesRequest:);
+        if ([self respondsToSelector:openSel]) {
+            NSMutableDictionary *params = [NSMutableDictionary dictionary];
+            [params setObject:dict[@"sendId"] ?: @"" forKey:@"sendId"];
+            [params setObject:dict[@"channelId"] ?: @"" forKey:@"channelId"];
+            [params setObject:dict[@"msgType"] ?: @"" forKey:@"msgType"];
+            [params setObject:sign forKey:@"sign"];
+            [params setObject:dict[@"timingIdentifier"] ?: @"" forKey:@"timingIdentifier"];
+            
+            [self performSelector:openSel withObject:params];
+        }
+    } @catch (NSException *e) {
+        // 静默处理异常
     }
+}
+
+%end
+
+// Hook CMessageMgr的AsyncOnAddMsg方法
+%hook CMessageMgr
+
+- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
+    %orig;
     
-    if (![DDRedEnvelopConfig shared].enabled) {
-        return;
-    }
+    if (!pluginEnabled) return;
     
     @try {
         // 获取消息类型
         unsigned int msgType = 0;
         if ([wrap respondsToSelector:@selector(m_uiMessageType)]) {
-            msgType = (unsigned int)[wrap performSelector:@selector(m_uiMessageType)];
+            msgType = [(NSNumber *)[wrap valueForKey:@"m_uiMessageType"] unsignedIntValue];
         }
         
         // 只处理49类型（红包消息）
-        if (msgType != 49) {
-            return;
-        }
+        if (msgType != 49) return;
         
         // 获取消息内容
         NSString *content = nil;
         if ([wrap respondsToSelector:@selector(m_nsContent)]) {
-            content = [wrap performSelector:@selector(m_nsContent)];
+            content = [wrap valueForKey:@"m_nsContent"];
         }
         
+        // 检查是否为红包消息
         if (!content || ![content containsString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"]) {
             return;
         }
@@ -234,213 +155,147 @@ void hooked_AsyncOnAddMsg(id self, SEL _cmd, NSString *msg, id wrap) {
         // 获取发送者
         NSString *fromUsr = nil;
         if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
-            fromUsr = [wrap performSelector:@selector(m_nsFromUsr)];
+            fromUsr = [wrap valueForKey:@"m_nsFromUsr"];
         }
         
         // 获取接收者
         NSString *toUsr = nil;
         if ([wrap respondsToSelector:@selector(m_nsToUsr)]) {
-            toUsr = [wrap performSelector:@selector(m_nsToUsr)];
+            toUsr = [wrap valueForKey:@"m_nsToUsr"];
         }
         
         // 检查是否为群聊
         BOOL isGroupChat = [fromUsr containsString:@"@chatroom"] || [toUsr containsString:@"@chatroom"];
         
         // 检查个人红包开关
-        if (!isGroupChat && ![DDRedEnvelopConfig shared].personalEnabled) {
+        if (!isGroupChat && !personalEnabled) {
             return;
         }
         
-        // 记录检测到红包
-        NSLog(@"[DD红包] 检测到红包消息 from:%@ to:%@", fromUsr, toUsr);
+        // 记录日志
+        NSLog(@"[DD红包] 检测到红包 from:%@", fromUsr);
         
-        // 提取nativeUrl参数
-        NSRange range = [content rangeOfString:@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?"];
-        if (range.location != NSNotFound) {
-            NSString *nativeUrlPart = [content substringFromIndex:range.location];
-            // 这里可以解析红包参数，但实际抢红包在OnWCToHongbaoCommonResponse中处理
-        }
-        
-    } @catch (NSException *exception) {
-        NSLog(@"[DD红包] 消息处理异常: %@", exception);
+    } @catch (NSException *e) {
+        // 静默处理异常
     }
 }
 
-// MARK: - 打开红包的辅助方法
-void performOpenRedEnvelopWithResponse(id self, NSDictionary *responseDict, NSString *sign) {
-    @try {
-        // 根据头文件，调用OpenRedEnvelopesRequest:方法
-        SEL openSel = @selector(OpenRedEnvelopesRequest:);
-        if ([self respondsToSelector:openSel]) {
-            // 构建请求参数
-            NSMutableDictionary *params = [NSMutableDictionary dictionary];
-            [params setObject:responseDict[@"sendId"] ?: @"" forKey:@"sendId"];
-            [params setObject:responseDict[@"channelId"] ?: @"" forKey:@"channelId"];
-            [params setObject:responseDict[@"msgType"] ?: @"" forKey:@"msgType"];
-            [params setObject:sign ?: @"" forKey:@"sign"];
-            [params setObject:responseDict[@"timingIdentifier"] ?: @"" forKey:@"timingIdentifier"];
-            
-            [self performSelector:openSel withObject:params];
-            NSLog(@"[DD红包] 已尝试抢红包 sendId:%@", responseDict[@"sendId"]);
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"[DD红包] 打开红包异常: %@", exception);
-    }
-}
+%end
 
-// MARK: - 插件安装
-__attribute__((constructor)) static void installPlugin() {
+// 插件初始化
+%ctor {
     NSLog(@"[DD红包] 插件加载 v1.0.0");
     
-    // 延迟执行，确保类已加载
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        
-        // Hook WCRedEnvelopesLogicMgr
-        Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
-        if (logicMgrClass) {
-            Method method = class_getInstanceMethod(logicMgrClass, @selector(OnWCToHongbaoCommonResponse:Request:));
-            if (method) {
-                original_OnWCToHongbaoCommonResponse = (void (*)(id, SEL, id, id))method_getImplementation(method);
-                method_setImplementation(method, (IMP)hooked_OnWCToHongbaoCommonResponse);
-                NSLog(@"[DD红包] Hook WCRedEnvelopesLogicMgr成功");
-            } else {
-                NSLog(@"[DD红包] 未找到OnWCToHongbaoCommonResponse方法");
-            }
-        }
-        
-        // Hook CMessageMgr
-        Class messageMgrClass = objc_getClass("CMessageMgr");
-        if (messageMgrClass) {
-            Method method = class_getInstanceMethod(messageMgrClass, @selector(AsyncOnAddMsg:MsgWrap:));
-            if (method) {
-                original_AsyncOnAddMsg = (void (*)(id, SEL, NSString *, id))method_getImplementation(method);
-                method_setImplementation(method, (IMP)hooked_AsyncOnAddMsg);
-                NSLog(@"[DD红包] Hook CMessageMgr成功");
-            } else {
-                NSLog(@"[DD红包] 未找到AsyncOnAddMsg方法");
-            }
-        }
-        
-        // 注册到插件系统
+    // 注册到插件系统
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (NSClassFromString(@"WCPluginsMgr")) {
-            [[objc_getClass("WCPluginsMgr") sharedInstance] registerSwitchWithTitle:@"DD红包" key:@"DD_RedEnvelop_Enabled"];
-            NSLog(@"[DD红包] 已注册到插件系统");
+            [[objc_getClass("WCPluginsMgr") sharedInstance] 
+                registerSwitchWithTitle:@"DD红包" 
+                                    key:@"DD_RedEnvelop_Enabled"];
+            
+            // 加载设置
+            NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+            pluginEnabled = [defaults boolForKey:@"DD_RedEnvelop_Enabled"];
+            delaySeconds = [defaults integerForKey:@"DD_RedEnvelop_Delay"];
+            receiveSelf = [defaults boolForKey:@"DD_RedEnvelop_ReceiveSelf"];
+            personalEnabled = [defaults boolForKey:@"DD_RedEnvelop_PersonalEnabled"];
         }
     });
 }
 
-// MARK: - 设置界面
-@interface DDRedEnvelopSettingsController : UIViewController {
-    UISwitch *_enabledSwitch;
-    UISwitch *_autoReceiveSwitch;
-    UISwitch *_receiveSelfSwitch;
-    UISwitch *_personalSwitch;
-    UITextField *_delayField;
-}
-
-- (void)saveSettings;
-
+// 设置界面
+@interface DDRedEnvelopSettingsController : UIViewController
 @end
 
-@implementation DDRedEnvelopSettingsController
+%hook DDRedEnvelopSettingsController
 
 - (void)viewDidLoad {
-    [super viewDidLoad];
+    %orig;
     
     self.title = @"DD红包设置";
     self.view.backgroundColor = [UIColor whiteColor];
     
-    CGFloat y = 100;
-    CGFloat labelWidth = 150;
-    CGFloat switchX = 200;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
     // 总开关
-    UILabel *enabledLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, labelWidth, 40)];
+    UILabel *enabledLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 100, 200, 40)];
     enabledLabel.text = @"启用插件";
     [self.view addSubview:enabledLabel];
     
-    _enabledSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(switchX, y, 60, 40)];
-    [_enabledSwitch setOn:[DDRedEnvelopConfig shared].enabled];
-    [self.view addSubview:_enabledSwitch];
-    
-    y += 50;
-    
-    // 自动抢红包
-    UILabel *autoLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, labelWidth, 40)];
-    autoLabel.text = @"自动抢红包";
-    [self.view addSubview:autoLabel];
-    
-    _autoReceiveSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(switchX, y, 60, 40)];
-    [_autoReceiveSwitch setOn:[DDRedEnvelopConfig shared].autoReceive];
-    [self.view addSubview:_autoReceiveSwitch];
-    
-    y += 50;
-    
-    // 抢自己发的
-    UILabel *selfLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, labelWidth, 40)];
-    selfLabel.text = @"抢自己发的红包";
-    [self.view addSubview:selfLabel];
-    
-    _receiveSelfSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(switchX, y, 60, 40)];
-    [_receiveSelfSwitch setOn:[DDRedEnvelopConfig shared].receiveSelf];
-    [self.view addSubview:_receiveSelfSwitch];
-    
-    y += 50;
-    
-    // 个人红包
-    UILabel *personalLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, labelWidth, 40)];
-    personalLabel.text = @"抢个人红包";
-    [self.view addSubview:personalLabel];
-    
-    _personalSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(switchX, y, 60, 40)];
-    [_personalSwitch setOn:[DDRedEnvelopConfig shared].personalEnabled];
-    [self.view addSubview:_personalSwitch];
-    
-    y += 50;
+    UISwitch *enabledSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(250, 100, 60, 40)];
+    [enabledSwitch setOn:[defaults boolForKey:@"DD_RedEnvelop_Enabled"]];
+    [enabledSwitch addTarget:self action:@selector(enabledChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:enabledSwitch];
     
     // 延迟秒数
-    UILabel *delayLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, labelWidth, 40)];
+    UILabel *delayLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 150, 200, 40)];
     delayLabel.text = @"延迟秒数";
     [self.view addSubview:delayLabel];
     
-    _delayField = [[UITextField alloc] initWithFrame:CGRectMake(switchX, y, 100, 40)];
-    _delayField.borderStyle = UITextBorderStyleRoundedRect;
-    _delayField.keyboardType = UIKeyboardTypeNumberPad;
-    _delayField.text = [NSString stringWithFormat:@"%ld", [DDRedEnvelopConfig shared].delay];
-    [self.view addSubview:_delayField];
+    UITextField *delayField = [[UITextField alloc] initWithFrame:CGRectMake(150, 150, 100, 40)];
+    delayField.borderStyle = UITextBorderStyleRoundedRect;
+    delayField.keyboardType = UIKeyboardTypeNumberPad;
+    delayField.text = [NSString stringWithFormat:@"%ld", [defaults integerForKey:@"DD_RedEnvelop_Delay"]];
+    delayField.tag = 100;
+    [self.view addSubview:delayField];
     
-    y += 80;
+    // 抢自己发的
+    UILabel *selfLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 200, 200, 40)];
+    selfLabel.text = @"抢自己发的红包";
+    [self.view addSubview:selfLabel];
+    
+    UISwitch *selfSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(250, 200, 60, 40)];
+    [selfSwitch setOn:[defaults boolForKey:@"DD_RedEnvelop_ReceiveSelf"]];
+    [selfSwitch addTarget:self action:@selector(receiveSelfChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:selfSwitch];
+    
+    // 个人红包
+    UILabel *personalLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 250, 200, 40)];
+    personalLabel.text = @"抢个人红包";
+    [self.view addSubview:personalLabel];
+    
+    UISwitch *personalSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(250, 250, 60, 40)];
+    [personalSwitch setOn:[defaults boolForKey:@"DD_RedEnvelop_PersonalEnabled"]];
+    [personalSwitch addTarget:self action:@selector(personalChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:personalSwitch];
     
     // 保存按钮
     UIButton *saveButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    saveButton.frame = CGRectMake(100, y, 120, 44);
+    saveButton.frame = CGRectMake(100, 320, 120, 44);
     [saveButton setTitle:@"保存设置" forState:UIControlStateNormal];
     [saveButton addTarget:self action:@selector(saveSettings) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:saveButton];
 }
 
+%new
+- (void)enabledChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:@"DD_RedEnvelop_Enabled"];
+}
+
+%new
+- (void)receiveSelfChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:@"DD_RedEnvelop_ReceiveSelf"];
+}
+
+%new
+- (void)personalChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:@"DD_RedEnvelop_PersonalEnabled"];
+}
+
+%new
 - (void)saveSettings {
-    [DDRedEnvelopConfig shared].enabled = _enabledSwitch.isOn;
-    [DDRedEnvelopConfig shared].autoReceive = _autoReceiveSwitch.isOn;
-    [DDRedEnvelopConfig shared].receiveSelf = _receiveSelfSwitch.isOn;
-    [DDRedEnvelopConfig shared].personalEnabled = _personalSwitch.isOn;
-    [DDRedEnvelopConfig shared].delay = [_delayField.text integerValue];
+    UITextField *delayField = [self.view viewWithTag:100];
+    if (delayField) {
+        [[NSUserDefaults standardUserDefaults] setInteger:[delayField.text integerValue] forKey:@"DD_RedEnvelop_Delay"];
+    }
     
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"设置已保存" preferredStyle:UIAlertControllerStyleAlert];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" 
+                                                                   message:@"设置已保存" 
+                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-@end
-
-// 注册设置界面
-__attribute__((constructor)) static void registerSettings() {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (NSClassFromString(@"WCPluginsMgr")) {
-            [[objc_getClass("WCPluginsMgr") sharedInstance] 
-                registerControllerWithTitle:@"DD红包设置" 
-                                   version:@"1.0.0" 
-                                controller:@"DDRedEnvelopSettingsController"];
-        }
-    });
-}
+%end
