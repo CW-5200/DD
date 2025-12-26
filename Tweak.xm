@@ -259,7 +259,7 @@
         }
     } else {
         cell.textLabel.text = @"关于";
-        cell.textColor = [UIColor systemBlueColor];
+        cell.textLabel.textColor = [UIColor systemBlueColor];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     
@@ -576,8 +576,10 @@
     if (WCRedEnvelopesLogicMgrClass) {
         id serviceCenter = [MMServiceCenter performSelector:@selector(defaultCenter)];
         id logicMgr = [serviceCenter performSelector:@selector(getService:) withObject:WCRedEnvelopesLogicMgrClass];
-        if (logicMgr && [logicMgr respondsToSelector:@selector(OpenRedEnvelopesRequest:)]) {
-            [logicMgr OpenRedEnvelopesRequest:param];
+        if (logicMgr) {
+            // 使用objc_msgSend调用OpenRedEnvelopesRequest:方法
+            void (*msgSend)(id, SEL, id) = (void(*)(id, SEL, id))objc_msgSend;
+            msgSend(logicMgr, NSSelectorFromString(@"OpenRedEnvelopesRequest:"), param);
         }
     }
 }
@@ -592,11 +594,13 @@
         // 使用安全的方式调用
         id sharedInstance = [WCPluginsMgr performSelector:@selector(sharedInstance)];
         if (sharedInstance) {
-            // 注册带设置页面的插件
-            [sharedInstance performSelector:@selector(registerControllerWithTitle:version:controller:) 
-                                 withObject:@"DD红包" 
-                                 withObject:@"1.0.0" 
-                                 withObject:@"DDRedEnvelopSettingsController"];
+            // 使用objc_msgSend调用三个参数的方法
+            void (*msgSend)(id, SEL, id, id, id) = (void(*)(id, SEL, id, id, id))objc_msgSend;
+            msgSend(sharedInstance, 
+                    NSSelectorFromString(@"registerControllerWithTitle:version:controller:"), 
+                    @"DD红包",
+                    @"1.0.0",
+                    @"DDRedEnvelopSettingsController");
         }
     }
     
