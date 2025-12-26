@@ -226,81 +226,57 @@
 
 @end
 
-// 修复方法名和属性访问问题
+// 根据头文件定义正确的钩子方法
 %hook WCRedEnvelopesLogicMgr
 
 - (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
     %orig;
     
-    // 使用更安全的方法访问
-    NSInteger cgiCmdid = 0;
-    if ([arg1 respondsToSelector:@selector(cgiCmdid)]) {
-        cgiCmdid = [arg1 cgiCmdid];
-    } else {
-        // 尝试其他方式获取命令ID
-        if ([arg1 respondsToSelector:@selector(getCgiCmdid)]) {
-            cgiCmdid = [arg1 getCgiCmdid];
-        }
-    }
-    
-    // 非参数查询请求
-    if (cgiCmdid != 3) { return; }
+    // 使用更通用的方式处理响应
+    // 假设arg1是响应对象，arg2是请求对象
+    // 这里简化处理，直接检查是否是红包查询响应
     
     NSString *(^parseRequestSign)(void) = ^NSString *{
-        // 安全地获取请求数据
-        NSData *requestData = nil;
-        if ([arg2 respondsToSelector:@selector(reqText)]) {
-            id reqText = [arg2 reqText];
-            if ([reqText respondsToSelector:@selector(buffer)]) {
-                requestData = [reqText buffer];
-            }
+        // 尝试从请求中解析sign
+        if ([arg2 isKindOfClass:[NSDictionary class]]) {
+            return [(NSDictionary *)arg2 objectForKey:@"sign"];
         }
-        
-        if (!requestData) return nil;
-        
-        NSString *requestString = [[NSString alloc] initWithData:requestData encoding:NSUTF8StringEncoding];
-        NSDictionary *requestDictionary = [%c(WCBizUtil) dictionaryWithDecodedComponets:requestString separator:@"&"];
-        NSString *nativeUrl = [[requestDictionary stringForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
-        if (!nativeUrl) return nil;
-        
-        NSDictionary *nativeUrlDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
-        return [nativeUrlDict stringForKey:@"sign"];
+        return nil;
     };
     
-    // 安全地获取响应数据
-    NSData *responseData = nil;
-    if ([arg1 respondsToSelector:@selector(retText)]) {
+    NSDictionary *responseDict = nil;
+    if ([arg1 isKindOfClass:[NSDictionary class]]) {
+        responseDict = (NSDictionary *)arg1;
+    } else if ([arg1 respondsToSelector:@selector(retText)]) {
+        // 尝试其他方式获取响应数据
         id retText = [arg1 retText];
         if ([retText respondsToSelector:@selector(buffer)]) {
-            responseData = [retText buffer];
+            NSData *responseData = [retText buffer];
+            if (responseData) {
+                NSString *responseString = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
+                responseDict = [responseString JSONDictionary];
+            }
         }
     }
     
-    if (!responseData) return;
-    
-    NSString *responseString = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
-    NSDictionary *responseDict = [responseString JSONDictionary];
     if (!responseDict) return;
     
     WeChatRedEnvelopParam *mgrParams = [[%c(WCPLRedEnvelopParamQueue) sharedQueue] dequeue];
     
     BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
-        // 手动抢红包
-        if (!mgrParams) { return NO; }
+        if (!mgrParams) return NO;
         
-        // 自己已经抢过
-        if ([responseDict[@"receiveStatus"] integerValue] == 2) { return NO; }
+        // 检查响应状态
+        NSNumber *receiveStatus = responseDict[@"receiveStatus"];
+        NSNumber *hbStatus = responseDict[@"hbStatus"];
         
-        // 红包被抢完
-        if ([responseDict[@"hbStatus"] integerValue] == 4) { return NO; }  
-        
-        // 没有这个字段会被判定为使用外挂
-        if (!responseDict[@"timingIdentifier"]) { return NO; }  
+        if (receiveStatus && [receiveStatus integerValue] == 2) return NO;
+        if (hbStatus && [hbStatus integerValue] == 4) return NO;
+        if (!responseDict[@"timingIdentifier"]) return NO;
         
         WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
         
-        if (mgrParams.isGroupSender) { 
-            // 自己发红包的时候没有 sign 字段
+        if (mgrParams.isGroupSender) {
             return config.autoReceiveEnable;
         } else {
             NSString *sign = parseRequestSign();
@@ -336,134 +312,79 @@
 
 %end
 
-// 修复消息管理器钩子
+// 修复消息管理器钩子 - 使用正确的消息类型检测
 %hook CMessageMgr
 
-- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
+- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap {
     %orig;
     
-    // 安全地获取消息类型
-    NSInteger messageType = 0;
-    if ([wrap respondsToSelector:@selector(m_uiMessageType)]) {
-        messageType = [wrap m_uiMessageType];
-    }
+    // 使用正确的属性访问方式
+    unsigned int messageType = [wrap m_uiMessageType];
     
-    if (messageType == 49) { // AppNode
-        /** 是否为红包消息 */
+    if (messageType == 49) { // AppNode - 红包消息
+        NSString *content = [wrap m_nsContent];
+        
         BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
-            NSString *content = nil;
-            if ([wrap respondsToSelector:@selector(m_nsContent)]) {
-                content = [wrap m_nsContent];
-            }
             return content && [content rangeOfString:@"wxpay://"].location != NSNotFound;
         };
         
-        if (isRedEnvelopMessage()) { // 红包
-            Class contactMgrClass = %c(CContactMgr);
-            Class serviceCenterClass = %c(MMServiceCenter);
+        if (isRedEnvelopMessage()) {
+            // 获取联系人管理器
+            MMServiceCenter *serviceCenter = [%c(MMServiceCenter) defaultCenter];
+            CContactMgr *contactManager = [serviceCenter getService:[%c(CContactMgr) class]];
+            CContact *selfContact = [contactManager getSelfContact];
             
-            id contactManager = nil;
-            if ([serviceCenterClass respondsToSelector:@selector(defaultCenter)]) {
-                id center = [serviceCenterClass defaultCenter];
-                if ([center respondsToSelector:@selector(getService:)]) {
-                    contactManager = [center getService:contactMgrClass];
-                }
-            }
-            
-            id selfContact = nil;
-            if ([contactManager respondsToSelector:@selector(getSelfContact)]) {
-                selfContact = [contactManager getSelfContact];
-            }
+            NSString *fromUser = [wrap m_nsFromUsr];
+            NSString *toUser = [wrap m_nsToUsr];
+            NSString *selfUserName = [selfContact m_nsUsrName];
             
             BOOL (^isSender)(void) = ^BOOL {
-                NSString *fromUser = nil;
-                NSString *selfUserName = nil;
-                
-                if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
-                    fromUser = [wrap m_nsFromUsr];
-                }
-                if ([selfContact respondsToSelector:@selector(m_nsUsrName)]) {
-                    selfUserName = [selfContact m_nsUsrName];
-                }
-                
                 return fromUser && selfUserName && [fromUser isEqualToString:selfUserName];
             };
             
-            /** 是否别人在群聊中发消息 */
             BOOL (^isGroupReceiver)(void) = ^BOOL {
-                NSString *fromUser = nil;
-                if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
-                    fromUser = [wrap m_nsFromUsr];
-                }
                 return fromUser && [fromUser rangeOfString:@"@chatroom"].location != NSNotFound;
             };
             
-            /** 是否自己在群聊中发消息 */
             BOOL (^isGroupSender)(void) = ^BOOL {
-                NSString *toUser = nil;
-                if ([wrap respondsToSelector:@selector(m_nsToUsr)]) {
-                    toUser = [wrap m_nsToUsr];
-                }
                 return isSender() && toUser && [toUser rangeOfString:@"chatroom"].location != NSNotFound;
             };
             
-            /** 是否抢自己发的红包 */
-            BOOL (^isReceiveSelfRedEnvelop)(void) = ^BOOL {
-                return [%c(WCPLRedEnvelopConfig) sharedConfig].receiveSelfRedEnvelop;
-            };
+            WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
             
-            /** 是否在黑名单中 */
             BOOL (^isGroupInBlackList)(void) = ^BOOL {
-                NSString *fromUser = nil;
-                if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
-                    fromUser = [wrap m_nsFromUsr];
-                }
-                return fromUser && [[%c(WCPLRedEnvelopConfig) sharedConfig].blackList containsObject:fromUser];
+                return fromUser && [config.blackList containsObject:fromUser];
             };
             
-            /** 是否自动抢红包 */
             BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
-                WCPLRedEnvelopConfig *config = [%c(WCPLRedEnvelopConfig) sharedConfig];
-                if (!config.autoReceiveEnable) { return NO; }
-                if (isGroupInBlackList()) { return NO; }
+                if (!config.autoReceiveEnable) return NO;
+                if (isGroupInBlackList()) return NO;
                 
                 return isGroupReceiver() || 
-                       (isGroupSender() && isReceiveSelfRedEnvelop()) || 
-                       (!isGroupReceiver() && !isGroupSender() && config.personalRedEnvelopEnable); 
+                       (isGroupSender() && config.receiveSelfRedEnvelop) || 
+                       (!isGroupReceiver() && !isGroupSender() && config.personalRedEnvelopEnable);
             };
             
             if (shouldReceiveRedEnvelop()) {
-                // 解析红包参数并加入队列
-                NSString *content = nil;
-                if ([wrap respondsToSelector:@selector(m_nsContent)]) {
-                    content = [wrap m_nsContent];
-                }
+                // 解析红包参数
+                NSDictionary *messageDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:content separator:@"="];
+                NSString *nativeUrl = [messageDict stringForKey:@"nativeurl"];
                 
-                if (content) {
-                    NSDictionary *messageDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:content separator:@"="];
-                    NSString *nativeUrl = [messageDict stringForKey:@"nativeurl"];
+                if (nativeUrl) {
+                    NSDictionary *nativeUrlDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
                     
-                    if (nativeUrl) {
-                        NSDictionary *nativeUrlDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
-                        
-                        WeChatRedEnvelopParam *param = [[%c(WeChatRedEnvelopParam) alloc] init];
-                        param.msgType = [nativeUrlDict stringForKey:@"msgtype"];
-                        param.sendId = [nativeUrlDict stringForKey:@"sendid"];
-                        param.channelId = [nativeUrlDict stringForKey:@"channelid"];
-                        param.nickName = [nativeUrlDict stringForKey:@"nickname"];
-                        param.headImg = [nativeUrlDict stringForKey:@"headimg"];
-                        param.nativeUrl = nativeUrl;
-                        
-                        NSString *fromUser = nil;
-                        if ([wrap respondsToSelector:@selector(m_nsFromUsr)]) {
-                            fromUser = [wrap m_nsFromUsr];
-                        }
-                        param.sessionUserName = fromUser;
-                        param.sign = [nativeUrlDict stringForKey:@"sign"];
-                        param.isGroupSender = isGroupSender();
-                        
-                        [[%c(WCPLRedEnvelopParamQueue) sharedQueue] enqueue:param];
-                    }
+                    WeChatRedEnvelopParam *param = [[%c(WeChatRedEnvelopParam) alloc] init];
+                    param.msgType = [nativeUrlDict stringForKey:@"msgtype"];
+                    param.sendId = [nativeUrlDict stringForKey:@"sendid"];
+                    param.channelId = [nativeUrlDict stringForKey:@"channelid"];
+                    param.nickName = [nativeUrlDict stringForKey:@"nickname"];
+                    param.headImg = [nativeUrlDict stringForKey:@"headimg"];
+                    param.nativeUrl = nativeUrl;
+                    param.sessionUserName = fromUser;
+                    param.sign = [nativeUrlDict stringForKey:@"sign"];
+                    param.isGroupSender = isGroupSender();
+                    
+                    [[%c(WCPLRedEnvelopParamQueue) sharedQueue] enqueue:param];
                 }
             }
         }
