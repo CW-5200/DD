@@ -39,6 +39,7 @@ static BOOL gFriendsCountEnabled = NO;
 static NSString *gFriendsCountReplacement = nil;
 static BOOL gWalletBalanceEnabled = NO;
 static NSString *gWalletBalanceReplacement = nil;
+static BOOL g_hasPluginsMgr = NO;
 static BOOL gCustomStepsEnabled = NO;
 static NSInteger gCustomStepsValue = 8888;
 static NSDate *gLastStepsUpdateDate = nil;
@@ -1653,6 +1654,35 @@ static void loadAllSettings() {
 %hook NewSettingViewController
 - (void)reloadTableData {
     %orig;
+    if (g_hasPluginsMgr) return;
+    
+    static char kDDAssistantAddedKey;
+    if (objc_getAssociatedObject(self, &kDDAssistantAddedKey)) return;
+    
+    [self.view layoutIfNeeded];
+    WCTableViewManager *tableViewMgr = nil;
+    Ivar ivar = class_getInstanceVariable([self class], "m_tableViewMgr");
+    if (ivar) {
+        tableViewMgr = object_getIvar(self, ivar);
+    }
+    if (!tableViewMgr) return;
+    
+    WCTableViewSectionManager *sectionInfo = [%c(WCTableViewSectionManager) sectionInfoDefaut];
+    WCTableViewCellManager *settingCell = [%c(WCTableViewCellManager) normalCellForSel:@selector(onDDAssistantClicked) target:self title:PLUGIN_NAME];
+    [sectionInfo addCell:settingCell];
+    [tableViewMgr insertSection:sectionInfo At:0];
+    
+    MMTableView *tableView = [tableViewMgr getTableView];
+    [tableView reloadData];
+    objc_setAssociatedObject(self, &kDDAssistantAddedKey, @(YES), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+%new
+- (void)onDDAssistantClicked {
+    DDAssistantSettingsViewController *settingsVC = [[DDAssistantSettingsViewController alloc] init];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+    nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    [self presentViewController:nav animated:YES completion:nil];
 }
 %end
 
@@ -2361,7 +2391,10 @@ static void loadAllSettings() {
         
         Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
         if (pluginsMgrClass && [pluginsMgrClass respondsToSelector:@selector(sharedInstance)]) {
+            g_hasPluginsMgr = YES;
             [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:PLUGIN_NAME version:PLUGIN_VERSION controller:@"DDAssistantSettingsViewController"];
+        } else {
+            g_hasPluginsMgr = NO;
         }
     }
 }
