@@ -1,4 +1,41 @@
 #import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
+
+#pragma mark - 微信类声明
+@interface MMServiceCenter : NSObject
++ (instancetype)defaultCenter;
+- (id)getService:(Class)service;
+@end
+
+@interface CContactMgr : NSObject
+- (id)getSelfContact;
+@end
+
+@interface CContact : NSObject
+@property(retain, nonatomic) NSString *m_nsUsrName;
+@end
+
+@interface CMessageWrap : NSObject
+@property(nonatomic) NSInteger m_uiMessageType;
+@property(retain, nonatomic) NSString *m_nsContent;
+@property(retain, nonatomic) NSString *m_nsFromUsr;
+@property(retain, nonatomic) NSString *m_nsToUsr;
+@end
+
+@interface WCBizUtil : NSObject
++ (NSDictionary *)dictionaryWithDecodedComponets:(NSString *)string separator:(NSString *)separator;
+@end
+
+@interface HongBaoRes : NSObject
+@property(retain, nonatomic) NSData *retText;
+@property(nonatomic) int cgiCmdid;
+@end
+
+@interface HongBaoReq : NSObject
+@property(retain, nonatomic) NSData *reqText;
+@end
 
 #pragma mark - 配置类
 @interface WCPLRedEnvelopConfig : NSObject
@@ -269,28 +306,41 @@
 #pragma mark - Hook 实现
 %hook WCRedEnvelopesLogicMgr
 
-- (void)OnWCToHongbaoCommonResponse:(id)arg1 Request:(id)arg2 {
+- (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)arg1 Request:(HongBaoReq *)arg2 {
     %orig;
     
     // 非参数查询请求
-    if ([arg1 cgiCmdid] != 3) { return; }
+    int cgiCmdid = (int)objc_msgSend(arg1, @selector(cgiCmdid));
+    if (cgiCmdid != 3) { return; }
     
     NSString *(^parseRequestSign)(void) = ^NSString *{
-        NSString *requestString = [[NSString alloc] initWithData:[arg2 reqText].buffer encoding:NSUTF8StringEncoding];
-        NSDictionary *requestDictionary = [%c(WCBizUtil) dictionaryWithDecodedComponets:requestString separator:@"&"];
-        NSString *nativeUrl = [[requestDictionary objectForKey:@"nativeUrl"] stringByRemovingPercentEncoding];
-        NSDictionary *nativeUrlDict = [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
+        NSData *reqTextData = objc_msgSend(objc_msgSend(arg2, @selector(reqText)), @selector(buffer));
+        if (!reqTextData) return nil;
+        
+        NSString *requestString = [[NSString alloc] initWithData:reqTextData encoding:NSUTF8StringEncoding];
+        if (!requestString) return nil;
+        
+        NSDictionary *requestDictionary = [objc_getClass("WCBizUtil") dictionaryWithDecodedComponets:requestString separator:@"&"];
+        if (!requestDictionary) return nil;
+        
+        NSString *nativeUrl = [requestDictionary objectForKey:@"nativeUrl"];
+        if (!nativeUrl) return nil;
+        
+        nativeUrl = [nativeUrl stringByRemovingPercentEncoding];
+        if (!nativeUrl) return nil;
+        
+        NSDictionary *nativeUrlDict = [objc_getClass("WCBizUtil") dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
+        if (!nativeUrlDict) return nil;
         
         return [nativeUrlDict objectForKey:@"sign"];
     };
     
-    NSData *retTextData = [arg1 retText].buffer;
+    NSData *retTextData = objc_msgSend(objc_msgSend(arg1, @selector(retText)), @selector(buffer));
     if (!retTextData) return;
     
-    NSString *responseString = [[NSString alloc] initWithData:retTextData encoding:NSUTF8StringEncoding];
-    NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:retTextData options:0 error:nil];
-    
-    if (![responseDict isKindOfClass:[NSDictionary class]]) return;
+    NSError *error = nil;
+    NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:retTextData options:0 error:&error];
+    if (error || ![responseDict isKindOfClass:[NSDictionary class]]) return;
     
     WeChatRedEnvelopParam *mgrParams = [[WCPLRedEnvelopParamQueue sharedQueue] dequeue];
     
@@ -299,19 +349,24 @@
         if (!mgrParams) { return NO; }
         
         // 自己已经抢过
-        if ([responseDict[@"receiveStatus"] integerValue] == 2) { return NO; }
+        NSNumber *receiveStatus = responseDict[@"receiveStatus"];
+        if (receiveStatus && [receiveStatus integerValue] == 2) { return NO; }
         
         // 红包被抢完
-        if ([responseDict[@"hbStatus"] integerValue] == 4) { return NO; }  
+        NSNumber *hbStatus = responseDict[@"hbStatus"];
+        if (hbStatus && [hbStatus integerValue] == 4) { return NO; }  
         
         // 没有这个字段会被判定为使用外挂
-        if (!responseDict[@"timingIdentifier"]) { return NO; }  
+        NSString *timingIdentifier = responseDict[@"timingIdentifier"];
+        if (!timingIdentifier) { return NO; }  
         
         if (mgrParams.isGroupSender) { 
             // 自己发红包的时候没有 sign 字段
             return [WCPLRedEnvelopConfig sharedConfig].autoReceiveEnable;
         } else {
-            return [parseRequestSign() isEqualToString:mgrParams.sign] && [WCPLRedEnvelopConfig sharedConfig].autoReceiveEnable;
+            NSString *sign = parseRequestSign();
+            if (!sign) return NO;
+            return [sign isEqualToString:mgrParams.sign] && [WCPLRedEnvelopConfig sharedConfig].autoReceiveEnable;
         }
     };
     
@@ -349,9 +404,10 @@
 
 %end
 
+#pragma mark - Hook CMessageMgr
 %hook CMessageMgr
 
-- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(id)wrap {
+- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap {
     %orig;
     
     NSInteger messageType = [wrap m_uiMessageType];
@@ -365,34 +421,14 @@
     
     if (!isRedEnvelopMessage()) return;
     
-    Class contactServiceClass = %c(MMServiceCenter);
-    SEL defaultCenterSel = @selector(defaultCenter);
-    id contactService = nil;
-    
-    if ([contactServiceClass respondsToSelector:defaultCenterSel]) {
-        id center = [contactServiceClass performSelector:defaultCenterSel];
-        SEL getServiceSel = @selector(getService:);
-        
-        if ([center respondsToSelector:getServiceSel]) {
-            contactService = [center performSelector:getServiceSel withObject:%c(CContactMgr)];
-        }
-    }
-    
-    id selfContact = nil;
-    SEL getSelfContactSel = @selector(getSelfContact);
-    if ([contactService respondsToSelector:getSelfContactSel]) {
-        selfContact = [contactService performSelector:getSelfContactSel];
-    }
+    MMServiceCenter *center = [objc_getClass("MMServiceCenter") defaultCenter];
+    CContactMgr *contactManager = [center getService:objc_getClass("CContactMgr")];
+    CContact *selfContact = [contactManager getSelfContact];
     
     BOOL (^isSender)(void) = ^BOOL{
         NSString *fromUser = [wrap m_nsFromUsr];
-        NSString *selfUserName = nil;
-        
-        if (selfContact) {
-            selfUserName = [selfContact m_nsUsrName];
-        }
-        
-        return selfUserName && [fromUser isEqualToString:selfUserName];
+        NSString *selfUserName = [selfContact m_nsUsrName];
+        return selfUserName && fromUser && [fromUser isEqualToString:selfUserName];
     };
     
     /** 是否别人在群聊中发消息 */
@@ -441,7 +477,7 @@
         if (![nativeUrlStr hasPrefix:prefix]) return nil;
         
         NSString *queryString = [nativeUrlStr substringFromIndex:prefix.length];
-        return [%c(WCBizUtil) dictionaryWithDecodedComponets:queryString separator:@"&"];
+        return [objc_getClass("WCBizUtil") dictionaryWithDecodedComponets:queryString separator:@"&"];
     };
     
     NSDictionary *nativeUrlDict = parseNativeUrl(nativeUrl);
@@ -449,26 +485,29 @@
     
     // 创建红包参数
     WeChatRedEnvelopParam *param = [[WeChatRedEnvelopParam alloc] init];
-    param.msgType = nativeUrlDict[@"msgtype"] ?: @"1";
-    param.sendId = nativeUrlDict[@"sendid"] ?: @"";
-    param.channelId = nativeUrlDict[@"channelid"] ?: @"1";
-    param.nickName = nativeUrlDict[@"sendusername"] ?: @"";
-    param.headImg = nativeUrlDict[@"headerimg"] ?: @"";
+    param.msgType = [nativeUrlDict objectForKey:@"msgtype"] ?: @"1";
+    param.sendId = [nativeUrlDict objectForKey:@"sendid"] ?: @"";
+    param.channelId = [nativeUrlDict objectForKey:@"channelid"] ?: @"1";
+    param.nickName = [nativeUrlDict objectForKey:@"sendusername"] ?: @"";
+    param.headImg = [nativeUrlDict objectForKey:@"headerimg"] ?: @"";
     param.nativeUrl = nativeUrl;
     param.sessionUserName = isGroupReceiver() ? [wrap m_nsFromUsr] : [wrap m_nsToUsr];
-    param.sign = nativeUrlDict[@"sign"] ?: @"";
+    param.sign = [nativeUrlDict objectForKey:@"sign"] ?: @"";
     param.isGroupSender = isGroupSender();
     
     // 加入队列
     [[WCPLRedEnvelopParamQueue sharedQueue] enqueue:param];
     
     // 发送查询请求
-    Class logicMgrClass = NSClassFromString(@"WCRedEnvelopesLogicMgr");
+    Class logicMgrClass = objc_getClass("WCRedEnvelopesLogicMgr");
     if (logicMgrClass) {
         SEL selector = NSSelectorFromString(@"QueryRedEnvelopesRequest:");
         if ([logicMgrClass instancesRespondToSelector:selector]) {
-            id logicMgr = [%c(MMServiceCenter) defaultCenter] getService:logicMgrClass];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            id logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:logicMgrClass];
             [logicMgr performSelector:selector withObject:param];
+#pragma clang diagnostic pop
         }
     }
 }
@@ -476,25 +515,30 @@
 %end
 
 #pragma mark - 插件入口
-__attribute__((constructor)) static void entry() {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
-        if (pluginsMgrClass) {
-            SEL sharedInstanceSel = @selector(sharedInstance);
-            if ([pluginsMgrClass respondsToSelector:sharedInstanceSel]) {
-                id manager = [pluginsMgrClass performSelector:sharedInstanceSel];
-                
-                if (manager) {
-                    // 注册带设置页面的插件
-                    SEL registerControllerSel = @selector(registerControllerWithTitle:version:controller:);
-                    if ([manager respondsToSelector:registerControllerSel]) {
-                        [manager performSelector:registerControllerSel 
-                                      withObject:@"DD红包" 
-                                      withObject:@"1.0.0" 
-                                      withObject:@"DDRedEnvelopSettingsController"];
+%ctor {
+    @autoreleasepool {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            Class pluginsMgrClass = NSClassFromString(@"WCPluginsMgr");
+            if (pluginsMgrClass) {
+                SEL sharedInstanceSel = @selector(sharedInstance);
+                if ([pluginsMgrClass respondsToSelector:sharedInstanceSel]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                    id manager = [pluginsMgrClass performSelector:sharedInstanceSel];
+                    
+                    if (manager) {
+                        // 注册带设置页面的插件
+                        SEL registerControllerSel = @selector(registerControllerWithTitle:version:controller:);
+                        if ([manager respondsToSelector:registerControllerSel]) {
+                            [manager performSelector:registerControllerSel 
+                                          withObject:@"DD红包" 
+                                          withObject:@"1.0.0" 
+                                          withObject:@"DDRedEnvelopSettingsController"];
+                        }
                     }
+#pragma clang diagnostic pop
                 }
             }
-        }
-    });
+        });
+    }
 }
