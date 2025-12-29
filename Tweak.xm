@@ -1,4 +1,3 @@
-// CSRoundAvatar.xm
 // iOS 微信圆形头像插件 - 默认生效，无需开关
 // 适用于 MMHeadImageView 和 FakeHeadImageView 类
 
