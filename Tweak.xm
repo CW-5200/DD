@@ -1,4 +1,3 @@
-// DD红包助手.xm
 // 自动抢红包、延迟抢红包、抢自己发的红包、防止抢多个红包、群聊过滤、入口使用插件管理
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
