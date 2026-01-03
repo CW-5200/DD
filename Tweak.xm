@@ -66,7 +66,7 @@
 - (id)getSelfContact;
 - (id)getContactForSearchByName:(id)arg1;
 - (_Bool)addLocalContact:(id)arg1 listType:(unsigned int)arg2;
-- (_Bool)getContactsFromServer:(id)arg1;
+  - (_Bool)getContactsFromServer:(id)arg1;
 @end
 
 @interface WCTableViewManager : NSObject
@@ -284,12 +284,12 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
     return queue;
 }
 
-- (instancetype)init {
-    if (self = [super init]) {
-        _queue = [[NSMutableArray alloc] init];
-    }
-    return self;
-}
+  - (instancetype)init {
+      if (self = [super init]) {
+          _queue = [[NSMutableArray alloc] init];
+      }
+      return self;
+  }
 
 - (void)enqueue:(DDWeChatRedEnvelopParam *)param {
     [_queue addObject:param];
@@ -454,14 +454,15 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
     self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     [self reloadTableData];
     
-    MMTableView *tableView = [_tableViewMgr getTableView];
+    UITableView *tableView = [_tableViewMgr getTableView];
     tableView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
     [self.view addSubview:tableView];
 }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    [_tableViewMgr getTableView].frame = self.view.bounds;
+    UITableView *tableView = [_tableViewMgr getTableView];
+    tableView.frame = self.view.bounds;
 }
 
 - (void)reloadTableData {
@@ -480,7 +481,7 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
     [advanceSection addCell:[self createBlackListCell]];
     [_tableViewMgr addSection:advanceSection];
     
-    MMTableView *tableView = [_tableViewMgr getTableView];
+    UITableView *tableView = [_tableViewMgr getTableView];
     [tableView reloadData];
 }
 
@@ -495,7 +496,7 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
     
     if ([DDRedEnvelopConfig sharedConfig].autoReceiveEnable) {
         return [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(settingDelay) target:self 
-            title:@"延迟抢红包" rightValue:delayString accessoryType:UITableViewCellAccessoryDisclosureIndicator];
+            title:@"延迟抢红包" rightValue:delayString accessoryType:1];
     } else {
         return [objc_getClass("WCTableViewNormalCellManager") normalCellForTitle:@"延迟抢红包" rightValue:@"抢红包已关闭"];
     }
@@ -514,11 +515,11 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
 - (WCTableViewNormalCellManager *)createBlackListCell {
     if ([DDRedEnvelopConfig sharedConfig].blackList.count == 0) {
         return [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(showBlackList) target:self 
-            title:@"群聊过滤" rightValue:@"已关闭" accessoryType:UITableViewCellAccessoryDisclosureIndicator];
+            title:@"群聊过滤" rightValue:@"已关闭" accessoryType:1];
     } else {
         NSString *blackListCountStr = [NSString stringWithFormat:@"已选 %lu 个群", (unsigned long)[DDRedEnvelopConfig sharedConfig].blackList.count];
         return [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(showBlackList) target:self 
-            title:@"群聊过滤" rightValue:blackListCountStr accessoryType:UITableViewCellAccessoryDisclosureIndicator];
+            title:@"群聊过滤" rightValue:blackListCountStr accessoryType:1];
     }
 }
 
@@ -634,7 +635,20 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
     if (shouldReceiveRedEnvelop()) {
         mgrParams.timingIdentifier = responseDict[@"timingIdentifier"];
         
-        unsigned int delaySeconds = [self calculateDelaySeconds];
+        // 计算延迟秒数
+        NSInteger configDelaySeconds = [DDRedEnvelopConfig sharedConfig].delaySeconds;
+        unsigned int delaySeconds;
+        
+        if ([DDRedEnvelopConfig sharedConfig].serialReceive) {
+            if ([DDTaskManager sharedManager].serialQueueIsEmpty) {
+                delaySeconds = (unsigned int)configDelaySeconds;
+            } else {
+                delaySeconds = 15;
+            }
+        } else {
+            delaySeconds = (unsigned int)configDelaySeconds;
+        }
+        
         DDReceiveRedEnvelopOperation *operation = [[DDReceiveRedEnvelopOperation alloc] initWithRedEnvelopParam:mgrParams delay:delaySeconds];
         
         if ([DDRedEnvelopConfig sharedConfig].serialReceive) {
@@ -642,23 +656,6 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
         } else {
             [[DDTaskManager sharedManager] addNormalTask:operation];
         }
-    }
-}
-
-%new
-- (unsigned int)calculateDelaySeconds {
-    NSInteger configDelaySeconds = [DDRedEnvelopConfig sharedConfig].delaySeconds;
-    
-    if ([DDRedEnvelopConfig sharedConfig].serialReceive) {
-        unsigned int serialDelaySeconds;
-        if ([DDTaskManager sharedManager].serialQueueIsEmpty) {
-            serialDelaySeconds = (unsigned int)configDelaySeconds;
-        } else {
-            serialDelaySeconds = 15;
-        }
-        return serialDelaySeconds;
-    } else {
-        return (unsigned int)configDelaySeconds;
     }
 }
 
@@ -774,7 +771,7 @@ static NSString * const kRevokeEnablekey = @"DDRevokeEnable";
     
     [tableViewMgr insertSection:sectionInfo At:0];
     
-    MMTableView *tableView = [tableViewMgr getTableView];
+    UITableView *tableView = [tableViewMgr getTableView];
     [tableView reloadData];
 }
 
