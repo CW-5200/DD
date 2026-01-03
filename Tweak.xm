@@ -1,7 +1,5 @@
 // DD红包助手.xm
-// 自动抢红包、延迟抢红包、抢自己发的红包、防止抢多个红包、群聊过滤
-// 支持 iOS 15.0+
-
+// 自动抢红包、延迟抢红包、抢自己发的红包、防止抢多个红包、群聊过滤、入口使用插件管理
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
@@ -36,6 +34,8 @@
 
 @interface MMContext : NSObject
 + (id)activeUserContext;
++ (id)rootContext;
++ (id)currentContext;
 - (id)getService:(Class)arg1;
 @end
 
@@ -63,6 +63,10 @@
 @interface CContactMgr : NSObject
 - (id)getSelfContact;
 - (id)getContactByName:(id)arg1;
+- (id)getContactForSearchByName:(id)arg1;
+- (_Bool)addLocalContact:(id)arg1 listType:(unsigned int)arg2;
+- (_Bool)getContactsFromServer:(id)arg1;
+- (_Bool)isInContactList:(id)arg1;
 @end
 
 @interface WCTableViewManager : NSObject
@@ -88,6 +92,18 @@
 + (id)normalCellForTitle:(id)arg1 rightValue:(id)arg2;
 @end
 
+@interface MMTableView: UITableView
+@end
+
+@interface MMLoadingView : UIView
+@property(retain, nonatomic) NSString *text;
+@property (assign, nonatomic) BOOL ignoreInteractionEventsWhenLoading;
+- (void)startLoading;
+- (void)stopLoading;
+- (void)stopLoadingAndShowError:(id)arg1;
+- (void)stopLoadingAndShowOK:(id)arg1;
+@end
+
 @interface MMUINavigationController : UINavigationController
 @end
 
@@ -107,9 +123,26 @@
 - (void)reloadTableData;
 @end
 
+@interface MMWebViewController: NSObject
+- (id)initWithURL:(id)arg1 presentModal:(_Bool)arg2 extraInfo:(id)arg3;
+@end
+
+@interface ContactSelectView : UIView
+@property(nonatomic) _Bool m_bHideSearchBar;
+- (void)addSelect:(id)arg1;
+@end
+
+@interface ContactInfoViewController : UIViewController
+@property(retain, nonatomic) CContact *m_contact;
+@end
+
 @interface MultiSelectContactsViewController : UIViewController
 @property(nonatomic) int m_scene;
 @property(nonatomic, weak) id m_delegate;
+@property(nonatomic) _Bool m_bKeepCurViewAfterSelect;
+@property(nonatomic) _Bool m_bShowHistoryGroup;
+@property(nonatomic) unsigned int m_uiGroupScene;
+@property(nonatomic) _Bool m_onlyChatRoom;
 - (void)updatePanelBtn;
 @end
 
@@ -160,7 +193,7 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
         _delaySeconds = [[NSUserDefaults standardUserDefaults] integerForKey:kDelaySecondsKey];
         _autoReceiveEnable = [[NSUserDefaults standardUserDefaults] boolForKey:kAutoReceiveRedEnvelopKey];
         _serialReceive = [[NSUserDefaults standardUserDefaults] boolForKey:kSerialReceiveKey];
-        _blackList = [[NSUserDefaults standardUserDefaults] objectForKey:kBlackListKey] ?: @[];
+        _blackList = [[NSUserDefaults standardUserDefaults] objectForKey:kBlackListKey];
         _receiveSelfRedEnvelop = [[NSUserDefaults standardUserDefaults] boolForKey:kReceiveSelfRedEnvelopKey];
     }
     return self;
@@ -191,7 +224,7 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 }
 
 - (void)setBlackList:(NSArray *)blackList {
-    _blackList = blackList ?: @[];
+    _blackList = blackList;
     [[NSUserDefaults standardUserDefaults] setObject:blackList forKey:kBlackListKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
@@ -242,6 +275,7 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 
 - (void)enqueue:(DDWeChatRedEnvelopParam *)param;
 - (DDWeChatRedEnvelopParam *)dequeue;
+- (DDWeChatRedEnvelopParam *)peek;
 - (BOOL)isEmpty;
 
 @end
@@ -278,6 +312,10 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     DDWeChatRedEnvelopParam *first = _queue.firstObject;
     [_queue removeObjectAtIndex:0];
     return first;
+}
+
+- (DDWeChatRedEnvelopParam *)peek {
+    return _queue.firstObject;
 }
 
 - (BOOL)isEmpty {
@@ -320,9 +358,10 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
         return;
     }
     
+    [self main];
+    
     self.executing = YES;
     self.finished = NO;
-    [self main];
 }
 
 - (void)main {
@@ -332,6 +371,11 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     WCRedEnvelopesLogicMgr *logicMgr = [context getService:objc_getClass("WCRedEnvelopesLogicMgr")];
     [logicMgr OpenRedEnvelopesRequest:[_redEnvelopParam toParams]];
     
+    self.finished = YES;
+    self.executing = NO;
+}
+
+- (void)cancel {
     self.finished = YES;
     self.executing = NO;
 }
@@ -423,7 +467,7 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    self.title = @"DD红包助手";
+    [self initTitle];
     [self reloadTableData];
     
     UITableView *tableView = [_tableViewMgr getTableView];
@@ -433,12 +477,18 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    [_tableViewMgr getTableView].frame = self.view.bounds;
+    UITableView *tableView = [_tableViewMgr getTableView];
+    tableView.frame = self.view.bounds;
+}
+
+- (void)initTitle {
+    self.title = @"DD红包助手";
 }
 
 - (void)reloadTableData {
     [_tableViewMgr clearAllSection];
     
+    // 所有设置项放在一个分组
     WCTableViewSectionManager *sectionInfo = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
     
     [sectionInfo addCell:[self createAutoReceiveRedEnvelopCell]];
@@ -449,7 +499,8 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     
     [_tableViewMgr addSection:sectionInfo];
     
-    [[_tableViewMgr getTableView] reloadData];
+    UITableView *tableView = [_tableViewMgr getTableView];
+    [tableView reloadData];
 }
 
 - (WCTableViewCellManager *)createAutoReceiveRedEnvelopCell {
@@ -506,14 +557,22 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
         textField.text = [NSString stringWithFormat:@"%ld", (long)[DDRedEnvelopConfig sharedConfig].delaySeconds];
     }];
     
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" 
+                                                           style:UIAlertActionStyleCancel 
+                                                         handler:nil];
+    
+    UIAlertAction *confirmAction = [UIAlertAction actionWithTitle:@"确定" 
+                                                            style:UIAlertActionStyleDefault 
+                                                          handler:^(UIAlertAction *action) {
         UITextField *textField = alert.textFields.firstObject;
         NSString *delaySecondsString = textField.text;
         NSInteger delaySeconds = [delaySecondsString integerValue];
         [DDRedEnvelopConfig sharedConfig].delaySeconds = delaySeconds;
         [self reloadTableData];
-    }]];
+    }];
+    
+    [alert addAction:cancelAction];
+    [alert addAction:confirmAction];
     
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -531,21 +590,27 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     contactsViewController.m_scene = 5;
     contactsViewController.m_delegate = self;
 
-    // 获取已选群聊
+    // 强制触发 viewDidLoad 调用
+    if ([contactsViewController respondsToSelector:@selector(loadViewIfNeeded)]) {
+        [contactsViewController loadViewIfNeeded];
+    } else {
+        contactsViewController.view.alpha = 1.0;
+    }
+
     MMContext *context = [objc_getClass("MMContext") activeUserContext];
     CContactMgr *contactMgr = [context getService:objc_getClass("CContactMgr")];
-    
-    // 获取选择视图并预选
-    id selectView = [contactsViewController valueForKey:@"m_selectView"];
+        
+    ContactSelectView *selectView = (ContactSelectView *)[contactsViewController valueForKey:@"m_selectView"];
     for (NSString *contactName in [DDRedEnvelopConfig sharedConfig].blackList) {
         CContact *contact = [contactMgr getContactByName:contactName];
-        if (contact && [selectView respondsToSelector:@selector(addSelect:)]) {
+        if (contact) {
             [selectView addSelect:contact];
         }
     }
     [contactsViewController updatePanelBtn];
 
     MMUINavigationController *navigationController = [[objc_getClass("MMUINavigationController") alloc] initWithRootViewController:contactsViewController];
+
     [self presentViewController:navigationController animated:YES completion:nil];
 }
 
@@ -555,7 +620,7 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     NSMutableArray *blackList = [NSMutableArray new];
     for (CContact *contact in arg1) {
         NSString *contactName = contact.m_nsUsrName;
-        if ([contactName hasSuffix:@"@chatroom"]) {
+        if ([contactName length] > 0 && [contactName hasSuffix:@"@chatroom"]) {
             [blackList addObject:contactName];
         }
     }
@@ -573,7 +638,8 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 - (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)arg1 Request:(HongBaoReq *)arg2 {
     %orig;
     
-    if (arg1.cgiCmdid != 3) return; // 非参数查询请求
+    // 非参数查询请求
+    if (arg1.cgiCmdid != 3) { return; }
     
     NSString *(^parseRequestSign)(void) = ^NSString * {
         NSString *requestString = [[NSString alloc] initWithData:arg2.reqText.buffer encoding:NSUTF8StringEncoding];
@@ -587,12 +653,19 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     DDWeChatRedEnvelopParam *mgrParams = [[DDRedEnvelopParamQueue sharedQueue] dequeue];
     
     BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
-        if (!mgrParams) return NO; // 手动抢红包
-        if ([responseDict[@"receiveStatus"] integerValue] == 2) return NO; // 自己已经抢过
-        if ([responseDict[@"hbStatus"] integerValue] == 4) return NO; // 红包被抢完
-        if (!responseDict[@"timingIdentifier"]) return NO; // 没有这个字段会被判定为使用外挂
+        // 手动抢红包
+        if (!mgrParams) { return NO; }
         
-        if (mgrParams.isGroupSender) {
+        // 自己已经抢过
+        if ([responseDict[@"receiveStatus"] integerValue] == 2) { return NO; }
+        
+        // 红包被抢完
+        if ([responseDict[@"hbStatus"] integerValue] == 4) { return NO; }     
+        
+        // 没有这个字段会被判定为使用外挂
+        if (!responseDict[@"timingIdentifier"]) { return NO; }     
+        
+        if (mgrParams.isGroupSender) { // 自己发红包的时候没有 sign 字段
             return [DDRedEnvelopConfig sharedConfig].autoReceiveEnable;
         } else {
             return [parseRequestSign() isEqualToString:mgrParams.sign] && [DDRedEnvelopConfig sharedConfig].autoReceiveEnable;
@@ -602,6 +675,7 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     if (shouldReceiveRedEnvelop()) {
         mgrParams.timingIdentifier = responseDict[@"timingIdentifier"];
         
+        // 计算延迟秒数
         NSInteger configDelaySeconds = [DDRedEnvelopConfig sharedConfig].delaySeconds;
         unsigned int delaySeconds;
         
@@ -631,71 +705,97 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 - (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap {
     %orig;
     
-    if (wrap.m_uiMessageType == 49) { // AppNode
-        BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
-            return [wrap.m_nsContent rangeOfString:@"wxpay://"].location != NSNotFound;
-        };
-        
-        if (isRedEnvelopMessage()) {
-            MMContext *context = [%c(MMContext) activeUserContext];
-            CContactMgr *contactManager = [context getService:[%c(CContactMgr) class]];
-            CContact *selfContact = [contactManager getSelfContact];
-            
-            BOOL (^isSender)(void) = ^BOOL {
-                return [wrap.m_nsFromUsr isEqualToString:selfContact.m_nsUsrName];
+    switch(wrap.m_uiMessageType) {
+        case 49: { // AppNode
+            /** 是否为红包消息 */
+            BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
+                return [wrap.m_nsContent rangeOfString:@"wxpay://"].location != NSNotFound;
             };
             
-            BOOL (^isGroupReceiver)(void) = ^BOOL {
-                return [wrap.m_nsFromUsr rangeOfString:@"@chatroom"].location != NSNotFound;
-            };
-            
-            BOOL (^isGroupSender)(void) = ^BOOL {
-                return isSender() && [wrap.m_nsToUsr rangeOfString:@"chatroom"].location != NSNotFound;
-            };
-            
-            BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
-                if (![DDRedEnvelopConfig sharedConfig].autoReceiveEnable) return NO;
-                if ([[DDRedEnvelopConfig sharedConfig].blackList containsObject:wrap.m_nsFromUsr]) return NO;
-                return isGroupReceiver() || (isGroupSender() && [DDRedEnvelopConfig sharedConfig].receiveSelfRedEnvelop);
-            };
-            
-            NSDictionary *(^parseNativeUrl)(NSString *nativeUrl) = ^(NSString *nativeUrl) {
-                nativeUrl = [nativeUrl substringFromIndex:[@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?" length]];
-                return [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
-            };
-            
-            if (shouldReceiveRedEnvelop()) {
-                NSString *nativeUrl = [[wrap m_oWCPayInfoItem] m_c2cNativeUrl];         
-                NSDictionary *nativeUrlDict = parseNativeUrl(nativeUrl);
+            if (isRedEnvelopMessage()) { // 红包
+                MMContext *context = [%c(MMContext) activeUserContext];
+                CContactMgr *contactManager = [context getService:[%c(CContactMgr) class]];
+                CContact *selfContact = [contactManager getSelfContact];
                 
-                // 查询红包参数
-                NSMutableDictionary *params = [@{} mutableCopy];
-                params[@"agreeDuty"] = @"0";
-                params[@"channelId"] = [nativeUrlDict stringForKey:@"channelid"];
-                params[@"inWay"] = @"0";
-                params[@"msgType"] = [nativeUrlDict stringForKey:@"msgtype"];
-                params[@"nativeUrl"] = nativeUrl;
-                params[@"sendId"] = [nativeUrlDict stringForKey:@"sendid"];
+                BOOL (^isSender)(void) = ^BOOL {
+                    return [wrap.m_nsFromUsr isEqualToString:selfContact.m_nsUsrName];
+                };
                 
-                MMContext *context = [objc_getClass("MMContext") activeUserContext];
-                WCRedEnvelopesLogicMgr *logicMgr = [context getService:objc_getClass("WCRedEnvelopesLogicMgr")];
-                [logicMgr ReceiverQueryRedEnvelopesRequest:params];
+                /** 是否别人在群聊中发消息 */
+                BOOL (^isGroupReceiver)(void) = ^BOOL {
+                    return [wrap.m_nsFromUsr rangeOfString:@"@chatroom"].location != NSNotFound;
+                };
                 
-                // 储存参数
-                DDWeChatRedEnvelopParam *mgrParams = [[DDWeChatRedEnvelopParam alloc] init];
-                mgrParams.msgType = [nativeUrlDict stringForKey:@"msgtype"];
-                mgrParams.sendId = [nativeUrlDict stringForKey:@"sendid"];
-                mgrParams.channelId = [nativeUrlDict stringForKey:@"channelid"];
-                mgrParams.nickName = [selfContact getContactDisplayName];
-                mgrParams.headImg = [selfContact m_nsHeadImgUrl];
-                mgrParams.nativeUrl = nativeUrl;
-                mgrParams.sessionUserName = isGroupSender() ? wrap.m_nsToUsr : wrap.m_nsFromUsr;
-                mgrParams.sign = [nativeUrlDict stringForKey:@"sign"];
-                mgrParams.isGroupSender = isGroupSender();
+                /** 是否自己在群聊中发消息 */
+                BOOL (^isGroupSender)(void) = ^BOOL {
+                    return isSender() && [wrap.m_nsToUsr rangeOfString:@"chatroom"].location != NSNotFound;
+                };
                 
-                [[DDRedEnvelopParamQueue sharedQueue] enqueue:mgrParams];
-            }
+                /** 是否抢自己发的红包 */
+                BOOL (^isReceiveSelfRedEnvelop)(void) = ^BOOL {
+                    return [DDRedEnvelopConfig sharedConfig].receiveSelfRedEnvelop;
+                };
+                
+                /** 是否在黑名单中 */
+                BOOL (^isGroupInBlackList)(void) = ^BOOL {
+                    return [[DDRedEnvelopConfig sharedConfig].blackList containsObject:wrap.m_nsFromUsr];
+                };
+                
+                /** 是否自动抢红包 */
+                BOOL (^shouldReceiveRedEnvelop)(void) = ^BOOL {
+                    if (![DDRedEnvelopConfig sharedConfig].autoReceiveEnable) { return NO; }
+                    if (isGroupInBlackList()) { return NO; }
+                    return isGroupReceiver() || (isGroupSender() && isReceiveSelfRedEnvelop());
+                };
+                
+                NSDictionary *(^parseNativeUrl)(NSString *nativeUrl) = ^(NSString *nativeUrl) {
+                    nativeUrl = [nativeUrl substringFromIndex:[@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?" length]];
+                    return [%c(WCBizUtil) dictionaryWithDecodedComponets:nativeUrl separator:@"&"];
+                };
+                
+                /** 获取服务端验证参数 */
+                void (^queryRedEnvelopesReqeust)(NSDictionary *nativeUrlDict) = ^(NSDictionary *nativeUrlDict) {
+                    NSMutableDictionary *params = [@{} mutableCopy];
+                    params[@"agreeDuty"] = @"0";
+                    params[@"channelId"] = [nativeUrlDict stringForKey:@"channelid"];
+                    params[@"inWay"] = @"0";
+                    params[@"msgType"] = [nativeUrlDict stringForKey:@"msgtype"];
+                    params[@"nativeUrl"] = [[wrap m_oWCPayInfoItem] m_c2cNativeUrl];
+                    params[@"sendId"] = [nativeUrlDict stringForKey:@"sendid"];
+                    
+                    MMContext *context = [objc_getClass("MMContext") activeUserContext];
+                    WCRedEnvelopesLogicMgr *logicMgr = [context getService:objc_getClass("WCRedEnvelopesLogicMgr")];
+                    [logicMgr ReceiverQueryRedEnvelopesRequest:params];
+                };
+                
+                /** 储存参数 */
+                void (^enqueueParam)(NSDictionary *nativeUrlDict) = ^(NSDictionary *nativeUrlDict) {
+                    DDWeChatRedEnvelopParam *mgrParams = [[DDWeChatRedEnvelopParam alloc] init];
+                    mgrParams.msgType = [nativeUrlDict stringForKey:@"msgtype"];
+                    mgrParams.sendId = [nativeUrlDict stringForKey:@"sendid"];
+                    mgrParams.channelId = [nativeUrlDict stringForKey:@"channelid"];
+                    mgrParams.nickName = [selfContact getContactDisplayName];
+                    mgrParams.headImg = [selfContact m_nsHeadImgUrl];
+                    mgrParams.nativeUrl = [[wrap m_oWCPayInfoItem] m_c2cNativeUrl];
+                    mgrParams.sessionUserName = isGroupSender() ? wrap.m_nsToUsr : wrap.m_nsFromUsr;
+                    mgrParams.sign = [nativeUrlDict stringForKey:@"sign"];
+                    mgrParams.isGroupSender = isGroupSender();
+                    
+                    [[DDRedEnvelopParamQueue sharedQueue] enqueue:mgrParams];
+                };
+                
+                if (shouldReceiveRedEnvelop()) {
+                    NSString *nativeUrl = [[wrap m_oWCPayInfoItem] m_c2cNativeUrl];         
+                    NSDictionary *nativeUrlDict = parseNativeUrl(nativeUrl);
+                    
+                    queryRedEnvelopesReqeust(nativeUrlDict);
+                    enqueueParam(nativeUrlDict);
+                }
+            }   
+            break;
         }
+        default:
+            break;
     }
 }
 
@@ -716,7 +816,8 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     
     [tableViewMgr insertSection:sectionInfo At:0];
     
-    [[tableViewMgr getTableView] reloadData];
+    UITableView *tableView = [tableViewMgr getTableView];
+    [tableView reloadData];
 }
 
 %new
@@ -731,6 +832,7 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 
 %ctor {
     @autoreleasepool {
+        // 注册插件到插件管理器
         if (NSClassFromString(@"WCPluginsMgr")) {
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
                 registerControllerWithTitle:@"DD红包助手" 
