@@ -518,7 +518,6 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
                                                                    message:nil 
                                                             preferredStyle:UIAlertControllerStyleAlert];
     
-    alert.alertViewStyle = UIAlertControllerStyleAlert;
     [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
         textField.placeholder = @"延迟时长";
         textField.keyboardType = UIKeyboardTypeNumberPad;
