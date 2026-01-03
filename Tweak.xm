@@ -490,7 +490,6 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 - (void)reloadTableData {
     [_tableViewMgr clearAllSection];
     
-    // 所有设置项放在一个分组
     WCTableViewSectionManager *sectionInfo = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
     
     [sectionInfo addCell:[self createAutoReceiveRedEnvelopCell]];
