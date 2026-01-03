@@ -64,9 +64,11 @@
 
 @interface CContactMgr : NSObject
 - (id)getSelfContact;
+- (id)getContactByName:(id)arg1;
 - (id)getContactForSearchByName:(id)arg1;
 - (_Bool)addLocalContact:(id)arg1 listType:(unsigned int)arg2;
 - (_Bool)getContactsFromServer:(id)arg1;
+- (_Bool)isInContactList:(id)arg1;
 @end
 
 @interface WCTableViewManager : NSObject
@@ -127,8 +129,23 @@
 - (id)initWithURL:(id)arg1 presentModal:(_Bool)arg2 extraInfo:(id)arg3;
 @end
 
+@interface ContactSelectView : UIView
+@property(nonatomic) _Bool m_bHideSearchBar;
+- (void)addSelect:(id)arg1;
+@end
+
+@interface ContactInfoViewController : UIViewController
+@property(retain, nonatomic) CContact *m_contact;
+@end
+
 @interface MultiSelectContactsViewController : UIViewController
+@property(nonatomic) int m_scene;
 @property(nonatomic, weak) id m_delegate;
+@property(nonatomic) _Bool m_bKeepCurViewAfterSelect;
+@property(nonatomic) _Bool m_bShowHistoryGroup;
+@property(nonatomic) unsigned int m_uiGroupScene;
+@property(nonatomic) _Bool m_onlyChatRoom;
+- (void)updatePanelBtn;
 @end
 
 @protocol MultiSelectContactsViewControllerDelegate <NSObject>
@@ -473,22 +490,19 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 - (void)reloadTableData {
     [_tableViewMgr clearAllSection];
     
-    [self addBasicSettingSection];
-    [self addAdvanceSettingSection];
-    
-    UITableView *tableView = [_tableViewMgr getTableView];
-    [tableView reloadData];
-}
-
-#pragma mark - BasicSetting
-
-- (void)addBasicSettingSection {
+    // 所有设置项放在一个分组
     WCTableViewSectionManager *sectionInfo = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
     
     [sectionInfo addCell:[self createAutoReceiveRedEnvelopCell]];
     [sectionInfo addCell:[self createDelaySettingCell]];
+    [sectionInfo addCell:[self createReceiveSelfRedEnvelopCell]];
+    [sectionInfo addCell:[self createQueueCell]];
+    [sectionInfo addCell:[self createBlackListCell]];
     
     [_tableViewMgr addSection:sectionInfo];
+    
+    UITableView *tableView = [_tableViewMgr getTableView];
+    [tableView reloadData];
 }
 
 - (WCTableViewCellManager *)createAutoReceiveRedEnvelopCell {
@@ -505,6 +519,27 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
             title:@"延迟抢红包" rightValue:delayString accessoryType:1];
     } else {
         return [objc_getClass("WCTableViewNormalCellManager") normalCellForTitle:@"延迟抢红包" rightValue:@"抢红包已关闭"];
+    }
+}
+
+- (WCTableViewCellManager *)createReceiveSelfRedEnvelopCell {
+    return [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(settingReceiveSelfRedEnvelop:) target:self 
+        title:@"抢自己发的红包" on:[DDRedEnvelopConfig sharedConfig].receiveSelfRedEnvelop];
+}
+
+- (WCTableViewCellManager *)createQueueCell {
+    return [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(settingReceiveByQueue:) target:self 
+        title:@"防止同时抢多个红包" on:[DDRedEnvelopConfig sharedConfig].serialReceive];
+}
+
+- (WCTableViewNormalCellManager *)createBlackListCell {
+    if ([DDRedEnvelopConfig sharedConfig].blackList.count == 0) {
+        return [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(showBlackList) target:self 
+            title:@"群聊过滤" rightValue:@"已关闭" accessoryType:1];
+    } else {
+        NSString *blackListCountStr = [NSString stringWithFormat:@"已选 %lu 个群", (unsigned long)[DDRedEnvelopConfig sharedConfig].blackList.count];
+        return [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(showBlackList) target:self 
+            title:@"群聊过滤" rightValue:blackListCountStr accessoryType:1];
     }
 }
 
@@ -544,39 +579,6 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-#pragma mark - ProSetting
-
-- (void)addAdvanceSettingSection {
-    WCTableViewSectionManager *sectionInfo = [objc_getClass("WCTableViewSectionManager") sectionInfoHeader:@"高级功能"];
-    
-    [sectionInfo addCell:[self createReceiveSelfRedEnvelopCell]];
-    [sectionInfo addCell:[self createQueueCell]];
-    [sectionInfo addCell:[self createBlackListCell]];
-    
-    [_tableViewMgr addSection:sectionInfo];
-}
-
-- (WCTableViewCellManager *)createReceiveSelfRedEnvelopCell {
-    return [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(settingReceiveSelfRedEnvelop:) target:self 
-        title:@"抢自己发的红包" on:[DDRedEnvelopConfig sharedConfig].receiveSelfRedEnvelop];
-}
-
-- (WCTableViewCellManager *)createQueueCell {
-    return [objc_getClass("WCTableViewCellManager") switchCellForSel:@selector(settingReceiveByQueue:) target:self 
-        title:@"防止同时抢多个红包" on:[DDRedEnvelopConfig sharedConfig].serialReceive];
-}
-
-- (WCTableViewNormalCellManager *)createBlackListCell {
-    if ([DDRedEnvelopConfig sharedConfig].blackList.count == 0) {
-        return [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(showBlackList) target:self 
-            title:@"群聊过滤" rightValue:@"已关闭" accessoryType:1];
-    } else {
-        NSString *blackListCountStr = [NSString stringWithFormat:@"已选 %lu 个群", (unsigned long)[DDRedEnvelopConfig sharedConfig].blackList.count];
-        return [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:@selector(showBlackList) target:self 
-            title:@"群聊过滤" rightValue:blackListCountStr accessoryType:1];
-    }
-}
-
 - (void)settingReceiveSelfRedEnvelop:(UISwitch *)receiveSwitch {
     [DDRedEnvelopConfig sharedConfig].receiveSelfRedEnvelop = receiveSwitch.on;
 }
@@ -587,9 +589,30 @@ static NSString * const kBlackListKey = @"DDBlackListKey";
 
 - (void)showBlackList {
     MultiSelectContactsViewController *contactsViewController = [[objc_getClass("MultiSelectContactsViewController") alloc] init];
+    contactsViewController.m_scene = 5;
     contactsViewController.m_delegate = self;
-    
+
+    // 强制触发 viewDidLoad 调用
+    if ([contactsViewController respondsToSelector:@selector(loadViewIfNeeded)]) {
+        [contactsViewController loadViewIfNeeded];
+    } else {
+        contactsViewController.view.alpha = 1.0;
+    }
+
+    MMContext *context = [objc_getClass("MMContext") activeUserContext];
+    CContactMgr *contactMgr = [context getService:objc_getClass("CContactMgr")];
+        
+    ContactSelectView *selectView = (ContactSelectView *)[contactsViewController valueForKey:@"m_selectView"];
+    for (NSString *contactName in [DDRedEnvelopConfig sharedConfig].blackList) {
+        CContact *contact = [contactMgr getContactByName:contactName];
+        if (contact) {
+            [selectView addSelect:contact];
+        }
+    }
+    [contactsViewController updatePanelBtn];
+
     MMUINavigationController *navigationController = [[objc_getClass("MMUINavigationController") alloc] initWithRootViewController:contactsViewController];
+
     [self presentViewController:navigationController animated:YES completion:nil];
 }
 
