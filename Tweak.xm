@@ -3,8 +3,6 @@
 #import <objc/runtime.h>
 #import <UserNotifications/UserNotifications.h>
 
-#pragma mark - 微信私有类声明
-
 @interface WCBizUtil : NSObject
 + (id)dictionaryWithDecodedComponets:(id)arg1 separator:(id)arg2;
 @end
@@ -82,14 +80,10 @@
 - (void)onMultiSelectContactReturn:(NSArray *)arg1;
 @end
 
-#pragma mark - 插件管理接口
-
 @interface WCPluginsMgr : NSObject
 + (instancetype)sharedInstance;
 - (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
 @end
-
-#pragma mark - 辅助分类
 
 @interface NSDictionary (DDSafeAccess)
 - (NSString *)dd_stringForKey:(NSString *)key;
@@ -125,8 +119,6 @@
 }
 
 @end
-
-#pragma mark - 配置管理
 
 @interface DDRedEnvelopConfig : NSObject
 + (instancetype)sharedConfig;
@@ -228,8 +220,6 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
 
 @end
 
-#pragma mark - 通知管理器
-
 @interface DDNotificationManager : NSObject <UNUserNotificationCenterDelegate>
 + (instancetype)sharedManager;
 - (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount;
@@ -253,37 +243,31 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
 }
 
 - (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount {
-    if (![DDRedEnvelopConfig sharedConfig].showNotification || amount <= 0) return;
+    if (![DDRedEnvelopConfig sharedConfig].showNotification) return;
     
-    CGFloat yuanAmount = amount / 100.0;
-    
-    NSString *message = nil;
-    
-    if (totalAmount > 0) {
+    if (amount > 0) {
+        CGFloat yuanAmount = amount / 100.0;
         CGFloat yuanTotalAmount = totalAmount / 100.0;
-        message = [NSString stringWithFormat:@"成功抢到红包：%.2f元，总共：%.2f元", yuanAmount, yuanTotalAmount];
-    } else {
-        message = [NSString stringWithFormat:@"成功抢到红包：%.2f元", yuanAmount];
+        
+        NSString *message = [NSString stringWithFormat:@"成功抢到红包：%.2f元，总共：%.2f元", yuanAmount, yuanTotalAmount];
+        
+        UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+        content.title = @"红包通知";
+        content.body = message;
+        content.sound = [UNNotificationSound defaultSound];
+        
+        UNTimeIntervalNotificationTrigger *trigger = [UNTimeIntervalNotificationTrigger 
+            triggerWithTimeInterval:0.1 repeats:NO];
+        
+        NSString *identifier = [NSString stringWithFormat:@"DD_RED_ENVELOP_%@", @([[NSDate date] timeIntervalSince1970])];
+        UNNotificationRequest *request = [UNNotificationRequest 
+            requestWithIdentifier:identifier 
+            content:content 
+            trigger:trigger];
+        
+        [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request withCompletionHandler:nil];
     }
-    
-    UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
-    content.title = @"红包通知";
-    content.body = message;
-    content.sound = [UNNotificationSound defaultSound];
-    
-    UNTimeIntervalNotificationTrigger *trigger = [UNTimeIntervalNotificationTrigger 
-        triggerWithTimeInterval:0.1 repeats:NO];
-    
-    NSString *identifier = [NSString stringWithFormat:@"DD_RED_ENVELOP_%@", @([[NSDate date] timeIntervalSince1970])];
-    UNNotificationRequest *request = [UNNotificationRequest 
-        requestWithIdentifier:identifier 
-        content:content 
-        trigger:trigger];
-    
-    [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request withCompletionHandler:nil];
 }
-
-#pragma mark - UNUserNotificationCenterDelegate
 
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
        willPresentNotification:(UNNotification *)notification
@@ -298,8 +282,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 @end
-
-#pragma mark - 红包参数
 
 @interface DDWeChatRedEnvelopParam : NSObject
 @property (strong, nonatomic) NSString *msgType;
@@ -332,8 +314,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 @end
-
-#pragma mark - 参数队列
 
 @interface DDRedEnvelopParamQueue : NSObject
 + (instancetype)sharedQueue;
@@ -384,8 +364,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 @end
-
-#pragma mark - 任务管理器
 
 @interface DDReceiveRedEnvelopOperation : NSOperation
 @property (assign, nonatomic, getter=isExecuting) BOOL executing;
@@ -501,15 +479,11 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 
 @end
 
-#pragma mark - 设置界面
-
 @interface DDRedEnvelopSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate, MultiSelectContactsViewControllerDelegate>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UITextField *delaySecondsField;
 @property (nonatomic, strong) UIButton *delayConfirmButton;
 @end
-
-#pragma mark - 主界面
 
 @interface DDRedEnvelopMainViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
@@ -561,8 +535,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 @end
-
-#pragma mark - 设置界面实现
 
 @implementation DDRedEnvelopSettingsViewController
 
@@ -846,14 +818,11 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 
 @end
 
-#pragma mark - Hook逻辑
-
 %hook WCRedEnvelopesLogicMgr
 
 - (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)arg1 Request:(HongBaoReq *)arg2 {
     %orig;
     
-    // 处理红包通知，显示抢到的金额和总金额
     if ([DDRedEnvelopConfig sharedConfig].showNotification && [arg1 isKindOfClass:objc_getClass("HongBaoRes")]) {
         HongBaoRes *hongbaores = (HongBaoRes *)arg1;
         SKBuiltinBuffer_t *buffer = [hongbaores retText];
@@ -873,7 +842,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         }
     }
     
-    // 红包队列处理
     if (arg1.cgiCmdid != 3) return;
     
     NSString *(^parseRequestSign)(void) = ^NSString * {
@@ -939,7 +907,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 - (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap {
     %orig;
     
-    // 只处理AppNode消息类型（红包消息）
     if (wrap.m_uiMessageType != 49) return;
     
     BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
@@ -1022,11 +989,8 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 
 %end
 
-#pragma mark - 插件注册
-
 %ctor {
     @autoreleasepool {
-        // 注册插件到微信插件系统
         if (NSClassFromString(@"WCPluginsMgr")) {
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
                 registerControllerWithTitle:@"DD红包" 
