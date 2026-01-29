@@ -220,10 +220,9 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
 
 @end
 
-// 修改后的DDNotificationManager，添加群信息参数
 @interface DDNotificationManager : NSObject <UNUserNotificationCenterDelegate>
 + (instancetype)sharedManager;
-- (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount groupName:(NSString *)groupName;
+- (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount;
 @end
 
 @implementation DDNotificationManager
@@ -243,24 +242,14 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
     return manager;
 }
 
-- (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount groupName:(NSString *)groupName {
+- (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount {
     if (![DDRedEnvelopConfig sharedConfig].showNotification) return;
     
     if (amount > 0) {
         CGFloat yuanAmount = amount / 100.0;
         CGFloat yuanTotalAmount = totalAmount / 100.0;
         
-        NSString *message = nil;
-        
-        if (groupName && groupName.length > 0) {
-            // 如果有群信息，显示群名称
-            message = [NSString stringWithFormat:@"%@ 成功抢到红包：%.2f元，总共：%.2f元", 
-                      groupName, yuanAmount, yuanTotalAmount];
-        } else {
-            // 没有群信息，保持原有格式
-            message = [NSString stringWithFormat:@"成功抢到红包：%.2f元，总共：%.2f元", 
-                      yuanAmount, yuanTotalAmount];
-        }
+        NSString *message = [NSString stringWithFormat:@"成功抢到红包：%.2f元，总共：%.2f元", yuanAmount, yuanTotalAmount];
         
         UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
         content.title = @"红包通知";
@@ -834,48 +823,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 - (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)arg1 Request:(HongBaoReq *)arg2 {
     %orig;
     
-    // 修改后的通知部分，添加群信息显示
-    if ([DDRedEnvelopConfig sharedConfig].showNotification && [arg1 isKindOfClass:objc_getClass("HongBaoRes")]) {
-        HongBaoRes *hongbaores = (HongBaoRes *)arg1;
-        SKBuiltinBuffer_t *buffer = [hongbaores retText];
-        
-        if (buffer && buffer.buffer) {
-            NSString *jsonstring = [[NSString alloc] initWithData:buffer.buffer encoding:NSUTF8StringEncoding];
-            NSDictionary *dic = [jsonstring dd_JSONDictionary];
-            
-            if (dic) {
-                NSInteger amount = [[dic objectForKey:@"amount"] integerValue];
-                NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue];
-                
-                if (amount > 0) {
-                    // 获取群信息
-                    NSString *groupName = nil;
-                    // 从队列中获取参数，但不移除
-                    DDWeChatRedEnvelopParam *mgrParams = [[DDRedEnvelopParamQueue sharedQueue] peek];
-                    
-                    // 如果是群红包，获取群信息
-                    if (mgrParams && mgrParams.isGroupSender) {
-                        MMContext *context = [objc_getClass("MMContext") activeUserContext];
-                        CContactMgr *contactMgr = [context getService:objc_getClass("CContactMgr")];
-                        CContact *groupContact = [contactMgr getContactByName:mgrParams.sessionUserName];
-                        if (groupContact) {
-                            // 使用群的显示名称
-                            groupName = [groupContact getContactDisplayName];
-                            // 如果群显示名称为空，则使用群ID（去掉@chatroom后缀）
-                            if (!groupName || groupName.length == 0) {
-                                groupName = [mgrParams.sessionUserName stringByReplacingOccurrencesOfString:@"@chatroom" withString:@""];
-                            }
-                        }
-                    }
-                    
-                    [[DDNotificationManager sharedManager] showLocalNotificationWithAmount:amount 
-                                                                               totalAmount:totalAmount 
-                                                                                 groupName:groupName];
-                }
-            }
-        }
-    }
-    
+    // 只在群聊红包时显示通知
     if (arg1.cgiCmdid != 3) return;
     
     NSString *(^parseRequestSign)(void) = ^NSString * {
@@ -913,6 +861,26 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     
     if (shouldReceiveRedEnvelop()) {
         mgrParams.timingIdentifier = responseDict[@"timingIdentifier"];
+        
+        // 只有群聊红包才显示通知
+        if (mgrParams.isGroupSender && [DDRedEnvelopConfig sharedConfig].showNotification) {
+            HongBaoRes *hongbaores = (HongBaoRes *)arg1;
+            SKBuiltinBuffer_t *buffer = [hongbaores retText];
+            
+            if (buffer && buffer.buffer) {
+                NSString *jsonstring = [[NSString alloc] initWithData:buffer.buffer encoding:NSUTF8StringEncoding];
+                NSDictionary *dic = [jsonstring dd_JSONDictionary];
+                
+                if (dic) {
+                    NSInteger amount = [[dic objectForKey:@"amount"] integerValue];
+                    NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue];
+                    
+                    if (amount > 0) {
+                        [[DDNotificationManager sharedManager] showLocalNotificationWithAmount:amount totalAmount:totalAmount];
+                    }
+                }
+            }
+        }
         
         DDRedEnvelopConfig *config = [DDRedEnvelopConfig sharedConfig];
         NSInteger configDelaySeconds = config.delaySeconds;
