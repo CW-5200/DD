@@ -261,9 +261,9 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
     
     if (totalAmount > 0) {
         CGFloat yuanTotalAmount = totalAmount / 100.0;
-        message = [NSString stringWithFormat:@"成功抢到红包%.2f元，总共：%.2f元", yuanAmount, yuanTotalAmount];
+        message = [NSString stringWithFormat:@"成功抢到红包：%.2f元，总共：%.2f元", yuanAmount, yuanTotalAmount];
     } else {
-        message = [NSString stringWithFormat:@"成功抢到红包%.2f元", yuanAmount];
+        message = [NSString stringWithFormat:@"成功抢到红包：%.2f元", yuanAmount];
     }
     
     UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
