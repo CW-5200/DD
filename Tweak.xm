@@ -826,7 +826,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     // 先处理通知逻辑
     if ([DDRedEnvelopConfig sharedConfig].showNotification && arg1.cgiCmdid == 3) {
         NSString *responseString = [[NSString alloc] initWithData:arg1.retText.buffer encoding:NSUTF8StringEncoding];
-        NSDictionary *responseDict = [responseString dd_JSONDictionary];
         
         // 获取当前正在处理的参数来判断是否是群聊
         DDWeChatRedEnvelopParam *currentParam = [[DDRedEnvelopParamQueue sharedQueue] peek];
