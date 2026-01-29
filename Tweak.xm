@@ -27,7 +27,6 @@
 @property (retain, nonatomic) NSString* m_nsContent;
 @property (assign, nonatomic) NSUInteger m_uiMessageType;
 @property (assign, nonatomic) NSUInteger m_uiCreateTime;
-@property (retain, nonatomic) NSString* m_nsRealChatUsr;
 @end
 
 @interface MMContext : NSObject
@@ -221,47 +220,10 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
 
 @end
 
-@interface DDWeChatRedEnvelopParam : NSObject
-@property (strong, nonatomic) NSString *msgType;
-@property (strong, nonatomic) NSString *sendId;
-@property (strong, nonatomic) NSString *channelId;
-@property (strong, nonatomic) NSString *nickName;
-@property (strong, nonatomic) NSString *headImg;
-@property (strong, nonatomic) NSString *nativeUrl;
-@property (strong, nonatomic) NSString *sessionUserName;
-@property (strong, nonatomic) NSString *sign;
-@property (strong, nonatomic) NSString *timingIdentifier;
-@property (assign, nonatomic) BOOL isGroupSender;
-@property (strong, nonatomic) NSString *groupName; // 新增：群名字段
-@property (strong, nonatomic) NSString *senderName; // 新增：发送者名字
-
-- (NSDictionary *)toParams;
-@end
-
-@implementation DDWeChatRedEnvelopParam
-
-- (NSDictionary *)toParams {
-    return @{
-        @"msgType": self.msgType ?: @"",
-        @"sendId": self.sendId ?: @"",
-        @"channelId": self.channelId ?: @"",
-        @"nickName": self.nickName ?: @"",
-        @"headImg": self.headImg ?: @"",
-        @"nativeUrl": self.nativeUrl ?: @"",
-        @"sessionUserName": self.sessionUserName ?: @"",
-        @"timingIdentifier": self.timingIdentifier ?: @""
-    };
-}
-
-@end
-
+// 修改后的DDNotificationManager，添加群信息参数
 @interface DDNotificationManager : NSObject <UNUserNotificationCenterDelegate>
 + (instancetype)sharedManager;
-// 修改方法签名，添加群名和发送者参数
-- (void)showLocalNotificationWithAmount:(NSInteger)amount 
-                            totalAmount:(NSInteger)totalAmount 
-                              groupName:(NSString *)groupName 
-                             senderName:(NSString *)senderName;
+- (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount groupName:(NSString *)groupName;
 @end
 
 @implementation DDNotificationManager
@@ -281,11 +243,7 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
     return manager;
 }
 
-// 修改通知显示方法，添加群名和发送者信息
-- (void)showLocalNotificationWithAmount:(NSInteger)amount 
-                            totalAmount:(NSInteger)totalAmount 
-                              groupName:(NSString *)groupName 
-                             senderName:(NSString *)senderName {
+- (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount groupName:(NSString *)groupName {
     if (![DDRedEnvelopConfig sharedConfig].showNotification) return;
     
     if (amount > 0) {
@@ -294,40 +252,20 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
         
         NSString *message = nil;
         
-        // 判断是否为群红包
         if (groupName && groupName.length > 0) {
-            // 群红包：显示群名和发送者
-            if (senderName && senderName.length > 0) {
-                message = [NSString stringWithFormat:@"【%@】中%@的红包\n抢到：%.2f元，总共：%.2f元", 
-                          groupName, senderName, yuanAmount, yuanTotalAmount];
-            } else {
-                message = [NSString stringWithFormat:@"【%@】的红包\n抢到：%.2f元，总共：%.2f元", 
-                          groupName, yuanAmount, yuanTotalAmount];
-            }
+            // 如果有群信息，显示群名称
+            message = [NSString stringWithFormat:@"%@ 成功抢到红包：%.2f元，总共：%.2f元", 
+                      groupName, yuanAmount, yuanTotalAmount];
         } else {
-            // 个人红包：只显示发送者
-            if (senderName && senderName.length > 0) {
-                message = [NSString stringWithFormat:@"%@的红包\n抢到：%.2f元，总共：%.2f元", 
-                          senderName, yuanAmount, yuanTotalAmount];
-            } else {
-                message = [NSString stringWithFormat:@"抢到红包：%.2f元，总共：%.2f元", 
-                          yuanAmount, yuanTotalAmount];
-            }
+            // 没有群信息，保持原有格式
+            message = [NSString stringWithFormat:@"成功抢到红包：%.2f元，总共：%.2f元", 
+                      yuanAmount, yuanTotalAmount];
         }
         
         UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
         content.title = @"红包通知";
         content.body = message;
         content.sound = [UNNotificationSound defaultSound];
-        
-        // 添加自定义字段，用于点击通知时处理
-        content.userInfo = @{
-            @"type": @"red_envelop",
-            @"groupName": groupName ?: @"",
-            @"senderName": senderName ?: @"",
-            @"amount": @(yuanAmount),
-            @"totalAmount": @(yuanTotalAmount)
-        };
         
         UNTimeIntervalNotificationTrigger *trigger = [UNTimeIntervalNotificationTrigger 
             triggerWithTimeInterval:0.1 repeats:NO];
@@ -352,6 +290,38 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
 didReceiveNotificationResponse:(UNNotificationResponse *)response
          withCompletionHandler:(void(^)(void))completionHandler {
     completionHandler();
+}
+
+@end
+
+@interface DDWeChatRedEnvelopParam : NSObject
+@property (strong, nonatomic) NSString *msgType;
+@property (strong, nonatomic) NSString *sendId;
+@property (strong, nonatomic) NSString *channelId;
+@property (strong, nonatomic) NSString *nickName;
+@property (strong, nonatomic) NSString *headImg;
+@property (strong, nonatomic) NSString *nativeUrl;
+@property (strong, nonatomic) NSString *sessionUserName;
+@property (strong, nonatomic) NSString *sign;
+@property (strong, nonatomic) NSString *timingIdentifier;
+@property (assign, nonatomic) BOOL isGroupSender;
+
+- (NSDictionary *)toParams;
+@end
+
+@implementation DDWeChatRedEnvelopParam
+
+- (NSDictionary *)toParams {
+    return @{
+        @"msgType": self.msgType ?: @"",
+        @"sendId": self.sendId ?: @"",
+        @"channelId": self.channelId ?: @"",
+        @"nickName": self.nickName ?: @"",
+        @"headImg": self.headImg ?: @"",
+        @"nativeUrl": self.nativeUrl ?: @"",
+        @"sessionUserName": self.sessionUserName ?: @"",
+        @"timingIdentifier": self.timingIdentifier ?: @""
+    };
 }
 
 @end
@@ -864,6 +834,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 - (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)arg1 Request:(HongBaoReq *)arg2 {
     %orig;
     
+    // 修改后的通知部分，添加群信息显示
     if ([DDRedEnvelopConfig sharedConfig].showNotification && [arg1 isKindOfClass:objc_getClass("HongBaoRes")]) {
         HongBaoRes *hongbaores = (HongBaoRes *)arg1;
         SKBuiltinBuffer_t *buffer = [hongbaores retText];
@@ -877,13 +848,29 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
                 NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue];
                 
                 if (amount > 0) {
-                    // 从队列中取出对应的参数
+                    // 获取群信息
+                    NSString *groupName = nil;
+                    // 从队列中获取参数，但不移除
                     DDWeChatRedEnvelopParam *mgrParams = [[DDRedEnvelopParamQueue sharedQueue] peek];
+                    
+                    // 如果是群红包，获取群信息
+                    if (mgrParams && mgrParams.isGroupSender) {
+                        MMContext *context = [objc_getClass("MMContext") activeUserContext];
+                        CContactMgr *contactMgr = [context getService:objc_getClass("CContactMgr")];
+                        CContact *groupContact = [contactMgr getContactByName:mgrParams.sessionUserName];
+                        if (groupContact) {
+                            // 使用群的显示名称
+                            groupName = [groupContact getContactDisplayName];
+                            // 如果群显示名称为空，则使用群ID（去掉@chatroom后缀）
+                            if (!groupName || groupName.length == 0) {
+                                groupName = [mgrParams.sessionUserName stringByReplacingOccurrencesOfString:@"@chatroom" withString:@""];
+                            }
+                        }
+                    }
                     
                     [[DDNotificationManager sharedManager] showLocalNotificationWithAmount:amount 
                                                                                totalAmount:totalAmount 
-                                                                                 groupName:mgrParams.groupName 
-                                                                                senderName:mgrParams.senderName];
+                                                                                 groupName:groupName];
                 }
             }
         }
@@ -1021,58 +1008,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         mgrParams.sessionUserName = isGroupSender() ? wrap.m_nsToUsr : wrap.m_nsFromUsr;
         mgrParams.sign = [nativeUrlDict dd_stringForKey:@"sign"];
         mgrParams.isGroupSender = isGroupSender();
-        
-        // 获取群名
-        if (isGroupReceiver() || isGroupSender()) {
-            // 获取群联系人信息
-            CContact *groupContact = [contactManager getContactByName:wrap.m_nsFromUsr];
-            if (groupContact) {
-                mgrParams.groupName = [groupContact getContactDisplayName];
-            } else {
-                // 如果获取不到，使用群ID（去掉@chatroom）
-                NSString *groupId = wrap.m_nsFromUsr;
-                if ([groupId hasSuffix:@"@chatroom"]) {
-                    mgrParams.groupName = [groupId substringToIndex:groupId.length - @"@chatroom".length];
-                } else {
-                    mgrParams.groupName = groupId;
-                }
-            }
-        } else {
-            mgrParams.groupName = nil;
-        }
-        
-        // 获取发送者名字
-        if (isGroupReceiver()) {
-            // 对于群消息，m_nsRealChatUsr 是实际发送者的ID
-            if (wrap.m_nsRealChatUsr && wrap.m_nsRealChatUsr.length > 0) {
-                CContact *senderContact = [contactManager getContactByName:wrap.m_nsRealChatUsr];
-                if (senderContact) {
-                    mgrParams.senderName = [senderContact getContactDisplayName];
-                } else {
-                    mgrParams.senderName = wrap.m_nsRealChatUsr;
-                }
-            } else {
-                // 如果没有实际发送者信息，使用FromUsr
-                CContact *senderContact = [contactManager getContactByName:wrap.m_nsFromUsr];
-                if (senderContact) {
-                    mgrParams.senderName = [senderContact getContactDisplayName];
-                } else {
-                    mgrParams.senderName = wrap.m_nsFromUsr;
-                }
-            }
-        } else if (isGroupSender()) {
-            // 自己发送的红包，显示自己名字
-            mgrParams.senderName = [selfContact getContactDisplayName];
-        } else {
-            // 个人红包，获取对方信息
-            NSString *otherUserId = isSender() ? wrap.m_nsToUsr : wrap.m_nsFromUsr;
-            CContact *otherContact = [contactManager getContactByName:otherUserId];
-            if (otherContact) {
-                mgrParams.senderName = [otherContact getContactDisplayName];
-            } else {
-                mgrParams.senderName = otherUserId;
-            }
-        }
         
         [[DDRedEnvelopParamQueue sharedQueue] enqueue:mgrParams];
     };
