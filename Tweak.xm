@@ -79,7 +79,7 @@
 @end
 
 @protocol MultiSelectContactsViewControllerDelegate <NSObject>
-1
+- (void)onMultiSelectContactReturn:(NSArray *)arg1;
 @end
 
 #pragma mark - 插件管理接口
