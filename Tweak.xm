@@ -252,7 +252,6 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
     return manager;
 }
 
-// 修改通知方法，支持总金额显示
 - (void)showLocalNotificationWithAmount:(NSInteger)amount totalAmount:(NSInteger)totalAmount {
     if (![DDRedEnvelopConfig sharedConfig].showNotification || amount <= 0) return;
     
@@ -261,11 +260,9 @@ static NSString * const kShowNotificationKey = @"DDShowNotificationKey";
     NSString *message = nil;
     
     if (totalAmount > 0) {
-        // 有总金额信息
         CGFloat yuanTotalAmount = totalAmount / 100.0;
         message = [NSString stringWithFormat:@"成功抢到红包%.2f元，总共：%.2f元", yuanAmount, yuanTotalAmount];
     } else {
-        // 没有总金额信息
         message = [NSString stringWithFormat:@"成功抢到红包%.2f元", yuanAmount];
     }
     
@@ -596,8 +593,8 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     DDRedEnvelopConfig *config = [DDRedEnvelopConfig sharedConfig];
     if (!config.autoReceiveEnable) return 1;
     
-    int rowCount = 6; // 基础6项
-    if (config.delayEnabled) rowCount += 1; // 延迟输入框
+    int rowCount = 6;
+    if (config.delayEnabled) rowCount += 1;
     return rowCount;
 }
 
@@ -617,7 +614,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     } else if (config.delayEnabled && rowIndex == 2) {
         return [self createDelayInputCell];
     } else {
-        // 调整索引以跳过延迟输入框
         if (config.delayEnabled) {
             rowIndex -= 1;
         }
@@ -727,7 +723,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     
     NSInteger rowIndex = indexPath.row;
     
-    // 调整索引以匹配实际的行
     if (config.delayEnabled && rowIndex > 2) {
         rowIndex -= 1;
     }
@@ -858,7 +853,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 - (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)arg1 Request:(HongBaoReq *)arg2 {
     %orig;
     
-    // 红包通知处理 - 修改为显示总金额
+    // 处理红包通知，显示抢到的金额和总金额
     if ([DDRedEnvelopConfig sharedConfig].showNotification && [arg1 isKindOfClass:objc_getClass("HongBaoRes")]) {
         HongBaoRes *hongbaores = (HongBaoRes *)arg1;
         SKBuiltinBuffer_t *buffer = [hongbaores retText];
@@ -868,19 +863,17 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
             NSDictionary *dic = [jsonstring dd_JSONDictionary];
             
             if (dic) {
-                // 获取金额信息 - 使用正确的totalAmount键名
                 NSInteger amount = [[dic objectForKey:@"amount"] integerValue];
-                NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue]; // 修改为正确的totalAmount键名
+                NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue];
                 
                 if (amount > 0) {
-                    // 显示通知，包含总金额信息
                     [[DDNotificationManager sharedManager] showLocalNotificationWithAmount:amount totalAmount:totalAmount];
                 }
             }
         }
     }
     
-    // 队列处理逻辑
+    // 红包队列处理
     if (arg1.cgiCmdid != 3) return;
     
     NSString *(^parseRequestSign)(void) = ^NSString * {
@@ -946,6 +939,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 - (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap {
     %orig;
     
+    // 只处理AppNode消息类型（红包消息）
     if (wrap.m_uiMessageType != 49) return;
     
     BOOL (^isRedEnvelopMessage)(void) = ^BOOL {
@@ -1032,6 +1026,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 
 %ctor {
     @autoreleasepool {
+        // 注册插件到微信插件系统
         if (NSClassFromString(@"WCPluginsMgr")) {
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
                 registerControllerWithTitle:@"DD红包" 
