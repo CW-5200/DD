@@ -823,7 +823,35 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 - (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)arg1 Request:(HongBaoReq *)arg2 {
     %orig;
     
-    // 只在群聊红包时显示通知
+    // 先处理通知逻辑
+    if ([DDRedEnvelopConfig sharedConfig].showNotification && arg1.cgiCmdid == 3) {
+        NSString *responseString = [[NSString alloc] initWithData:arg1.retText.buffer encoding:NSUTF8StringEncoding];
+        NSDictionary *responseDict = [responseString dd_JSONDictionary];
+        
+        // 获取当前正在处理的参数来判断是否是群聊
+        DDWeChatRedEnvelopParam *currentParam = [[DDRedEnvelopParamQueue sharedQueue] peek];
+        
+        // 只有在群聊中才显示通知
+        if (currentParam && currentParam.isGroupSender) {
+            HongBaoRes *hongbaores = (HongBaoRes *)arg1;
+            SKBuiltinBuffer_t *buffer = [hongbaores retText];
+            
+            if (buffer && buffer.buffer) {
+                NSString *jsonstring = [[NSString alloc] initWithData:buffer.buffer encoding:NSUTF8StringEncoding];
+                NSDictionary *dic = [jsonstring dd_JSONDictionary];
+                
+                if (dic) {
+                    NSInteger amount = [[dic objectForKey:@"amount"] integerValue];
+                    NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue];
+                    
+                    if (amount > 0) {
+                        [[DDNotificationManager sharedManager] showLocalNotificationWithAmount:amount totalAmount:totalAmount];
+                    }
+                }
+            }
+        }
+    }
+    
     if (arg1.cgiCmdid != 3) return;
     
     NSString *(^parseRequestSign)(void) = ^NSString * {
@@ -861,26 +889,6 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     
     if (shouldReceiveRedEnvelop()) {
         mgrParams.timingIdentifier = responseDict[@"timingIdentifier"];
-        
-        // 只有群聊红包才显示通知
-        if (mgrParams.isGroupSender && [DDRedEnvelopConfig sharedConfig].showNotification) {
-            HongBaoRes *hongbaores = (HongBaoRes *)arg1;
-            SKBuiltinBuffer_t *buffer = [hongbaores retText];
-            
-            if (buffer && buffer.buffer) {
-                NSString *jsonstring = [[NSString alloc] initWithData:buffer.buffer encoding:NSUTF8StringEncoding];
-                NSDictionary *dic = [jsonstring dd_JSONDictionary];
-                
-                if (dic) {
-                    NSInteger amount = [[dic objectForKey:@"amount"] integerValue];
-                    NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue];
-                    
-                    if (amount > 0) {
-                        [[DDNotificationManager sharedManager] showLocalNotificationWithAmount:amount totalAmount:totalAmount];
-                    }
-                }
-            }
-        }
         
         DDRedEnvelopConfig *config = [DDRedEnvelopConfig sharedConfig];
         NSInteger configDelaySeconds = config.delaySeconds;
