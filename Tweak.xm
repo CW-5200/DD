@@ -79,7 +79,7 @@
 @end
 
 @protocol MultiSelectContactsViewControllerDelegate <NSObject>
-- (void)onMultiSelectContactReturn:(NSArray *)arg1;
+1
 @end
 
 #pragma mark - 插件管理接口
@@ -868,9 +868,9 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
             NSDictionary *dic = [jsonstring dd_JSONDictionary];
             
             if (dic) {
-                // 获取金额信息
+                // 获取金额信息 - 使用正确的totalAmount键名
                 NSInteger amount = [[dic objectForKey:@"amount"] integerValue];
-                NSInteger totalAmount = [[dic objectForKey:@"totoalAmount"] integerValue]; // 使用totoalAmount键名
+                NSInteger totalAmount = [[dic objectForKey:@"totalAmount"] integerValue]; // 修改为正确的totalAmount键名
                 
                 if (amount > 0) {
                     // 显示通知，包含总金额信息
