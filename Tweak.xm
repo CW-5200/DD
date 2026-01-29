@@ -190,7 +190,7 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
 @interface AddContactToChatRoomViewController : UIViewController
 @end
 
-#pragma mark - 统一的过滤函数（移除了%new修饰符）
+#pragma mark - 统一的过滤函数
 
 static NSMutableArray *filterMessageWrapArray(NSMutableArray *msgList) {
     if (!msgList) return [NSMutableArray array];
@@ -378,7 +378,6 @@ static NSMutableArray *filterMessageWrapArray(NSMutableArray *msgList) {
 
 %hook NSObject
 
-%new
 - (void)chatFilter_handleIgnoreChatRoom:(UISwitch *)sender {
     DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
     
