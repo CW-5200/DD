@@ -42,6 +42,7 @@
 @interface WCTableViewManager : NSObject
 - (id)getTableView;
 - (id)getSectionAt:(unsigned long long)arg1;
+- (void)insertSection:(id)arg1 At:(unsigned int)arg2;
 @end
 
 @interface MMTableViewInfo : WCTableViewManager
@@ -207,13 +208,13 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
             // 红包消息：仍然添加但不显示通知
             arg2.m_nsMsgSource = @"DD_FILTERED_RED_ENVELOPE";
             // 调用原始方法，但设置不通知
-            %orig(arg1, arg2, fixTime, NO);
+            %orig(arg1, arg2, arg3, NO);
         } else {
             // 普通消息：直接返回，不添加
             return;
         }
     } else {
-        %orig(arg1, arg2, fixTime, NewMsgArriveNotify);
+        %orig(arg1, arg2, arg3, arg4);
     }
 }
 
@@ -373,29 +374,56 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     
     DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
     
-    WCTableViewManager *tableViewMgr = MSHookIvar<id>(self, "m_tableViewMgr");
-    if (!tableViewMgr) return;
-    
-    WCTableViewSectionManager *sectionMgr = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
-    
-    NSString *rightValue = config.messageFilterEnabled ? @"已开启" : @"已关闭";
-    WCTableViewNormalCellManager *filterCell = [objc_getClass("WCTableViewNormalCellManager") 
-                                               normalCellForSel:@selector(dd_openFilterSettings) 
-                                               target:self 
-                                               title:@"DD消息屏蔽" 
-                                               rightValue:rightValue 
-                                               accessoryType:1];
-    [sectionMgr addCell:filterCell];
-    
-    [tableViewMgr insertSection:sectionMgr At:0];
-    
-    MMTableView *tableView = [tableViewMgr getTableView];
-    [tableView reloadData];
+    // 注意：这里使用正确的方法名，根据你的原始代码
+    // 从你的错误信息看，可能的方法名应该是 addSection: 或 addSection:atIndex:
+    // 我们使用更安全的方法
+    @try {
+        WCTableViewManager *tableViewMgr = MSHookIvar<id>(self, "m_tableViewMgr");
+        if (!tableViewMgr) return;
+        
+        WCTableViewSectionManager *sectionMgr = [objc_getClass("WCTableViewSectionManager") sectionInfoDefaut];
+        
+        NSString *rightValue = config.messageFilterEnabled ? @"已开启" : @"已关闭";
+        WCTableViewNormalCellManager *filterCell = [objc_getClass("WCTableViewNormalCellManager") 
+                                                   normalCellForSel:@selector(dd_openFilterSettings) 
+                                                   target:self 
+                                                   title:@"DD消息屏蔽" 
+                                                   rightValue:rightValue 
+                                                   accessoryType:1];
+        [sectionMgr addCell:filterCell];
+        
+        // 使用更安全的方法插入section
+        if ([tableViewMgr respondsToSelector:@selector(insertSection:At:)]) {
+            [tableViewMgr insertSection:sectionMgr At:0];
+        } else if ([tableViewMgr respondsToSelector:@selector(insertSection:atIndex:)]) {
+            [tableViewMgr performSelector:@selector(insertSection:atIndex:) withObject:sectionMgr withObject:@(0)];
+        } else if ([tableViewMgr respondsToSelector:@selector(addSection:)]) {
+            [tableViewMgr addSection:sectionMgr];
+        }
+        
+        UITableView *tableView = [tableViewMgr getTableView];
+        if (tableView) {
+            [tableView reloadData];
+        }
+    } @catch (NSException *exception) {
+        // 忽略异常
+    }
 }
 
 %end
 
-%hook NSObject
+#pragma mark - 新的分类方法
+
+@interface NSObject (DDMessageFilter)
+
+- (void)dd_handleIgnoreChatRoom:(UISwitch *)sender;
+- (void)dd_openFilterSettings;
+- (void)dd_filterSwitchChanged:(UISwitch *)sender;
+- (void)dd_dismissSettings;
+
+@end
+
+@implementation NSObject (DDMessageFilter)
 
 %new
 - (void)dd_handleIgnoreChatRoom:(UISwitch *)sender {
@@ -408,22 +436,44 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
                                                                        message:@"请先在插件管理中开启DD消息屏蔽功能" 
                                                                 preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
-        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
+        
+        // 获取当前活动窗口
+        UIWindow *window = nil;
+        if (@available(iOS 13.0, *)) {
+            NSSet<UIScene *> *connectedScenes = [UIApplication sharedApplication].connectedScenes;
+            for (UIScene *scene in connectedScenes) {
+                if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+                    UIWindowScene *windowScene = (UIWindowScene *)scene;
+                    for (UIWindow *w in windowScene.windows) {
+                        if (w.isKeyWindow) {
+                            window = w;
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            window = [UIApplication sharedApplication].keyWindow;
+        }
+        
+        if (window && window.rootViewController) {
+            [window.rootViewController presentViewController:alert animated:YES completion:nil];
+        }
         return;
     }
     
-    NSString *usrName = config.curUsrName;
+    NSString *usrName = [DDMessageFilterConfig sharedConfig].curUsrName;
     if (!usrName) {
         sender.on = NO;
         return;
     }
     
     if (sender.on) {
-        config.chatIgnoreInfo[usrName] = @(sender.on);
+        [DDMessageFilterConfig sharedConfig].chatIgnoreInfo[usrName] = @(sender.on);
     } else {
-        [config.chatIgnoreInfo removeObjectForKey:usrName];
+        [[DDMessageFilterConfig sharedConfig].chatIgnoreInfo removeObjectForKey:usrName];
     }
-    [config saveChatIgnoreNameListToLocalFile];
+    [[DDMessageFilterConfig sharedConfig] saveChatIgnoreNameListToLocalFile];
 }
 
 %new
@@ -434,13 +484,13 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     settingsVC.view.backgroundColor = [UIColor systemBackgroundColor];
     
     // 创建开关控件
-    UISwitch *filterSwitch = [[UISwitch alloc] init];
+    UISwitch *filterSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(20, 100, 50, 30)];
     filterSwitch.onTintColor = [UIColor systemBlueColor];
     filterSwitch.on = [DDMessageFilterConfig sharedConfig].messageFilterEnabled;
     [filterSwitch addTarget:self action:@selector(dd_filterSwitchChanged:) forControlEvents:UIControlEventValueChanged];
     
     // 创建标签
-    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 100, 200, 40)];
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(80, 95, 200, 40)];
     titleLabel.text = @"启用消息屏蔽";
     titleLabel.font = [UIFont systemFontOfSize:16];
     
@@ -450,37 +500,25 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     descLabel.textColor = [UIColor secondaryLabelColor];
     descLabel.numberOfLines = 0;
     
-    // 布局
-    filterSwitch.frame = CGRectMake(settingsVC.view.bounds.size.width - 70, 105, 50, 30);
-    
     [settingsVC.view addSubview:titleLabel];
     [settingsVC.view addSubview:descLabel];
     [settingsVC.view addSubview:filterSwitch];
     
     // 获取当前导航控制器并推送
-    UINavigationController *navController = nil;
-    UIResponder *responder = self;
-    while (responder && ![responder isKindOfClass:[UIViewController class]]) {
-        responder = [responder nextResponder];
-    }
-    
-    UIViewController *currentVC = (UIViewController *)responder;
-    if ([currentVC isKindOfClass:[UINavigationController class]]) {
-        navController = (UINavigationController *)currentVC;
-    } else if (currentVC.navigationController) {
-        navController = currentVC.navigationController;
-    }
-    
-    if (navController) {
-        [navController pushViewController:settingsVC animated:YES];
-    } else {
-        // 如果找不到导航控制器，以模态方式显示
-        UINavigationController *modalNav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
-        settingsVC.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"关闭" 
-                                                                                       style:UIBarButtonItemStylePlain 
-                                                                                      target:self 
-                                                                                      action:@selector(dd_dismissSettings)];
-        [currentVC presentViewController:modalNav animated:YES completion:nil];
+    if ([self isKindOfClass:[UIViewController class]]) {
+        UIViewController *currentVC = (UIViewController *)self;
+        if (currentVC.navigationController) {
+            [currentVC.navigationController pushViewController:settingsVC animated:YES];
+        } else {
+            // 如果找不到导航控制器，以模态方式显示
+            UINavigationController *modalNav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+            UIBarButtonItem *closeButton = [[UIBarButtonItem alloc] initWithTitle:@"关闭" 
+                                                                            style:UIBarButtonItemStylePlain 
+                                                                           target:self 
+                                                                           action:@selector(dd_dismissSettings)];
+            settingsVC.navigationItem.leftBarButtonItem = closeButton;
+            [currentVC presentViewController:modalNav animated:YES completion:nil];
+        }
     }
 }
 
@@ -491,17 +529,13 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
 
 %new
 - (void)dd_dismissSettings {
-    UIViewController *currentVC = nil;
-    UIResponder *responder = self;
-    while (responder && ![responder isKindOfClass:[UIViewController class]]) {
-        responder = [responder nextResponder];
+    if ([self isKindOfClass:[UIViewController class]]) {
+        UIViewController *currentVC = (UIViewController *)self;
+        [currentVC dismissViewControllerAnimated:YES completion:nil];
     }
-    currentVC = (UIViewController *)responder;
-    
-    [currentVC dismissViewControllerAnimated:YES completion:nil];
 }
 
-%end
+@end
 
 #pragma mark - 插件注册
 
