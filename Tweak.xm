@@ -1,4 +1,5 @@
-
+[file name]: pb.xm
+[file content begin]
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
@@ -412,18 +413,7 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
 
 %end
 
-#pragma mark - 新的分类方法
-
-@interface NSObject (DDMessageFilter)
-
-- (void)dd_handleIgnoreChatRoom:(UISwitch *)sender;
-- (void)dd_openFilterSettings;
-- (void)dd_filterSwitchChanged:(UISwitch *)sender;
-- (void)dd_dismissSettings;
-
-@end
-
-@implementation NSObject (DDMessageFilter)
+%hook NSObject
 
 %new
 - (void)dd_handleIgnoreChatRoom:(UISwitch *)sender {
@@ -535,7 +525,7 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     }
 }
 
-@end
+%end
 
 #pragma mark - 插件注册
 
@@ -553,3 +543,4 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
         }
     }
 }
+[file content end]
