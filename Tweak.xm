@@ -118,7 +118,6 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     return self;
 }
 
-1
 - (void)setMessageFilterEnabled:(BOOL)messageFilterEnabled {
     _messageFilterEnabled = messageFilterEnabled;
     [[NSUserDefaults standardUserDefaults] setBool:messageFilterEnabled forKey:kDDMessageFilterEnabledKey];
