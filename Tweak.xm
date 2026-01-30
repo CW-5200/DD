@@ -3,6 +3,13 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
+#pragma mark - 插件管理接口声明
+
+@interface WCPluginsMgr : NSObject
++ (instancetype)sharedInstance;
+- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
+@end
+
 #pragma mark - 配置管理
 
 @interface DDMomentsAdRemoverConfig : NSObject
