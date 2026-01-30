@@ -1,5 +1,3 @@
-[file name]: pb.xm
-[file content begin]
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
@@ -43,7 +41,6 @@
 @interface WCTableViewManager : NSObject
 - (id)getTableView;
 - (id)getSectionAt:(unsigned long long)arg1;
-- (void)insertSection:(id)arg1 At:(unsigned int)arg2;
 @end
 
 @interface MMTableViewInfo : WCTableViewManager
@@ -375,9 +372,6 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     
     DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
     
-    // 注意：这里使用正确的方法名，根据你的原始代码
-    // 从你的错误信息看，可能的方法名应该是 addSection: 或 addSection:atIndex:
-    // 我们使用更安全的方法
     @try {
         WCTableViewManager *tableViewMgr = MSHookIvar<id>(self, "m_tableViewMgr");
         if (!tableViewMgr) return;
@@ -393,13 +387,13 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
                                                    accessoryType:1];
         [sectionMgr addCell:filterCell];
         
-        // 使用更安全的方法插入section
-        if ([tableViewMgr respondsToSelector:@selector(insertSection:At:)]) {
-            [tableViewMgr insertSection:sectionMgr At:0];
-        } else if ([tableViewMgr respondsToSelector:@selector(insertSection:atIndex:)]) {
-            [tableViewMgr performSelector:@selector(insertSection:atIndex:) withObject:sectionMgr withObject:@(0)];
-        } else if ([tableViewMgr respondsToSelector:@selector(addSection:)]) {
-            [tableViewMgr addSection:sectionMgr];
+        // 使用安全的插入方法
+        @try {
+            if ([tableViewMgr respondsToSelector:@selector(insertSection:At:)]) {
+                [tableViewMgr insertSection:sectionMgr At:0];
+            }
+        } @catch (NSException *exception) {
+            // 如果插入失败，尝试其他方法
         }
         
         UITableView *tableView = [tableViewMgr getTableView];
@@ -543,4 +537,3 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
         }
     }
 }
-[file content end]
