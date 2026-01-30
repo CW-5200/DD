@@ -118,6 +118,7 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     return self;
 }
 
+1
 - (void)setMessageFilterEnabled:(BOOL)messageFilterEnabled {
     _messageFilterEnabled = messageFilterEnabled;
     [[NSUserDefaults standardUserDefaults] setBool:messageFilterEnabled forKey:kDDMessageFilterEnabledKey];
@@ -432,12 +433,6 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
                         }
                     }
                 }
-            }
-        } else {
-            // 使用兼容性方法避免编译警告
-            UIApplication *app = [UIApplication sharedApplication];
-            if ([app respondsToSelector:@selector(keyWindow)]) {
-                window = [app keyWindow];
             }
         }
         
