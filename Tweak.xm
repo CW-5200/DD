@@ -41,6 +41,7 @@
 @interface WCTableViewManager : NSObject
 - (id)getTableView;
 - (id)getSectionAt:(unsigned long long)arg1;
+- (void)addSection:(id)arg1;
 @end
 
 @interface MMTableViewInfo : WCTableViewManager
@@ -387,13 +388,9 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
                                                    accessoryType:1];
         [sectionMgr addCell:filterCell];
         
-        // 使用安全的插入方法
-        @try {
-            if ([tableViewMgr respondsToSelector:@selector(insertSection:At:)]) {
-                [tableViewMgr insertSection:sectionMgr At:0];
-            }
-        } @catch (NSException *exception) {
-            // 如果插入失败，尝试其他方法
+        // 使用 addSection: 方法添加section
+        if ([tableViewMgr respondsToSelector:@selector(addSection:)]) {
+            [tableViewMgr addSection:sectionMgr];
         }
         
         UITableView *tableView = [tableViewMgr getTableView];
@@ -437,7 +434,11 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
                 }
             }
         } else {
-            window = [UIApplication sharedApplication].keyWindow;
+            // 使用兼容性方法避免编译警告
+            UIApplication *app = [UIApplication sharedApplication];
+            if ([app respondsToSelector:@selector(keyWindow)]) {
+                window = [app keyWindow];
+            }
         }
         
         if (window && window.rootViewController) {
