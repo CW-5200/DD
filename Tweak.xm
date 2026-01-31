@@ -128,6 +128,42 @@ static NSString * const kDDMomentsAdRemoverEnabledKey = @"DDMomentsAdRemoverEnab
 
 %end
 
+#pragma mark - 朋友圈视频广告自动播放拦截
+
+%hook WCFacade
+
+- (bool)isTimelineVideoSightAutoPlayEnable {
+    if ([DDMomentsAdRemoverConfig sharedConfig].enabled) {
+        return NO; // 禁止朋友圈视频广告自动播放
+    } else {
+        return %orig; // 正常显示
+    }
+}
+
+%end
+
+#pragma mark - 朋友圈广告内容识别拦截
+
+%hook WCDataItem
+
+- (bool)isVideoAd {
+    if ([DDMomentsAdRemoverConfig sharedConfig].enabled) {
+        return NO; // 屏蔽视频广告
+    } else {
+        return %orig;
+    }
+}
+
+- (bool)isAd {
+    if ([DDMomentsAdRemoverConfig sharedConfig].enabled) {
+        return NO; // 屏蔽普通广告
+    } else {
+        return %orig;
+    }
+}
+
+%end
+
 #pragma mark - 插件注册
 
 %ctor {
