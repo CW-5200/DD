@@ -1,9 +1,8 @@
-// DDMomentsAdRemover.xm
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#pragma mark - 插件管理接口声明
+#pragma mark - 插件管理接口
 
 @interface WCPluginsMgr : NSObject
 + (instancetype)sharedInstance;
@@ -12,60 +11,145 @@
 
 #pragma mark - 配置管理
 
-@interface DDMomentsAdRemoverConfig : NSObject
+@interface DDMessageFilterConfig : NSObject
 
 + (instancetype)sharedConfig;
-@property (assign, nonatomic) BOOL enabled;
+@property (assign, nonatomic) BOOL messageFilterEnabled;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, NSNumber *> *chatIgnoreInfo;
+@property (copy, nonatomic) NSString *curUsrName;
+
+- (void)saveChatIgnoreNameListToLocalFile;
+- (void)loadChatIgnoreNameListFromLocalFile;
+- (BOOL)shouldIgnoreMessageFromUser:(NSString *)fromUser toUser:(NSString *)toUser;
+- (void)syncDoNotDisturbForAllIgnoredContacts;
 
 @end
 
-static NSString * const kDDMomentsAdRemoverEnabledKey = @"DDMomentsAdRemoverEnabled";
+static NSString * const kDDMessageFilterEnabledKey = @"DDMessageFilterEnabled";
+static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
 
-@implementation DDMomentsAdRemoverConfig
+@implementation DDMessageFilterConfig
 
 + (instancetype)sharedConfig {
-    static DDMomentsAdRemoverConfig *config = nil;
+    static DDMessageFilterConfig *config = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        config = [DDMomentsAdRemoverConfig new];
+        config = [DDMessageFilterConfig new];
     });
     return config;
 }
 
 - (instancetype)init {
     if (self = [super init]) {
-        _enabled = [[NSUserDefaults standardUserDefaults] boolForKey:kDDMomentsAdRemoverEnabledKey];
+        _chatIgnoreInfo = [NSMutableDictionary dictionary];
         
-        if ([[NSUserDefaults standardUserDefaults] objectForKey:kDDMomentsAdRemoverEnabledKey] == nil) {
-            _enabled = NO;
-            [[NSUserDefaults standardUserDefaults] setBool:_enabled forKey:kDDMomentsAdRemoverEnabledKey];
-            [[NSUserDefaults standardUserDefaults] synchronize];
+        _messageFilterEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:kDDMessageFilterEnabledKey];
+        
+        if ([[NSUserDefaults standardUserDefaults] objectForKey:kDDMessageFilterEnabledKey] == nil) {
+            _messageFilterEnabled = NO;
+            [[NSUserDefaults standardUserDefaults] setBool:_messageFilterEnabled forKey:kDDMessageFilterEnabledKey];
         }
+        
+        [self loadChatIgnoreNameListFromLocalFile];
     }
     return self;
 }
 
-- (void)setEnabled:(BOOL)enabled {
-    _enabled = enabled;
-    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:kDDMomentsAdRemoverEnabledKey];
+- (void)setMessageFilterEnabled:(BOOL)messageFilterEnabled {
+    BOOL oldValue = _messageFilterEnabled;
+    _messageFilterEnabled = messageFilterEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:messageFilterEnabled forKey:kDDMessageFilterEnabledKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    if (messageFilterEnabled && !oldValue) {
+        [self syncDoNotDisturbForAllIgnoredContacts];
+    }
+}
+
+- (void)saveChatIgnoreNameListToLocalFile {
+    [[NSUserDefaults standardUserDefaults] setObject:self.chatIgnoreInfo forKey:kDDChatFilterIgnoreListKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)loadChatIgnoreNameListFromLocalFile {
+    NSDictionary *saved = [[NSUserDefaults standardUserDefaults] objectForKey:kDDChatFilterIgnoreListKey];
+    if (saved) {
+        self.chatIgnoreInfo = [saved mutableCopy];
+    }
+}
+
+- (BOOL)shouldIgnoreMessageFromUser:(NSString *)fromUser toUser:(NSString *)toUser {
+    if (!fromUser) return NO;
+    if (!self.messageFilterEnabled) {
+        return NO;
+    }
+    return self.chatIgnoreInfo[fromUser] ? [self.chatIgnoreInfo[fromUser] boolValue] : NO;
+}
+
+- (void)syncDoNotDisturbForAllIgnoredContacts {
+    if (!self.messageFilterEnabled) {
+        return;
+    }
+    
+    for (NSString *contactName in self.chatIgnoreInfo.allKeys) {
+        if ([self.chatIgnoreInfo[contactName] boolValue]) {
+            [self setDoNotDisturbForContact:contactName enable:YES];
+        }
+    }
+}
+
+- (BOOL)setDoNotDisturbForContact:(NSString *)contactName enable:(BOOL)enable {
+    Class CContactMgrClass = objc_getClass("CContactMgr");
+    if (!CContactMgrClass || ![CContactMgrClass respondsToSelector:@selector(sharedInstance)]) {
+        return NO;
+    }
+    
+    id contactMgr = [CContactMgrClass sharedInstance];
+    id contact = nil;
+    
+    if ([contactMgr respondsToSelector:@selector(getContactByName:)]) {
+        contact = [contactMgr getContactByName:contactName];
+    }
+    
+    if (!contact) {
+        return NO;
+    }
+    
+    BOOL isChatRoom = NO;
+    if ([contact respondsToSelector:@selector(isChatRoom)]) {
+        isChatRoom = [contact isChatRoom];
+    }
+    
+    BOOL success = NO;
+    
+    if (isChatRoom) {
+        if ([contactMgr respondsToSelector:@selector(ChangeNotifyStatusForChatRoom:withStatus:sync:)]) {
+            success = [contactMgr ChangeNotifyStatusForChatRoom:contact withStatus:enable sync:YES];
+        }
+    } else {
+        if ([contactMgr respondsToSelector:@selector(ChangeNotifyStatus:withStatus:sync:)]) {
+            success = [contactMgr ChangeNotifyStatus:contact withStatus:enable sync:YES];
+        }
+    }
+    
+    return success;
 }
 
 @end
 
 #pragma mark - 设置界面
 
-@interface DDMomentsAdRemoverSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+@interface DDMessageFilterSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
 
 @property (nonatomic, strong) UITableView *tableView;
 
 @end
 
-@implementation DDMomentsAdRemoverSettingsViewController
+@implementation DDMessageFilterSettingsViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"DD朋友圈去广告";
+    self.title = @"DD消息屏蔽";
     self.view.backgroundColor = [UIColor systemBackgroundColor];
     
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
@@ -80,7 +164,7 @@ static NSString * const kDDMomentsAdRemoverEnabledKey = @"DDMomentsAdRemoverEnab
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSString *cellIdentifier = @"DDMomentsAdRemoverSwitchCell";
+    NSString *cellIdentifier = @"DDMessageFilterCell";
     UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:cellIdentifier];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
@@ -88,12 +172,12 @@ static NSString * const kDDMomentsAdRemoverEnabledKey = @"DDMomentsAdRemoverEnab
         cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
     }
     
-    cell.textLabel.text = @"朋友圈广告屏蔽";
+    cell.textLabel.text = @"启用消息屏蔽";
     
     UISwitch *switchView = [[UISwitch alloc] init];
     switchView.onTintColor = [UIColor systemBlueColor];
-    switchView.on = [DDMomentsAdRemoverConfig sharedConfig].enabled;
-    [switchView addTarget:self action:@selector(adSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    switchView.on = [DDMessageFilterConfig sharedConfig].messageFilterEnabled;
+    [switchView addTarget:self action:@selector(messageFilterSwitchChanged:) forControlEvents:UIControlEventValueChanged];
     
     cell.accessoryView = switchView;
     return cell;
@@ -107,59 +191,233 @@ static NSString * const kDDMomentsAdRemoverEnabledKey = @"DDMomentsAdRemoverEnab
     return 20.0;
 }
 
-- (void)adSwitchChanged:(UISwitch *)sender {
-    [DDMomentsAdRemoverConfig sharedConfig].enabled = sender.isOn;
+- (void)messageFilterSwitchChanged:(UISwitch *)sender {
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    config.messageFilterEnabled = sender.isOn;
 }
 
 @end
 
+#pragma mark - Hook相关接口声明
+
+@interface CMessageWrap : NSObject
+@property (retain, nonatomic) NSString *m_nsFromUsr;
+@property (retain, nonatomic) NSString *m_nsToUsr;
+@end
+
+@interface CMessageMgr : NSObject
+- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap;
+- (id)GetMsgByCreateTime:(id)arg1 FromID:(unsigned int)arg2 FromCreateTime:(unsigned int)arg3 Limit:(int)arg4 LeftCount:(unsigned int *)arg5 FromSequence:(unsigned int)arg6;
+- (void)AddLocalMsg:(id)arg1 MsgWrap:(id)arg2 fixTime:(BOOL)arg3 NewMsgArriveNotify:(BOOL)arg4;
+@end
+
+@interface SyncCmdHandler : NSObject
+- (BOOL)BatchAddMsg:(BOOL)arg1 ShowPush:(BOOL)arg2;
+@end
+
+@interface BaseMsgContentViewController : UIViewController
+- (id)GetContact;
+@end
+
+@interface CContact : NSObject
+@property (retain, nonatomic) NSString *m_nsUsrName;
+- (BOOL)isChatRoom;
+@end
+
+@interface WCTableViewManager : NSObject
+- (id)getTableView;
+- (id)getSectionAt:(unsigned long long)arg1;
+@end
+
+@interface MMTableViewInfo : WCTableViewManager
+@end
+
+@interface WCTableViewSectionManager : NSObject
++ (id)sectionInfoDefaut;
+- (void)addCell:(id)arg1;
+@end
+
+@interface WCTableViewNormalCellManager : NSObject
++ (id)switchCellForSel:(SEL)arg1 target:(id)arg2 title:(id)arg3 on:(BOOL)arg4;
+@end
+
+@interface ChatRoomInfoViewController : UIViewController
+@end
+
+@interface AddContactToChatRoomViewController : UIViewController
+@end
+
 #pragma mark - Hook逻辑
 
-%hook WCAdvertiseStorage
+%hook CMessageMgr
 
-- (void)setOAdvertiseData:(NSData *)oAdvertiseData {
-    if (![DDMomentsAdRemoverConfig sharedConfig].enabled) {
-        %orig;
+- (void)AsyncOnAddMsg:(NSString *)msg MsgWrap:(CMessageWrap *)wrap {
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    if (config.messageFilterEnabled && [config shouldIgnoreMessageFromUser:wrap.m_nsFromUsr toUser:wrap.m_nsToUsr]) {
+        return;
+    }
+    %orig;
+}
+
+- (id)GetMsgByCreateTime:(id)arg1 FromID:(unsigned int)arg2 FromCreateTime:(unsigned int)arg3 Limit:(int)arg4 LeftCount:(unsigned int *)arg5 FromSequence:(unsigned int)arg6 {
+    id result = %orig;
+    
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    if (config.messageFilterEnabled && config.chatIgnoreInfo[arg1] && [config.chatIgnoreInfo[arg1] boolValue]) {
+        return [NSMutableArray array];
+    }
+    
+    return result;
+}
+
+- (void)AddLocalMsg:(id)arg1 MsgWrap:(CMessageWrap *)arg2 fixTime:(BOOL)arg3 NewMsgArriveNotify:(BOOL)arg4 {
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    if (config.messageFilterEnabled && [config shouldIgnoreMessageFromUser:arg2.m_nsFromUsr toUser:arg1]) {
+        return;
+    }
+    %orig;
+}
+
+%end
+
+%hook SyncCmdHandler
+
+- (BOOL)BatchAddMsg:(BOOL)arg1 ShowPush:(BOOL)arg2 {
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    
+    if (config.messageFilterEnabled) {
+        NSMutableArray *msgList = [self valueForKey:@"m_arrMsgList"];
+        
+        if (msgList && [msgList isKindOfClass:[NSMutableArray class]]) {
+            NSMutableArray *filteredList = [NSMutableArray array];
+            for (id msg in msgList) {
+                if ([msg isKindOfClass:objc_getClass("CMessageWrap")]) {
+                    CMessageWrap *wrap = (CMessageWrap *)msg;
+                    if (![config shouldIgnoreMessageFromUser:wrap.m_nsFromUsr toUser:wrap.m_nsToUsr]) {
+                        [filteredList addObject:msg];
+                    }
+                } else {
+                    [filteredList addObject:msg];
+                }
+            }
+            [self setValue:filteredList forKey:@"m_arrMsgList"];
+        }
+    }
+    return %orig;
+}
+
+%end
+
+%hook BaseMsgContentViewController
+
+- (void)viewDidAppear:(BOOL)arg1 {
+    %orig;
+    
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    if (config.messageFilterEnabled) {
+        CContact *contact = [self GetContact];
+        if (contact && contact.m_nsUsrName) {
+            config.curUsrName = contact.m_nsUsrName;
+        }
+    }
+}
+
+%end
+
+%hook ChatRoomInfoViewController
+
+- (void)reloadTableData {
+    %orig;
+    
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    if (!config.messageFilterEnabled) {
         return;
     }
     
-    return;
-}
-
-%end
-
-#pragma mark - 朋友圈视频广告自动播放拦截
-
-%hook WCFacade
-
-- (bool)isTimelineVideoSightAutoPlayEnable {
-    if ([DDMomentsAdRemoverConfig sharedConfig].enabled) {
-        return NO; // 禁止朋友圈视频广告自动播放
-    } else {
-        return %orig; // 正常显示
+    NSString *usrName = config.curUsrName;
+    if (!usrName) return;
+    
+    id tableViewInfo = [self valueForKey:@"m_tableViewInfo"];
+    if (![tableViewInfo respondsToSelector:@selector(getSectionAt:)]) {
+        return;
+    }
+    
+    WCTableViewSectionManager *sectionMgr = [tableViewInfo getSectionAt:3];
+    
+    BOOL isIgnored = config.chatIgnoreInfo[usrName] ? [config.chatIgnoreInfo[usrName] boolValue] : NO;
+    WCTableViewNormalCellManager *ignoreCell = [objc_getClass("WCTableViewNormalCellManager") 
+                                               switchCellForSel:@selector(chatFilter_handleIgnoreChatRoom:) 
+                                               target:self 
+                                               title:@"屏蔽消息" 
+                                               on:isIgnored];
+    [sectionMgr addCell:ignoreCell];
+    
+    if ([tableViewInfo respondsToSelector:@selector(getTableView)]) {
+        UITableView *tableView = [tableViewInfo getTableView];
+        [tableView reloadData];
     }
 }
 
 %end
 
-#pragma mark - 朋友圈广告内容识别拦截
+%hook AddContactToChatRoomViewController
 
-%hook WCDataItem
-
-- (bool)isVideoAd {
-    if ([DDMomentsAdRemoverConfig sharedConfig].enabled) {
-        return NO; // 屏蔽视频广告
-    } else {
-        return %orig;
+- (void)reloadTableData {
+    %orig;
+    
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    if (!config.messageFilterEnabled) {
+        return;
+    }
+    
+    NSString *usrName = config.curUsrName;
+    if (!usrName) return;
+    
+    id tableViewInfo = [self valueForKey:@"m_tableViewInfo"];
+    if (![tableViewInfo respondsToSelector:@selector(getSectionAt:)]) {
+        return;
+    }
+    
+    WCTableViewSectionManager *sectionMgr = [tableViewInfo getSectionAt:2];
+    
+    BOOL isIgnored = config.chatIgnoreInfo[usrName] ? [config.chatIgnoreInfo[usrName] boolValue] : NO;
+    WCTableViewNormalCellManager *ignoreCell = [objc_getClass("WCTableViewNormalCellManager") 
+                                               switchCellForSel:@selector(chatFilter_handleIgnoreChatRoom:) 
+                                               target:self 
+                                               title:@"屏蔽消息" 
+                                               on:isIgnored];
+    [sectionMgr addCell:ignoreCell];
+    
+    if ([tableViewInfo respondsToSelector:@selector(getTableView)]) {
+        UITableView *tableView = [tableViewInfo getTableView];
+        [tableView reloadData];
     }
 }
 
-- (bool)isAd {
-    if ([DDMomentsAdRemoverConfig sharedConfig].enabled) {
-        return NO; // 屏蔽普通广告
-    } else {
-        return %orig;
+%end
+
+%hook NSObject
+
+%new
+- (void)chatFilter_handleIgnoreChatRoom:(UISwitch *)sender {
+    DDMessageFilterConfig *config = [DDMessageFilterConfig sharedConfig];
+    
+    if (!config.messageFilterEnabled) {
+        sender.on = NO;
+        return;
     }
+    
+    NSString *usrName = config.curUsrName;
+    if (!usrName) return;
+    
+    if (sender.on) {
+        config.chatIgnoreInfo[usrName] = @(sender.on);
+        [config setDoNotDisturbForContact:usrName enable:YES];
+    } else {
+        [config.chatIgnoreInfo removeObjectForKey:usrName];
+        [config setDoNotDisturbForContact:usrName enable:NO];
+    }
+    [config saveChatIgnoreNameListToLocalFile];
 }
 
 %end
@@ -168,11 +426,13 @@ static NSString * const kDDMomentsAdRemoverEnabledKey = @"DDMomentsAdRemoverEnab
 
 %ctor {
     @autoreleasepool {
+        [DDMessageFilterConfig sharedConfig];
+        
         if (NSClassFromString(@"WCPluginsMgr")) {
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
-                registerControllerWithTitle:@"DD朋友圈去广告" 
+                registerControllerWithTitle:@"DD消息屏蔽" 
                 version:@"1.0.0" 
-                controller:@"DDMomentsAdRemoverSettingsViewController"];
+                controller:@"DDMessageFilterSettingsViewController"];
         }
     }
 }
