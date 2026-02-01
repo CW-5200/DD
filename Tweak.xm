@@ -9,6 +9,15 @@
 - (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
 @end
 
+#pragma mark - CContactMgr 接口声明
+
+@interface CContactMgr : NSObject
++ (instancetype)sharedInstance;
+- (id)getContactByName:(id)arg1;
+- (BOOL)ChangeNotifyStatus:(id)arg1 withStatus:(BOOL)arg2 sync:(BOOL)arg3;
+- (BOOL)ChangeNotifyStatusForChatRoom:(id)arg1 withStatus:(BOOL)arg2 sync:(BOOL)arg3;
+@end
+
 #pragma mark - 配置管理
 
 @interface DDMessageFilterConfig : NSObject
@@ -104,7 +113,7 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
         return NO;
     }
     
-    id contactMgr = [CContactMgrClass sharedInstance];
+    CContactMgr *contactMgr = (CContactMgr *)[CContactMgrClass sharedInstance];
     id contact = nil;
     
     if ([contactMgr respondsToSelector:@selector(getContactByName:)]) {
@@ -116,8 +125,10 @@ static NSString * const kDDChatFilterIgnoreListKey = @"DDChatFilter_IgnoreList";
     }
     
     BOOL isChatRoom = NO;
+    // 使用运行时方法检查是否为群聊
     if ([contact respondsToSelector:@selector(isChatRoom)]) {
-        isChatRoom = [contact isChatRoom];
+        // 使用performSelector来避免编译错误
+        isChatRoom = ((BOOL (*)(id, SEL))[contact methodForSelector:@selector(isChatRoom)])(contact, @selector(isChatRoom));
     }
     
     BOOL success = NO;
