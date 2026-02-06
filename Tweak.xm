@@ -104,11 +104,13 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
     
     Class forwardViewControllerClass = objc_getClass("WCForwardViewController");
     if (forwardViewControllerClass) {
-        id forwardVC = [[forwardViewControllerClass alloc] initWithDataItem:self.m_item];
-        if (forwardVC && self.navigationController) {
-            [self.navigationController pushViewController:forwardVC animated:YES];
+        id forwardVC = [[forwardViewControllerClass alloc] 
+                        initWithDataItem:[self valueForKey:@"m_item"]];
+        if (forwardVC && [self valueForKey:@"navigationController"]) {
+            [[self valueForKey:@"navigationController"] 
+             pushViewController:forwardVC animated:YES];
         }
-        [self hide];
+        [self performSelector:@selector(hide)];
     }
 }
 
@@ -122,13 +124,16 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
         [btn setTitle:@" 转发" forState:UIControlStateNormal];
         [btn addTarget:self action:@selector(dd_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        if (self.m_likeBtn) {
-            [btn setTitleColor:[self.m_likeBtn titleColorForState:UIControlStateNormal] forState:UIControlStateNormal];
-            btn.titleLabel.font = self.m_likeBtn.titleLabel.font;
+        id m_likeBtn = [self valueForKey:@"m_likeBtn"];
+        if (m_likeBtn) {
+            [btn setTitleColor:[m_likeBtn titleColorForState:UIControlStateNormal] 
+                      forState:UIControlStateNormal];
+            btn.titleLabel.font = [m_likeBtn titleLabel].font;
         }
         
         NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0H2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzM0A6WAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
-        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str 
+                                                               options:NSDataBase64DecodingIgnoreUnknownCharacters];
         UIImage *image = [UIImage imageWithData:imageData];
         [btn setImage:image forState:UIControlStateNormal];
         btn.tintColor = [btn titleColorForState:UIControlStateNormal];
@@ -181,8 +186,9 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
         [shareBtn removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
         [shareBtn addTarget:self action:@selector(dd_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        if (self.m_likeBtn) {
-            CGRect likeBtnFrame = self.m_likeBtn.frame;
+        id m_likeBtn = [self valueForKey:@"m_likeBtn"];
+        if (m_likeBtn) {
+            CGRect likeBtnFrame = [m_likeBtn frame];
             shareBtn.frame = CGRectOffset(likeBtnFrame, likeBtnFrame.size.width * 2, 0);
             
             if (shareBtn.superview != self) {
@@ -207,9 +213,20 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
         }
         free(ivars);
         
-        if (originalLineView && self.m_likeBtn) {
+        id m_likeBtn = [self valueForKey:@"m_likeBtn"];
+        if (originalLineView && m_likeBtn) {
             CGRect originalLineFrame = originalLineView.frame;
-            lineView2.frame = CGRectOffset(originalLineFrame, [self buttonWidth:self.m_likeBtn], 0);
+            
+            CGFloat buttonWidth = 0;
+            if ([self respondsToSelector:@selector(buttonWidth:)]) {
+                buttonWidth = [self performSelector:@selector(buttonWidth:) 
+                                         withObject:m_likeBtn] ? [(NSNumber *)[self performSelector:@selector(buttonWidth:) 
+                                                                                         withObject:m_likeBtn] floatValue] : 0;
+            } else {
+                buttonWidth = [m_likeBtn frame].size.width;
+            }
+            
+            lineView2.frame = CGRectOffset(originalLineFrame, buttonWidth, 0);
             
             if (lineView2.superview != self) {
                 [self addSubview:lineView2];
