@@ -55,21 +55,21 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         // 获取上下文
         CGContextRef context = UIGraphicsGetCurrentContext();
         
-        // 设置线条属性 - 使用白色
+        // 设置线条属性 - 使用白色，线宽改细为1.0
         CGContextSetStrokeColorWithColor(context, [UIColor whiteColor].CGColor);
-        CGContextSetLineWidth(context, 1.5);
+        CGContextSetLineWidth(context, 1.0); // 从1.5改为1.0，让图标更细
         CGContextSetLineCap(context, kCGLineCapRound);
         CGContextSetLineJoin(context, kCGLineJoinRound);
         
         // 绘制箭头（简单向右箭头）
-        CGFloat padding = 3.5; // 因为尺寸变小了，所以padding也减小
+        CGFloat padding = 4.0; // 增加一点内边距，让箭头更清晰
         CGContextMoveToPoint(context, padding, padding);
         CGContextAddLineToPoint(context, size.width - padding, size.height / 2);
         CGContextAddLineToPoint(context, padding, size.height - padding);
         
         // 绘制竖线（箭头旁边的竖线）
-        CGContextMoveToPoint(context, size.width - padding - 2, size.height / 2 - 4.5); // 调整长度
-        CGContextAddLineToPoint(context, size.width - padding - 2, size.height / 2 + 4.5);
+        CGContextMoveToPoint(context, size.width - padding - 1.5, size.height / 2 - 4.0); // 调整位置和长度
+        CGContextAddLineToPoint(context, size.width - padding - 1.5, size.height / 2 + 4.0);
         
         // 描边路径
         CGContextStrokePath(context);
