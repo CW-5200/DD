@@ -39,12 +39,50 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
     }
 }
 
-// ============ 转发按钮图标 ============
-static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgv0aA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
-
 // ============ 转发功能实现 ============
 // 使用 UIView 类别，因为 WCOperateFloatView 继承自 UIView
 @implementation UIView (ForwardExtension)
+
+#pragma mark - 创建转发图标（使用代码绘制箭头图标）
++ (UIImage *)forwardIconImage {
+    static UIImage *forwardIcon = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 创建一个 20x20 的箭头图标
+        CGSize size = CGSizeMake(20, 20);
+        UIGraphicsBeginImageContextWithOptions(size, NO, 0.0);
+        
+        // 获取上下文
+        CGContextRef context = UIGraphicsGetCurrentContext();
+        
+        // 设置线条属性
+        CGContextSetStrokeColorWithColor(context, [UIColor blackColor].CGColor);
+        CGContextSetLineWidth(context, 1.5);
+        CGContextSetLineCap(context, kCGLineCapRound);
+        CGContextSetLineJoin(context, kCGLineJoinRound);
+        
+        // 绘制箭头（简单向右箭头）
+        CGFloat padding = 4.0;
+        CGContextMoveToPoint(context, padding, padding);
+        CGContextAddLineToPoint(context, size.width - padding, size.height / 2);
+        CGContextAddLineToPoint(context, padding, size.height - padding);
+        
+        // 绘制竖线（箭头旁边的竖线）
+        CGContextMoveToPoint(context, size.width - padding - 2, size.height / 2 - 5);
+        CGContextAddLineToPoint(context, size.width - padding - 2, size.height / 2 + 5);
+        
+        // 描边路径
+        CGContextStrokePath(context);
+        
+        // 获取图片
+        forwardIcon = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        
+        // 设置渲染模式为模板模式，以便跟随 tintColor
+        forwardIcon = [forwardIcon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    });
+    return forwardIcon;
+}
 
 #pragma mark - 添加转发按钮
 - (UIButton *)m_shareBtn {
@@ -58,19 +96,24 @@ static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCA
         btn = [UIButton buttonWithType:UIButtonTypeCustom];
         [btn setTitle:@" 转发" forState:UIControlStateNormal];
         [btn addTarget:self action:@selector(forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+        
+        // 使用点赞按钮的颜色和字体
         [btn setTitleColor:likeBtn.currentTitleColor forState:UIControlStateNormal];
         btn.titleLabel.font = likeBtn.titleLabel.font;
         
-        // 设置按钮图标
-        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:kForwardIconBase64 
-                                                               options:NSDataBase64DecodingIgnoreUnknownCharacters];
-        UIImage *image = [UIImage imageWithData:imageData];
-        [btn setImage:image forState:UIControlStateNormal];
-        [btn setTintColor:likeBtn.tintColor];
+        // 设置按钮图标（使用代码绘制的图标）
+        UIImage *forwardIcon = [[self class] forwardIconImage];
+        [btn setImage:forwardIcon forState:UIControlStateNormal];
+        
+        // 设置 tintColor，确保图标颜色与文字一致
+        btn.tintColor = likeBtn.tintColor ?: [likeBtn titleColorForState:UIControlStateNormal];
         
         // 添加到视图
         [likeBtn.superview addSubview:btn];
         objc_setAssociatedObject(self, &m_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        
+        // 调试：设置背景色以便查看按钮位置（正式版本可以注释掉）
+        // btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:0.3];
     }
     return btn;
 }
@@ -147,6 +190,10 @@ static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCA
     UIButton *shareBtn = [self m_shareBtn];
     if (likeBtn && shareBtn) {
         shareBtn.frame = CGRectOffset(likeBtn.frame, likeBtn.frame.size.width * 2, 0);
+        
+        // 确保按钮可见
+        shareBtn.hidden = NO;
+        shareBtn.alpha = 1.0;
     }
     
     // 设置第二条分割线位置
