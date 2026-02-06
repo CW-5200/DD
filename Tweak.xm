@@ -25,8 +25,9 @@
 @end
 
 @interface WCOperateFloatView : UIView
-@property(readonly, nonatomic) id m_likeBtn;
-@property(readonly, nonatomic) id m_item;
+@property(readonly, nonatomic) UIButton *m_likeBtn;
+@property(readonly, nonatomic) UIButton *m_commentBtn;
+@property(readonly, nonatomic) WCDataItem *m_item;
 @property(nonatomic, weak) UINavigationController *navigationController;
 - (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2;
 - (double)buttonWidth:(id)arg1;
@@ -52,76 +53,45 @@
 
 @end
 
-// MARK: - 图片处理工具
-@interface UIImage (DDResize)
-- (UIImage *)dd_resizedImageWithSize:(CGSize)size;
-@end
-
-@implementation UIImage (DDResize)
-
-- (UIImage *)dd_resizedImageWithSize:(CGSize)size {
-    UIGraphicsBeginImageContextWithOptions(size, NO, 0.0);
-    [self drawInRect:CGRectMake(0, 0, size.width, size.height)];
-    UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return resizedImage;
-}
-
-@end
-
 // MARK: - WCOperateFloatView 扩展 (添加转发功能)
 @implementation NSObject (DDTimeLineForward)
-
-// 图片缩放辅助方法
-- (UIImage *)dd_resizedImage:(UIImage *)image size:(CGSize)size {
-    if (!image) return nil;
-    return [image dd_resizedImageWithSize:size];
-}
-
-// 创建按钮配置
-- (UIButtonConfiguration *)dd_shareButtonConfiguration {
-    UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-    
-    // 设置标题
-    NSMutableAttributedString *attributedTitle = [[NSMutableAttributedString alloc] initWithString:@"转发"];
-    [attributedTitle addAttribute:NSFontAttributeName 
-                            value:[UIFont systemFontOfSize:14] 
-                            range:NSMakeRange(0, attributedTitle.length)];
-    [attributedTitle addAttribute:NSForegroundColorAttributeName 
-                            value:[UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0] 
-                            range:NSMakeRange(0, attributedTitle.length)];
-    
-    config.attributedTitle = attributedTitle;
-    
-    // 设置图片和文字的间距
-    config.imagePadding = 2;
-    config.imagePlacement = NSDirectionalRectEdgeLeading;
-    
-    return config;
-}
 
 // 动态添加分享按钮属性
 - (UIButton *)dd_shareBtn {
     static char dd_shareBtnKey;
     UIButton *btn = objc_getAssociatedObject(self, &dd_shareBtnKey);
     if (!btn) {
+        WCOperateFloatView *floatView = (WCOperateFloatView *)self;
+        
         btn = [UIButton buttonWithType:UIButtonTypeCustom];
+        [btn setTitle:@" 转发" forState:UIControlStateNormal];
+        [btn addTarget:self action:@selector(dd_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        // DeepSeek风格的分享图标
-        NSString *deepSeekShareIcon = @"iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAGKSURBVHgBpZYLbBRBFIbv7oKGSw1pTAiRagwqV4QoFTRyEwnBPmL0gX3QYBRRo4INaRDlEag2hMQHhDZIAg12pTEkoAnK8hLwAW2XUkmM2li8gFhKo7bU0tbe6V7cnu7MdXfd0U7ys5v577z2zMz5AFowk3Y7pJfCqwE0C7PZ5fJNvAT5TwCh6M9eG3FbFQw7pwY3rO3z3Tka0+L86nL+q41pJj2WQl5+XQJ40FOq31y/LtwkERiJQXgE0Jj4n7zMf40c5zuhQk7Mysigw2uXCerGYF/7ss14FpQ65DTYQ9P2oc4Y8L8KQDHc0z2y6N8fXfl36P3MMh/YDCj97nt9cVxhq4EokTMMe7gnwLYCf57xHc/9jNChyLkTx4j6rI2vn4/n+9v5T1ggF39lyL+Vv9nf+J7SFO1Pz/AZ/11cAExAwPqjKJXr9vnXJopN4NYADM/h+q7fFfRFmE/21FkfnxBrE5+RZ7MdxKXAGYR9i8NpP5nI2i6PxKHyi5Y10lHc2r/0IYA5ubVrX46e7dHkA3z0AAAAASUVORK5CYII=";
+        // 使用原始按钮的样式设置
+        if (floatView.m_likeBtn) {
+            [btn setTitleColor:[floatView.m_likeBtn titleColorForState:UIControlStateNormal] forState:UIControlStateNormal];
+            btn.titleLabel.font = floatView.m_likeBtn.titleLabel.font;
+        } else {
+            [btn setTitleColor:[UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0] forState:UIControlStateNormal];
+            btn.titleLabel.font = [UIFont systemFontOfSize:14];
+        }
         
-        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:deepSeekShareIcon options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        // 设置转发图标（从原始文件的base64字符串）
+        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Unek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKusMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
+        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
         UIImage *image = [UIImage imageWithData:imageData];
         
-        // 调整图标大小（16x16像素）
-        UIImage *resizedImage = [self dd_resizedImage:image size:CGSizeMake(16, 16)];
+        // 调整图片大小以匹配原始文件（大概20x20像素）
+        CGSize newSize = CGSizeMake(20, 20);
+        UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
+        [image drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
+        UIImage *scaledImage = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
         
-        // 使用UIButtonConfiguration配置按钮
-        UIButtonConfiguration *config = [self dd_shareButtonConfiguration];
-        config.image = resizedImage;
-        btn.configuration = config;
+        [btn setImage:scaledImage forState:UIControlStateNormal];
         
-        [btn addTarget:self action:@selector(dd_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+        // 设置图片渲染模式，保持原始颜色
+        btn.tintColor = [btn titleColorForState:UIControlStateNormal];
         
         objc_setAssociatedObject(self, &dd_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -133,10 +103,31 @@
     static char dd_lineView2Key;
     UIImageView *imageView = objc_getAssociatedObject(self, &dd_lineView2Key);
     if (!imageView) {
-        // 创建分割线
-        imageView = [[UIImageView alloc] init];
-        imageView.backgroundColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0];
-        imageView.frame = CGRectMake(0, 0, 1, 20);
+        WCOperateFloatView *floatView = (WCOperateFloatView *)self;
+        
+        // 尝试获取原始分割线
+        UIImageView *originalLineView = nil;
+        unsigned int outCount = 0;
+        Ivar *ivars = class_copyIvarList([floatView class], &outCount);
+        for (unsigned int i = 0; i < outCount; i++) {
+            Ivar ivar = ivars[i];
+            const char *name = ivar_getName(ivar);
+            if (name && strstr(name, "lineView")) {
+                originalLineView = object_getIvar(floatView, ivar);
+                break;
+            }
+        }
+        free(ivars);
+        
+        // 创建分割线，参考原始文件
+        if (originalLineView && originalLineView.image) {
+            imageView = [[UIImageView alloc] initWithImage:originalLineView.image];
+        } else {
+            imageView = [[UIImageView alloc] init];
+            imageView.backgroundColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0];
+            imageView.frame = CGRectMake(0, 0, 1, 20);
+        }
+        
         objc_setAssociatedObject(self, &dd_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return imageView;
@@ -147,36 +138,16 @@
     if (![DDTimeLineForwardConfig isEnabled]) return;
     
     WCOperateFloatView *floatView = (WCOperateFloatView *)self;
-    WCForwardViewController *forwardVC = [[objc_getClass("WCForwardViewController") alloc] initWithDataItem:floatView.m_item];
-    if (forwardVC && floatView.navigationController) {
-        [floatView.navigationController pushViewController:forwardVC animated:YES];
-    }
-    [floatView hide];
-}
-
-// 获取浮窗中的其他按钮，用于布局参考
-- (NSArray *)dd_getAllButtons {
-    WCOperateFloatView *floatView = (WCOperateFloatView *)self;
-    NSMutableArray *buttons = [NSMutableArray array];
     
-    // 通过运行时查找所有按钮
-    unsigned int outCount = 0;
-    Ivar *ivars = class_copyIvarList([floatView class], &outCount);
-    for (unsigned int i = 0; i < outCount; i++) {
-        Ivar ivar = ivars[i];
-        const char *name = ivar_getName(ivar);
-        if (name && (strstr(name, "Btn") || strstr(name, "btn"))) {
-            id button = object_getIvar(floatView, ivar);
-            if ([button isKindOfClass:[UIButton class]]) {
-                [buttons addObject:button];
-            }
+    // 创建转发控制器（参考原始文件）
+    Class forwardViewControllerClass = objc_getClass("WCForwardViewController");
+    if (forwardViewControllerClass) {
+        id forwardVC = [[forwardViewControllerClass alloc] initWithDataItem:floatView.m_item];
+        if (forwardVC && floatView.navigationController) {
+            [floatView.navigationController pushViewController:forwardVC animated:YES];
         }
+        [floatView hide];
     }
-    free(ivars);
-    
-    return [buttons sortedArrayUsingComparator:^NSComparisonResult(UIButton *btn1, UIButton *btn2) {
-        return btn1.frame.origin.x > btn2.frame.origin.x ? NSOrderedDescending : NSOrderedAscending;
-    }];
 }
 
 // Hook显示方法
@@ -188,61 +159,55 @@
     
     WCOperateFloatView *floatView = (WCOperateFloatView *)self;
     
-    // 先移除可能存在的旧转发按钮和分割线
-    [[floatView dd_shareBtn] removeFromSuperview];
-    [[floatView dd_lineView2] removeFromSuperview];
+    // 参考原始文件：调整浮窗大小以容纳三个按钮
+    CGRect frame = floatView.frame;
+    frame = CGRectInset(frame, frame.size.width / -4, 0);
+    frame = CGRectOffset(frame, frame.size.width / -4, 0);
+    floatView.frame = frame;
     
-    // 获取所有按钮进行智能布局
-    NSArray *allButtons = [self dd_getAllButtons];
-    
-    if (allButtons.count > 0) {
-        // 取最后一个按钮作为参考
-        UIButton *lastButton = [allButtons lastObject];
-        CGFloat buttonWidth = CGRectGetWidth(lastButton.frame);
-        CGFloat buttonHeight = CGRectGetHeight(lastButton.frame);
-        CGFloat spacing = 0;
+    // 添加转发按钮
+    UIButton *shareBtn = [floatView dd_shareBtn];
+    if (floatView.m_likeBtn) {
+        // 参考原始文件：转发按钮位置是点赞按钮向右移动两个按钮宽度
+        CGRect likeBtnFrame = floatView.m_likeBtn.frame;
+        shareBtn.frame = CGRectOffset(likeBtnFrame, likeBtnFrame.size.width * 2, 0);
         
-        // 计算按钮间距
-        if (allButtons.count > 1) {
-            UIButton *prevButton = allButtons[allButtons.count - 2];
-            spacing = CGRectGetMinX(lastButton.frame) - CGRectGetMaxX(prevButton.frame);
+        // 确保转发按钮在视图层级中
+        if (shareBtn.superview != floatView) {
+            [floatView addSubview:shareBtn];
         }
-        
-        // 调整浮窗大小
-        CGRect frame = floatView.frame;
-        frame.size.width += buttonWidth + spacing;
-        floatView.frame = frame;
-        
-        // 添加转发按钮
-        UIButton *shareBtn = [floatView dd_shareBtn];
-        shareBtn.frame = CGRectMake(CGRectGetMaxX(lastButton.frame) + spacing, 
-                                   CGRectGetMinY(lastButton.frame), 
-                                   buttonWidth, 
-                                   buttonHeight);
-        [floatView addSubview:shareBtn];
-        
-        // 添加分割线
-        UIImageView *originalLineView = nil;
-        unsigned int outCount = 0;
-        Ivar *ivars = class_copyIvarList([floatView class], &outCount);
-        for (unsigned int i = 0; i < outCount; i++) {
-            Ivar ivar = ivars[i];
-            const char *name = ivar_getName(ivar);
-            if (name && strstr(name, "lineView")) {
-                originalLineView = object_getIvar(floatView, ivar);
-                if (originalLineView) {
-                    UIImageView *lineView2 = [floatView dd_lineView2];
-                    lineView2.frame = CGRectMake(CGRectGetMaxX(originalLineView.frame) + buttonWidth,
-                                                CGRectGetMinY(originalLineView.frame),
-                                                CGRectGetWidth(originalLineView.frame),
-                                                CGRectGetHeight(originalLineView.frame));
-                    [floatView addSubview:lineView2];
-                    break;
-                }
-            }
-        }
-        free(ivars);
     }
+    
+    // 添加分割线
+    UIImageView *lineView2 = [floatView dd_lineView2];
+    UIImageView *originalLineView = nil;
+    
+    // 获取原始分割线
+    unsigned int outCount = 0;
+    Ivar *ivars = class_copyIvarList([floatView class], &outCount);
+    for (unsigned int i = 0; i < outCount; i++) {
+        Ivar ivar = ivars[i];
+        const char *name = ivar_getName(ivar);
+        if (name && strstr(name, "lineView")) {
+            originalLineView = object_getIvar(floatView, ivar);
+            break;
+        }
+    }
+    free(ivars);
+    
+    if (originalLineView && floatView.m_likeBtn) {
+        // 参考原始文件：第二条分割线在第一条分割线向右移动一个按钮宽度处
+        CGRect originalLineFrame = originalLineView.frame;
+        lineView2.frame = CGRectOffset(originalLineFrame, [floatView buttonWidth:floatView.m_likeBtn], 0);
+        
+        // 确保分割线在视图层级中
+        if (lineView2.superview != floatView) {
+            [floatView addSubview:lineView2];
+        }
+    }
+    
+    // 重新布局以确保所有按钮正确显示
+    [floatView layoutIfNeeded];
 }
 
 @end
@@ -270,18 +235,42 @@ static void DDTimeLineForwardPluginLoad() {
             // Hook WCOperateFloatView的showWithItemData:tipPoint:方法
             Class floatViewClass = objc_getClass("WCOperateFloatView");
             if (floatViewClass) {
-                Method originalMethod = class_getInstanceMethod(floatViewClass, @selector(showWithItemData:tipPoint:));
-                Method swizzledMethod = class_getInstanceMethod(floatViewClass, @selector(dd_showWithItemData:tipPoint:));
+                // 检查原始方法是否存在
+                SEL originalSelector = @selector(showWithItemData:tipPoint:);
+                SEL swizzledSelector = @selector(dd_showWithItemData:tipPoint:);
                 
-                if (originalMethod && swizzledMethod) {
+                Method originalMethod = class_getInstanceMethod(floatViewClass, originalSelector);
+                
+                if (originalMethod) {
+                    // 添加新的方法实现
+                    class_addMethod(floatViewClass, swizzledSelector, 
+                                  (IMP)dd_showWithItemData_tipPoint, "v@:@{CGPoint=dd}");
+                    
+                    // 交换方法
+                    Method swizzledMethod = class_getInstanceMethod(floatViewClass, swizzledSelector);
                     method_exchangeImplementations(originalMethod, swizzledMethod);
+                    
                     NSLog(@"[DD朋友圈转发] 插件加载成功，版本 1.0.0");
                 } else {
-                    NSLog(@"[DD朋友圈转发] 方法交换失败");
+                    NSLog(@"[DD朋友圈转发] 原始方法未找到");
                 }
             } else {
                 NSLog(@"[DD朋友圈转发] WCOperateFloatView类未找到");
             }
         });
     }
+}
+
+// C函数实现，用于方法交换
+static void dd_showWithItemData_tipPoint(id self, SEL _cmd, id arg1, struct CGPoint arg2) {
+    // 调用原始实现（经过交换后实际上是原始方法）
+    void (*originalIMP)(id, SEL, id, struct CGPoint) = (void (*)(id, SEL, id, struct CGPoint))class_getMethodImplementation(object_getClass(self), @selector(dd_showWithItemData:tipPoint:));
+    
+    // 先调用原始方法
+    if (originalIMP) {
+        originalIMP(self, _cmd, arg1, arg2);
+    }
+    
+    // 然后执行我们的自定义逻辑
+    [self performSelector:@selector(dd_postShowProcessing)];
 }
