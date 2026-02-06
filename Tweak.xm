@@ -34,12 +34,6 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
 - (instancetype)init {
     if (self = [super init]) {
         _forwardEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:kDDForwardEnabledKey];
-        
-        if ([[NSUserDefaults standardUserDefaults] objectForKey:kDDForwardEnabledKey] == nil) {
-            _forwardEnabled = YES; // 默认开启
-            [[NSUserDefaults standardUserDefaults] setBool:_forwardEnabled forKey:kDDForwardEnabledKey];
-            [[NSUserDefaults standardUserDefaults] synchronize];
-        }
     }
     return self;
 }
@@ -164,7 +158,6 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
 - (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
     %orig(arg1, arg2);
     
-    // 检查开关状态
     if (![DDForwardConfig sharedConfig].forwardEnabled) {
         return;
     }
@@ -244,7 +237,6 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
 
 %ctor {
     @autoreleasepool {
-        // 注册插件到插件管理器
         if (NSClassFromString(@"WCPluginsMgr")) {
             [[objc_getClass("WCPluginsMgr") sharedInstance] 
                 registerControllerWithTitle:@"DD朋友圈转发" 
