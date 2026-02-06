@@ -78,30 +78,50 @@
     return [image dd_resizedImageWithSize:size];
 }
 
+// 创建按钮配置
+- (UIButtonConfiguration *)dd_shareButtonConfiguration {
+    UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+    
+    // 设置标题
+    NSMutableAttributedString *attributedTitle = [[NSMutableAttributedString alloc] initWithString:@"转发"];
+    [attributedTitle addAttribute:NSFontAttributeName 
+                            value:[UIFont systemFontOfSize:14] 
+                            range:NSMakeRange(0, attributedTitle.length)];
+    [attributedTitle addAttribute:NSForegroundColorAttributeName 
+                            value:[UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0] 
+                            range:NSMakeRange(0, attributedTitle.length)];
+    
+    config.attributedTitle = attributedTitle;
+    
+    // 设置图片和文字的间距
+    config.imagePadding = 2;
+    config.imagePlacement = NSDirectionalRectEdgeLeading;
+    
+    return config;
+}
+
 // 动态添加分享按钮属性
 - (UIButton *)dd_shareBtn {
     static char dd_shareBtnKey;
     UIButton *btn = objc_getAssociatedObject(self, &dd_shareBtnKey);
     if (!btn) {
         btn = [UIButton buttonWithType:UIButtonTypeCustom];
-        [btn setTitle:@" 转发" forState:UIControlStateNormal];
-        [btn addTarget:self action:@selector(dd_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
-        [btn setTitleColor:[UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0] forState:UIControlStateNormal];
-        btn.titleLabel.font = [UIFont systemFontOfSize:14];
         
         // DeepSeek风格的分享图标
-        NSString *deepSeekShareIcon = @"iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAGKSURBVHgBpZYLbBRBFIbv7oKGSw1pTAiRagwqV4QoFTRyEwnBPmL0gX3QYBRRo4INaRDlEag2hMQHhDZIAg12pTEkoAnK8hLwAW2XUkmM2li8gFhKo7bU0tbe6V7cnu7MdXfd0U7ys5v577z2zMz5AFowk3Y7pJfCqwE0C7PZ5fJNvAT5TwCh6M9eG3FbFQw7pwY3rO3z3Tka0+L86nL+q41pJj2WQl5+XQJ40FOq31y/LtwkERiJQXgE0Jj4n7zMf40c5zuhQk7Mysigw2uXCerGYF/ss14FpQ65DTYQ9P2oc4Y8L8KQDHc0z2y6N8fXfl36P3MMh/YDCj97nt9cVxhq4EokTMMe7gnwLYCf57xHc/9jNChyLkTx4j6rI2vn4/n+9v5T1ggF39lyL+Vv9nf+J7SFO1Pz/AZ/11cAExAwPqjKJXr9vnXJopN4NYADM/h+q7fFfRFmE/21FkfnxBrE5+RZ7MdxKXAGYR9i8NpP5nI2i6PxKHyi5Y10lHc2r/0IYA5ubVrX46e7dHkA3z0AAAAASUVORK5CYII=";
+        NSString *deepSeekShareIcon = @"iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAGKSURBVHgBpZYLbBRBFIbv7oKGSw1pTAiRagwqV4QoFTRyEwnBPmL0gX3QYBRRo4INaRDlEag2hMQHhDZIAg12pTEkoAnK8hLwAW2XUkmM2li8gFhKo7bU0tbe6V7cnu7MdXfd0U7ys5v577z2zMz5AFowk3Y7pJfCqwE0C7PZ5fJNvAT5TwCh6M9eG3FbFQw7pwY3rO3z3Tka0+L86nL+q41pJj2WQl5+XQJ40FOq31y/LtwkERiJQXgE0Jj4n7zMf40c5zuhQk7Mysigw2uXCerGYF/7ss14FpQ65DTYQ9P2oc4Y8L8KQDHc0z2y6N8fXfl36P3MMh/YDCj97nt9cVxhq4EokTMMe7gnwLYCf57xHc/9jNChyLkTx4j6rI2vn4/n+9v5T1ggF39lyL+Vv9nf+J7SFO1Pz/AZ/11cAExAwPqjKJXr9vnXJopN4NYADM/h+q7fFfRFmE/21FkfnxBrE5+RZ7MdxKXAGYR9i8NpP5nI2i6PxKHyi5Y10lHc2r/0IYA5ubVrX46e7dHkA3z0AAAAASUVORK5CYII=";
         
         NSData *imageData = [[NSData alloc] initWithBase64EncodedString:deepSeekShareIcon options:NSDataBase64DecodingIgnoreUnknownCharacters];
         UIImage *image = [UIImage imageWithData:imageData];
         
         // 调整图标大小（16x16像素）
         UIImage *resizedImage = [self dd_resizedImage:image size:CGSizeMake(16, 16)];
-        [btn setImage:resizedImage forState:UIControlStateNormal];
         
-        // 调整图片和文字间距
-        btn.imageEdgeInsets = UIEdgeInsetsMake(0, -2, 0, 2);
-        btn.titleEdgeInsets = UIEdgeInsetsMake(0, 2, 0, -2);
+        // 使用UIButtonConfiguration配置按钮
+        UIButtonConfiguration *config = [self dd_shareButtonConfiguration];
+        config.image = resizedImage;
+        btn.configuration = config;
+        
+        [btn addTarget:self action:@selector(dd_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
         objc_setAssociatedObject(self, &dd_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
