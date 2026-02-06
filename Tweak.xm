@@ -16,6 +16,7 @@
 @property (nonatomic, readonly) UIButton *m_likeBtn;
 @property (nonatomic, readonly) UIImageView *m_lineView;
 - (double)buttonWidth:(UIButton *)button;
+- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2;
 @end
 
 // 分类扩展
@@ -107,8 +108,8 @@ static char m_lineView2Key;
     if (self.m_item && self.navigationController) {
         Class WCForwardViewControllerClass = objc_getClass("WCForwardViewController");
         if (WCForwardViewControllerClass) {
-            // 使用performSelector避免类型检查
-            id forwardVC = [[WCForwardViewControllerClass alloc] performSelector:@selector(initWithDataItem:) withObject:self.m_item];
+            // 使用runtime直接调用方法，避免ARC警告
+            id forwardVC = ((id (*)(id, SEL, id))objc_msgSend)([WCForwardViewControllerClass alloc], @selector(initWithDataItem:), self.m_item);
             if (forwardVC && self.navigationController) {
                 [self.navigationController pushViewController:forwardVC animated:YES];
             }
@@ -133,17 +134,18 @@ static char m_lineView2Key;
         SEL swizzledSelector = @selector(swizzled_showWithItemData:tipPoint:);
         
         Method originalMethod = class_getInstanceMethod(clazz, originalSelector);
-        Method swizzledMethod = class_getInstanceMethod(self, swizzledSelector);
+        Method swizzledMethod = class_getInstanceMethod(clazz, swizzledSelector);
         
-        if (originalMethod && swizzledMethod) {
-            BOOL didAddMethod = class_addMethod(clazz, swizzledSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod));
-            
-            if (didAddMethod) {
-                swizzledMethod = class_getInstanceMethod(clazz, swizzledSelector);
+        // 如果当前类没有实现swizzled方法，先添加
+        if (!class_addMethod(clazz, swizzledSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod))) {
+            // 方法已经存在，直接交换
+            method_exchangeImplementations(originalMethod, swizzledMethod);
+        } else {
+            // 添加成功，现在originalMethod指向原始实现，swizzledMethod指向交换后的实现
+            // 重新获取swizzledMethod（因为刚添加的）
+            swizzledMethod = class_getInstanceMethod(clazz, swizzledSelector);
+            if (originalMethod && swizzledMethod) {
                 method_exchangeImplementations(originalMethod, swizzledMethod);
-            } else {
-                class_replaceMethod(clazz, swizzledSelector, method_getImplementation(originalMethod), method_getTypeEncoding(originalMethod));
-                class_addMethod(clazz, originalSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod));
             }
         }
     });
