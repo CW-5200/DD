@@ -52,7 +52,10 @@ __attribute__((constructor)) static void entry() {
     if (dataItem) {
         Class forwardVCClass = objc_getClass("WCForwardViewController");
         if (forwardVCClass) {
-            id forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
+            // 使用 objc_msgSend 动态调用方法
+            id (*msgSend)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
+            id forwardVC = msgSend(msgSend(forwardVCClass, @selector(alloc), nil), @selector(initWithDataItem:), dataItem);
+            
             id navController = [self valueForKey:@"navigationController"];
             if (navController) {
                 [navController pushViewController:forwardVC animated:YES];
