@@ -48,8 +48,8 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
     static UIImage *forwardIcon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 创建一个 20x20 的白色箭头图标
-        CGSize size = CGSizeMake(20, 20);
+        // 创建一个 19x19 的白色箭头图标
+        CGSize size = CGSizeMake(19, 19);
         UIGraphicsBeginImageContextWithOptions(size, NO, 0.0);
         
         // 获取上下文
@@ -62,14 +62,14 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         CGContextSetLineJoin(context, kCGLineJoinRound);
         
         // 绘制箭头（简单向右箭头）
-        CGFloat padding = 4.0;
+        CGFloat padding = 3.5;
         CGContextMoveToPoint(context, padding, padding);
         CGContextAddLineToPoint(context, size.width - padding, size.height / 2);
         CGContextAddLineToPoint(context, padding, size.height - padding);
         
         // 绘制竖线（箭头旁边的竖线）
-        CGContextMoveToPoint(context, size.width - padding - 2, size.height / 2 - 5);
-        CGContextAddLineToPoint(context, size.width - padding - 2, size.height / 2 + 5);
+        CGContextMoveToPoint(context, size.width - padding - 1.5, size.height / 2 - 4.5);
+        CGContextAddLineToPoint(context, size.width - padding - 1.5, size.height / 2 + 4.5);
         
         // 描边路径
         CGContextStrokePath(context);
