@@ -56,23 +56,6 @@
 // MARK: - WCOperateFloatView 扩展 (添加转发功能)
 @implementation NSObject (DDTimeLineForward)
 
-// 获取微信原生分享图标
-- (UIImage *)dd_wechatShareIcon {
-    static UIImage *cachedIcon = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        // 直接使用确认的图标名称
-        cachedIcon = [UIImage imageNamed:@"icons_outlined_share_1.5pt.svg"];
-        
-        // 确保图标使用模板渲染模式，以便正确着色
-        if (cachedIcon) {
-            cachedIcon = [cachedIcon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        }
-    });
-    
-    return cachedIcon;
-}
-
 // 动态添加分享按钮属性
 - (UIButton *)dd_shareBtn {
     static char dd_shareBtnKey;
@@ -88,16 +71,13 @@
         if (floatView.m_likeBtn) {
             [btn setTitleColor:[floatView.m_likeBtn titleColorForState:UIControlStateNormal] forState:UIControlStateNormal];
             btn.titleLabel.font = floatView.m_likeBtn.titleLabel.font;
-        } else {
-            [btn setTitleColor:[UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0] forState:UIControlStateNormal];
-            btn.titleLabel.font = [UIFont systemFontOfSize:14];
         }
         
-        // 使用微信原生分享图标
-        UIImage *shareIcon = [self dd_wechatShareIcon];
-        if (shareIcon) {
-            [btn setImage:shareIcon forState:UIControlStateNormal];
-        }
+        // 使用原始代码中的Base64图标
+        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
+        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        UIImage *image = [UIImage imageWithData:imageData];
+        [btn setImage:image forState:UIControlStateNormal];
         
         // 设置图片渲染模式，保持原始颜色
         btn.tintColor = [btn titleColorForState:UIControlStateNormal];
@@ -131,10 +111,6 @@
         // 创建分割线，参考原始文件
         if (originalLineView && originalLineView.image) {
             imageView = [[UIImageView alloc] initWithImage:originalLineView.image];
-        } else {
-            imageView = [[UIImageView alloc] init];
-            imageView.backgroundColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0];
-            imageView.frame = CGRectMake(0, 0, 1, 20);
         }
         
         objc_setAssociatedObject(self, &dd_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
