@@ -43,33 +43,34 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
 // 使用 UIView 类别，因为 WCOperateFloatView 继承自 UIView
 @implementation UIView (ForwardExtension)
 
-#pragma mark - 创建转发图标（使用代码绘制箭头图标）
+#pragma mark - 创建白色转发图标
 + (UIImage *)forwardIconImage {
     static UIImage *forwardIcon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 创建一个 20x20 的箭头图标
+        // 创建一个 20x20 的白色箭头图标
         CGSize size = CGSizeMake(20, 20);
         UIGraphicsBeginImageContextWithOptions(size, NO, 0.0);
         
         // 获取上下文
         CGContextRef context = UIGraphicsGetCurrentContext();
         
-        // 设置线条属性
-        CGContextSetStrokeColorWithColor(context, [UIColor blackColor].CGColor);
-        CGContextSetLineWidth(context, 1.5);
+        // 设置线条属性 - 使用白色
+        CGContextSetStrokeColorWithColor(context, [UIColor whiteColor].CGColor);
+        CGContextSetLineWidth(context, 1.8);
         CGContextSetLineCap(context, kCGLineCapRound);
         CGContextSetLineJoin(context, kCGLineJoinRound);
         
-        // 绘制箭头（简单向右箭头）
+        // 绘制向右箭头
         CGFloat padding = 4.0;
+        // 箭头主路径
         CGContextMoveToPoint(context, padding, padding);
         CGContextAddLineToPoint(context, size.width - padding, size.height / 2);
         CGContextAddLineToPoint(context, padding, size.height - padding);
         
-        // 绘制竖线（箭头旁边的竖线）
-        CGContextMoveToPoint(context, size.width - padding - 2, size.height / 2 - 5);
-        CGContextAddLineToPoint(context, size.width - padding - 2, size.height / 2 + 5);
+        // 绘制竖线（转发图标的一部分）
+        CGContextMoveToPoint(context, size.width - padding - 2, size.height / 2 - 4);
+        CGContextAddLineToPoint(context, size.width - padding - 2, size.height / 2 + 4);
         
         // 描边路径
         CGContextStrokePath(context);
@@ -78,8 +79,8 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         forwardIcon = UIGraphicsGetImageFromCurrentImageContext();
         UIGraphicsEndImageContext();
         
-        // 设置渲染模式为模板模式，以便跟随 tintColor
-        forwardIcon = [forwardIcon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        // 使用原始渲染模式，保持白色不变
+        forwardIcon = [forwardIcon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
     });
     return forwardIcon;
 }
@@ -94,26 +95,31 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         
         // 创建转发按钮
         btn = [UIButton buttonWithType:UIButtonTypeCustom];
-        [btn setTitle:@" 转发" forState:UIControlStateNormal];
+        [btn setTitle:@"转发" forState:UIControlStateNormal];
         [btn addTarget:self action:@selector(forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        // 使用点赞按钮的颜色和字体
-        [btn setTitleColor:likeBtn.currentTitleColor forState:UIControlStateNormal];
+        // 使用白色文字（与点赞按钮相同颜色）
+        UIColor *titleColor = [UIColor whiteColor];
+        [btn setTitleColor:titleColor forState:UIControlStateNormal];
         btn.titleLabel.font = likeBtn.titleLabel.font;
         
-        // 设置按钮图标（使用代码绘制的图标）
+        // 设置按钮图标（白色图标）
         UIImage *forwardIcon = [[self class] forwardIconImage];
         [btn setImage:forwardIcon forState:UIControlStateNormal];
         
-        // 设置 tintColor，确保图标颜色与文字一致
-        btn.tintColor = likeBtn.tintColor ?: [likeBtn titleColorForState:UIControlStateNormal];
+        // 设置按钮的图片和文字布局
+        btn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+        
+        // 调整图片和文字的间距
+        btn.imageEdgeInsets = UIEdgeInsetsMake(0, -8, 0, 0);
+        btn.titleEdgeInsets = UIEdgeInsetsMake(0, 0, 0, -8);
         
         // 添加到视图
         [likeBtn.superview addSubview:btn];
         objc_setAssociatedObject(self, &m_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         
         // 调试：设置背景色以便查看按钮位置（正式版本可以注释掉）
-        // btn.backgroundColor = [UIColor colorWithWhite:0.9 alpha:0.3];
+        // btn.backgroundColor = [UIColor colorWithRed:1 green:0 blue:0 alpha:0.2];
     }
     return btn;
 }
@@ -194,6 +200,9 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         // 确保按钮可见
         shareBtn.hidden = NO;
         shareBtn.alpha = 1.0;
+        
+        // 调试：打印按钮信息
+        // NSLog(@"[WeChatForwardTweak] 转发按钮frame: %@, 颜色: %@", NSStringFromCGRect(shareBtn.frame), shareBtn.currentTitleColor);
     }
     
     // 设置第二条分割线位置
