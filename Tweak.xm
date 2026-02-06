@@ -49,35 +49,13 @@
 }
 @end
 
-@interface WCOperateFloatView (DDForward)
-@property(nonatomic, strong) UIButton *m_shareBtn;
-@property(nonatomic, strong) UIImageView *m_lineView2;
-@end
-
-@implementation WCOperateFloatView (DDForward)
+%hook WCOperateFloatView
 
 static char m_shareBtnKey;
 static char m_lineView2Key;
 
-- (UIButton *)m_shareBtn {
-    return objc_getAssociatedObject(self, &m_shareBtnKey);
-}
-
-- (void)setM_shareBtn:(UIButton *)m_shareBtn {
-    objc_setAssociatedObject(self, &m_shareBtnKey, m_shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-- (UIImageView *)m_lineView2 {
-    return objc_getAssociatedObject(self, &m_lineView2Key);
-}
-
-- (void)setM_lineView2:(UIImageView *)m_lineView2 {
-    objc_setAssociatedObject(self, &m_lineView2Key, m_lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-@end
-
-%hook WCOperateFloatView
+%property (nonatomic, strong) UIButton *m_shareBtn;
+%property (nonatomic, strong) UIImageView *m_lineView2;
 
 %new
 - (void)dd_setupShareButton {
