@@ -57,20 +57,19 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         
         // 设置线条属性 - 使用白色
         CGContextSetStrokeColorWithColor(context, [UIColor whiteColor].CGColor);
-        CGContextSetLineWidth(context, 1.8);
+        CGContextSetLineWidth(context, 1.5);
         CGContextSetLineCap(context, kCGLineCapRound);
         CGContextSetLineJoin(context, kCGLineJoinRound);
         
-        // 绘制向右箭头
+        // 绘制箭头（简单向右箭头）
         CGFloat padding = 4.0;
-        // 箭头主路径
         CGContextMoveToPoint(context, padding, padding);
         CGContextAddLineToPoint(context, size.width - padding, size.height / 2);
         CGContextAddLineToPoint(context, padding, size.height - padding);
         
-        // 绘制竖线（转发图标的一部分）
-        CGContextMoveToPoint(context, size.width - padding - 2, size.height / 2 - 4);
-        CGContextAddLineToPoint(context, size.width - padding - 2, size.height / 2 + 4);
+        // 绘制竖线（箭头旁边的竖线）
+        CGContextMoveToPoint(context, size.width - padding - 2, size.height / 2 - 5);
+        CGContextAddLineToPoint(context, size.width - padding - 2, size.height / 2 + 5);
         
         // 描边路径
         CGContextStrokePath(context);
@@ -79,7 +78,7 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         forwardIcon = UIGraphicsGetImageFromCurrentImageContext();
         UIGraphicsEndImageContext();
         
-        // 使用原始渲染模式，保持白色不变
+        // 设置渲染模式为原始模式，保持白色不变
         forwardIcon = [forwardIcon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
     });
     return forwardIcon;
@@ -93,33 +92,32 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
         if (!likeBtn) return nil;
         
+        // 获取原始按钮的文字颜色（应该是白色）
+        UIColor *titleColor = [likeBtn titleColorForState:UIControlStateNormal];
+        if (!titleColor) {
+            // 如果没有获取到颜色，默认使用白色
+            titleColor = [UIColor whiteColor];
+        }
+        
         // 创建转发按钮
         btn = [UIButton buttonWithType:UIButtonTypeCustom];
-        [btn setTitle:@"转发" forState:UIControlStateNormal];
+        [btn setTitle:@" 转发" forState:UIControlStateNormal];
         [btn addTarget:self action:@selector(forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        // 使用白色文字（与点赞按钮相同颜色）
-        UIColor *titleColor = [UIColor whiteColor];
+        // 使用点赞按钮的文字颜色
         [btn setTitleColor:titleColor forState:UIControlStateNormal];
         btn.titleLabel.font = likeBtn.titleLabel.font;
         
-        // 设置按钮图标（白色图标）
+        // 设置按钮图标（使用白色图标）
         UIImage *forwardIcon = [[self class] forwardIconImage];
         [btn setImage:forwardIcon forState:UIControlStateNormal];
         
-        // 设置按钮的图片和文字布局
-        btn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
-        
-        // 调整图片和文字的间距
-        btn.imageEdgeInsets = UIEdgeInsetsMake(0, -8, 0, 0);
-        btn.titleEdgeInsets = UIEdgeInsetsMake(0, 0, 0, -8);
+        // 设置按钮的 tintColor 为文字颜色，但图标已经使用白色原始模式，所以不会变色
+        btn.tintColor = titleColor;
         
         // 添加到视图
         [likeBtn.superview addSubview:btn];
         objc_setAssociatedObject(self, &m_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        
-        // 调试：设置背景色以便查看按钮位置（正式版本可以注释掉）
-        // btn.backgroundColor = [UIColor colorWithRed:1 green:0 blue:0 alpha:0.2];
     }
     return btn;
 }
@@ -200,9 +198,6 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         // 确保按钮可见
         shareBtn.hidden = NO;
         shareBtn.alpha = 1.0;
-        
-        // 调试：打印按钮信息
-        // NSLog(@"[WeChatForwardTweak] 转发按钮frame: %@, 颜色: %@", NSStringFromCGRect(shareBtn.frame), shareBtn.currentTitleColor);
     }
     
     // 设置第二条分割线位置
