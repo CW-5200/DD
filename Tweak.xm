@@ -54,39 +54,44 @@
 %new
 - (UIButton *)m_shareBtn {
     static char m_shareBtnKey;
-    return objc_getAssociatedObject(self, &m_shareBtnKey);
+    UIButton *btn = objc_getAssociatedObject(self, &m_shareBtnKey);
+    return btn;
 }
 
 %new
 - (UIImageView *)m_lineView2 {
     static char m_lineView2Key;
-    return objc_getAssociatedObject(self, &m_lineView2Key);
+    UIImageView *imageView = objc_getAssociatedObject(self, &m_lineView2Key);
+    return imageView;
 }
 
 %new
 - (void)dd_setupShareButton {
-    if ([self m_shareBtn]) return;
+    static char m_shareBtnKey;
+    UIButton *btn = objc_getAssociatedObject(self, &m_shareBtnKey);
+    if (btn) return;
     
-    UIButton *shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    [shareBtn setTitle:@" 转发" forState:UIControlStateNormal];
-    [shareBtn addTarget:self action:@selector(forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
-    [shareBtn setTitleColor:self.m_likeBtn.currentTitleColor forState:0];
-    shareBtn.titleLabel.font = self.m_likeBtn.titleLabel.font;
+    btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [btn setTitle:@" 转发" forState:UIControlStateNormal];
+    [btn addTarget:self action:@selector(forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+    [btn setTitleColor:self.m_likeBtn.currentTitleColor forState:0];
+    btn.titleLabel.font = self.m_likeBtn.titleLabel.font;
     
     NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Oncek5z+c5z/n+n0f8c+ivPDMrAAVJG1l7mgWVga0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaABWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
     NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
     UIImage *image = [UIImage imageWithData:imageData];
-    [shareBtn setImage:image forState:0];
-    [shareBtn setTintColor:self.m_likeBtn.tintColor];
+    [btn setImage:image forState:0];
+    [btn setTintColor:self.m_likeBtn.tintColor];
     
-    static char m_shareBtnKey;
-    objc_setAssociatedObject(self, &m_shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [self.m_likeBtn.superview addSubview:shareBtn];
+    objc_setAssociatedObject(self, &m_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [self.m_likeBtn.superview addSubview:btn];
 }
 
 %new
 - (void)dd_setupLineView2 {
-    if ([self m_lineView2]) return;
+    static char m_lineView2Key;
+    UIImageView *imageView = objc_getAssociatedObject(self, &m_lineView2Key);
+    if (imageView) return;
     
     UIImageView *originalLineView = nil;
     unsigned int count = 0;
@@ -102,10 +107,9 @@
     free(ivars);
     
     if (originalLineView && originalLineView.image) {
-        UIImageView *lineView2 = [[UIImageView alloc] initWithImage:originalLineView.image];
-        static char m_lineView2Key;
-        objc_setAssociatedObject(self, &m_lineView2Key, lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self.m_likeBtn.superview addSubview:lineView2];
+        imageView = [[UIImageView alloc] initWithImage:originalLineView.image];
+        objc_setAssociatedObject(self, &m_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self.m_likeBtn.superview addSubview:imageView];
     }
 }
 
@@ -127,14 +131,12 @@
     
     self.frame = CGRectOffset(CGRectInset(self.frame, self.frame.size.width / -4, 0), self.frame.size.width / -4, 0);
     
-    UIButton *shareBtn = [self m_shareBtn];
-    if (shareBtn) {
-        shareBtn.frame = CGRectOffset(self.m_likeBtn.frame, self.m_likeBtn.frame.size.width * 2, 0);
+    if ([self m_shareBtn]) {
+        [self m_shareBtn].frame = CGRectOffset(self.m_likeBtn.frame, self.m_likeBtn.frame.size.width * 2, 0);
     }
     
-    UIImageView *lineView2 = [self m_lineView2];
-    if (lineView2) {
-        lineView2.frame = CGRectOffset(self.m_likeBtn.frame, [self buttonWidth:self.m_likeBtn], 0);
+    if ([self m_lineView2]) {
+        [self m_lineView2].frame = CGRectOffset(self.m_likeBtn.frame, [self buttonWidth:self.m_likeBtn], 0);
     }
 }
 
