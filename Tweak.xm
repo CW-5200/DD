@@ -62,7 +62,7 @@
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         // 直接使用确认的图标名称
-        cachedIcon = [UIImage imageNamed:@"icons_outlined_share_1.5pt"];
+        cachedIcon = [UIImage imageNamed:@"icons_outlined_share_1.5pt.svg"];
         
         // 确保图标使用模板渲染模式，以便正确着色
         if (cachedIcon) {
