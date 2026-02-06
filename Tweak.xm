@@ -96,21 +96,27 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
 
 @end
 
-%hook WCOperateFloatView
+// 使用分类来添加方法，避免编译时类型检查
+@interface UIView (DDTimeLineForwardPrivate)
+- (void)dd_forwardTimeLine:(id)arg1;
+- (UIButton *)dd_shareBtn;
+- (UIImageView *)dd_lineView2;
+@end
 
-%new
+@implementation UIView (DDTimeLineForwardPrivate)
+
 - (void)dd_forwardTimeLine:(id)arg1 {
     if (![DDTimeLineForwardConfig sharedConfig].enabled) return;
     
     Class forwardViewControllerClass = objc_getClass("WCForwardViewController");
     if (forwardViewControllerClass) {
-        id m_item = [self performSelector:@selector(m_item)];
+        id m_item = [self valueForKey:@"m_item"];
         if (m_item) {
             id forwardVC = [[forwardViewControllerClass alloc] 
                             performSelector:@selector(initWithDataItem:) 
                             withObject:m_item];
             if (forwardVC) {
-                id navigationController = [self performSelector:@selector(navigationController)];
+                id navigationController = [self valueForKey:@"navigationController"];
                 if (navigationController) {
                     [navigationController performSelector:@selector(pushViewController:animated:) 
                                                withObject:forwardVC 
@@ -122,7 +128,6 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
     }
 }
 
-%new
 - (UIButton *)dd_shareBtn {
     static char dd_shareBtnKey;
     UIButton *btn = objc_getAssociatedObject(self, &dd_shareBtnKey);
@@ -132,16 +137,19 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
         [btn setTitle:@" 转发" forState:UIControlStateNormal];
         [btn addTarget:self action:@selector(dd_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        id m_likeBtn = [self performSelector:@selector(m_likeBtn)];
+        id m_likeBtn = [self valueForKey:@"m_likeBtn"];
         if (m_likeBtn) {
-            UIColor *titleColor = [m_likeBtn performSelector:@selector(titleColorForState:) 
-                                                  withObject:@(UIControlStateNormal)];
-            [btn setTitleColor:titleColor forState:UIControlStateNormal];
+            UIColor *titleColor = [m_likeBtn valueForKeyPath:@"titleColorForState.0"];
+            if (titleColor) {
+                [btn setTitleColor:titleColor forState:UIControlStateNormal];
+            }
             
-            id titleLabel = [m_likeBtn performSelector:@selector(titleLabel)];
+            id titleLabel = [m_likeBtn valueForKey:@"titleLabel"];
             if (titleLabel) {
-                UIFont *font = [titleLabel performSelector:@selector(font)];
-                btn.titleLabel.font = font;
+                UIFont *font = [titleLabel valueForKey:@"font"];
+                if (font) {
+                    btn.titleLabel.font = font;
+                }
             }
         }
         
@@ -157,7 +165,6 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
     return btn;
 }
 
-%new
 - (UIImageView *)dd_lineView2 {
     static char dd_lineView2Key;
     UIImageView *imageView = objc_getAssociatedObject(self, &dd_lineView2Key);
@@ -172,7 +179,7 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
             if (name && strstr(name, "lineView")) {
                 id originalLineView = object_getIvar(self, ivar);
                 if (originalLineView) {
-                    UIImage *image = [originalLineView performSelector:@selector(image)];
+                    UIImage *image = [originalLineView valueForKey:@"image"];
                     if (image) {
                         imageView = [[UIImageView alloc] initWithImage:image];
                         objc_setAssociatedObject(self, &dd_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -185,6 +192,11 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
     }
     return imageView;
 }
+
+@end
+
+// 使用 %hook 来替换方法
+%hook WCOperateFloatView
 
 - (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
     %orig;
@@ -201,7 +213,7 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
         [shareBtn removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
         [shareBtn addTarget:self action:@selector(dd_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        id m_likeBtn = [self performSelector:@selector(m_likeBtn)];
+        id m_likeBtn = [self valueForKey:@"m_likeBtn"];
         if (m_likeBtn) {
             CGRect likeBtnFrame = [m_likeBtn frame];
             shareBtn.frame = CGRectOffset(likeBtnFrame, likeBtnFrame.size.width * 2, 0);
@@ -228,7 +240,7 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
         }
         free(ivars);
         
-        id m_likeBtn = [self performSelector:@selector(m_likeBtn)];
+        id m_likeBtn = [self valueForKey:@"m_likeBtn"];
         if (originalLineView && m_likeBtn) {
             CGRect originalLineFrame = [originalLineView frame];
             
