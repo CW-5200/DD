@@ -1,6 +1,6 @@
 // ============ WeChatForwardTweak.xm ============
 // 朋友圈转发功能插件
-// 功能：在朋友圈浮窗菜单中添加“转发”按钮
+// 功能：在朋友圈浮窗菜单中添加"转发"按钮
 // 生效条件：默认启用，无需设置开关
 
 #import <UIKit/UIKit.h>
@@ -40,10 +40,11 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
 }
 
 // ============ 转发按钮图标 ============
-static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
+static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgv0aA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
 
 // ============ 转发功能实现 ============
-@implementation NSObject (ForwardExtension)
+// 使用 UIView 类别，因为 WCOperateFloatView 继承自 UIView
+@implementation UIView (ForwardExtension)
 
 #pragma mark - 添加转发按钮
 - (UIButton *)m_shareBtn {
@@ -79,15 +80,31 @@ static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCA
     static char m_lineView2Key;
     UIImageView *imageView = objc_getAssociatedObject(self, &m_lineView2Key);
     if (!imageView) {
-        // 获取原始分割线
+        // 尝试获取原始分割线
         Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-        UIImageView *originalLineView = object_getIvar(self, lineViewIvar);
+        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
         
-        if (originalLineView) {
+        if (!originalLineView) {
+            // 尝试通过遍历 ivars 查找
+            unsigned int count = 0;
+            Ivar *ivars = class_copyIvarList([self class], &count);
+            for (unsigned int i = 0; i < count; i++) {
+                const char *name = ivar_getName(ivars[i]);
+                if (strstr(name, "lineView")) {
+                    originalLineView = object_getIvar(self, ivars[i]);
+                    break;
+                }
+            }
+            free(ivars);
+        }
+        
+        if (originalLineView && [originalLineView isKindOfClass:[UIImageView class]]) {
             imageView = [[UIImageView alloc] initWithImage:originalLineView.image];
             UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
-            [likeBtn.superview addSubview:imageView];
-            objc_setAssociatedObject(self, &m_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (likeBtn && likeBtn.superview) {
+                [likeBtn.superview addSubview:imageView];
+                objc_setAssociatedObject(self, &m_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         }
     }
     return imageView;
@@ -113,10 +130,17 @@ static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCA
     // 调用原始方法
     [self adjusted_showWithItemData:arg1 tipPoint:arg2];
     
+    // 确保是 WCOperateFloatView 实例
+    Class targetClass = objc_getClass("WCOperateFloatView");
+    if (!targetClass || ![self isKindOfClass:targetClass]) {
+        return;
+    }
+    
     // 调整布局以适应转发按钮
-    CGRect frame = self.frame;
+    UIView *view = (UIView *)self;
+    CGRect frame = view.frame;
     frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
-    self.frame = frame;
+    view.frame = frame;
     
     // 设置转发按钮位置
     UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
@@ -127,15 +151,24 @@ static NSString *const kForwardIconBase64 = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCA
     
     // 设置第二条分割线位置
     Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-    UIImageView *originalLineView = object_getIvar(self, lineViewIvar);
+    UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
     UIImageView *lineView2 = [self m_lineView2];
     
     if (originalLineView && lineView2) {
+        // 动态调用 buttonWidth: 方法
         SEL buttonWidthSel = @selector(buttonWidth:);
         if ([self respondsToSelector:buttonWidthSel]) {
-            IMP imp = [self methodForSelector:buttonWidthSel];
-            CGFloat (*func)(id, SEL, id) = (CGFloat (*)(id, SEL, id))imp;
-            CGFloat width = func(self, buttonWidthSel, likeBtn);
+            NSMethodSignature *sig = [self methodSignatureForSelector:buttonWidthSel];
+            NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:sig];
+            [invocation setTarget:self];
+            [invocation setSelector:buttonWidthSel];
+            if (likeBtn) {
+                [invocation setArgument:&likeBtn atIndex:2];
+            }
+            [invocation invoke];
+            CGFloat width = 0;
+            [invocation getReturnValue:&width];
+            
             lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
         }
     }
