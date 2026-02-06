@@ -52,32 +52,20 @@
 %hook WCOperateFloatView
 
 %new
-static void *m_shareBtnKey = &m_shareBtnKey;
-static void *m_lineView2Key = &m_lineView2Key;
-
-%new
 - (UIButton *)m_shareBtn {
-    return objc_getAssociatedObject(self, m_shareBtnKey);
-}
-
-%new
-- (void)setM_shareBtn:(UIButton *)m_shareBtn {
-    objc_setAssociatedObject(self, m_shareBtnKey, m_shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    static char m_shareBtnKey;
+    return objc_getAssociatedObject(self, &m_shareBtnKey);
 }
 
 %new
 - (UIImageView *)m_lineView2 {
-    return objc_getAssociatedObject(self, m_lineView2Key);
-}
-
-%new
-- (void)setM_lineView2:(UIImageView *)m_lineView2 {
-    objc_setAssociatedObject(self, m_lineView2Key, m_lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    static char m_lineView2Key;
+    return objc_getAssociatedObject(self, &m_lineView2Key);
 }
 
 %new
 - (void)dd_setupShareButton {
-    if (self.m_shareBtn) return;
+    if ([self m_shareBtn]) return;
     
     UIButton *shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
     [shareBtn setTitle:@" 转发" forState:UIControlStateNormal];
@@ -91,13 +79,14 @@ static void *m_lineView2Key = &m_lineView2Key;
     [shareBtn setImage:image forState:0];
     [shareBtn setTintColor:self.m_likeBtn.tintColor];
     
-    self.m_shareBtn = shareBtn;
+    static char m_shareBtnKey;
+    objc_setAssociatedObject(self, &m_shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [self.m_likeBtn.superview addSubview:shareBtn];
 }
 
 %new
 - (void)dd_setupLineView2 {
-    if (self.m_lineView2) return;
+    if ([self m_lineView2]) return;
     
     UIImageView *originalLineView = nil;
     unsigned int count = 0;
@@ -114,7 +103,8 @@ static void *m_lineView2Key = &m_lineView2Key;
     
     if (originalLineView && originalLineView.image) {
         UIImageView *lineView2 = [[UIImageView alloc] initWithImage:originalLineView.image];
-        self.m_lineView2 = lineView2;
+        static char m_lineView2Key;
+        objc_setAssociatedObject(self, &m_lineView2Key, lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [self.m_likeBtn.superview addSubview:lineView2];
     }
 }
@@ -137,12 +127,14 @@ static void *m_lineView2Key = &m_lineView2Key;
     
     self.frame = CGRectOffset(CGRectInset(self.frame, self.frame.size.width / -4, 0), self.frame.size.width / -4, 0);
     
-    if (self.m_shareBtn) {
-        self.m_shareBtn.frame = CGRectOffset(self.m_likeBtn.frame, self.m_likeBtn.frame.size.width * 2, 0);
+    UIButton *shareBtn = [self m_shareBtn];
+    if (shareBtn) {
+        shareBtn.frame = CGRectOffset(self.m_likeBtn.frame, self.m_likeBtn.frame.size.width * 2, 0);
     }
     
-    if (self.m_lineView2) {
-        self.m_lineView2.frame = CGRectOffset(self.m_likeBtn.frame, [self buttonWidth:self.m_likeBtn], 0);
+    UIImageView *lineView2 = [self m_lineView2];
+    if (lineView2) {
+        lineView2.frame = CGRectOffset(self.m_likeBtn.frame, [self buttonWidth:self.m_likeBtn], 0);
     }
 }
 
