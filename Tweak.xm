@@ -1,10 +1,3 @@
-//  DD朋友圈转发.xm
-//  DD朋友圈转发插件 v1.0.0
-//  基于DKWechatHelper提取的核心功能
-//
-//  Created by DKJone
-//  Copyright © 2023 DD插件. All rights reserved.
-
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
