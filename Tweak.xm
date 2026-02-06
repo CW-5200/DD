@@ -2,6 +2,20 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
+// 声明类和方法，让编译器知道这些接口
+@interface WCOperateFloatView : UIView
+@property(readonly, nonatomic) UIButton *m_likeBtn;
+@property(readonly, nonatomic) id m_item;
+@property(nonatomic) __weak UINavigationController *navigationController;
+- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2;
+- (double)buttonWidth:(id)arg1;
+@end
+
+@interface WCForwardViewController : UIViewController
+- (id)initWithDataItem:(id)arg1;
+@end
+
+// 图标创建函数
 static UIImage *ForwardIconImage() {
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
@@ -52,12 +66,15 @@ __attribute__((constructor)) static void entry() {
     if (dataItem) {
         Class forwardVCClass = objc_getClass("WCForwardViewController");
         if (forwardVCClass) {
-            // 使用 objc_msgSend 动态调用方法
-            id (*msgSend)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
-            id forwardVC = msgSend(msgSend(forwardVCClass, @selector(alloc), nil), @selector(initWithDataItem:), dataItem);
+            // 使用 objc_msgSend 动态调用
+            id forwardVC = ((id (*)(id, SEL, id))objc_msgSend)(
+                ((id (*)(id, SEL))objc_msgSend)(forwardVCClass, @selector(alloc)),
+                @selector(initWithDataItem:),
+                dataItem
+            );
             
             id navController = [self valueForKey:@"navigationController"];
-            if (navController) {
+            if (navController && [navController respondsToSelector:@selector(pushViewController:animated:)]) {
                 [navController pushViewController:forwardVC animated:YES];
             }
         }
@@ -65,6 +82,7 @@ __attribute__((constructor)) static void entry() {
 }
 
 - (void)xxx_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    // 先调用原始方法
     [self xxx_showWithItemData:arg1 tipPoint:arg2];
     
     UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
@@ -88,17 +106,25 @@ __attribute__((constructor)) static void entry() {
         shareBtn.titleLabel.font = likeBtn.titleLabel.font;
         [shareBtn setImage:ForwardIconImage() forState:UIControlStateNormal];
         [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
-        [likeBtn.superview addSubview:shareBtn];
+        
+        if (likeBtn.superview) {
+            [likeBtn.superview addSubview:shareBtn];
+        }
+        
         objc_setAssociatedObject(self, &shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     
     if (!lineView2) {
         Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-        id originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
+        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
         
         if (originalLineView && [originalLineView isKindOfClass:[UIImageView class]]) {
-            lineView2 = [[UIImageView alloc] initWithImage:[(UIImageView *)originalLineView image]];
-            [likeBtn.superview addSubview:lineView2];
+            lineView2 = [[UIImageView alloc] initWithImage:originalLineView.image];
+            
+            if (likeBtn.superview) {
+                [likeBtn.superview addSubview:lineView2];
+            }
+            
             objc_setAssociatedObject(self, &lineViewKey, lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
