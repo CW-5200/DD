@@ -51,11 +51,29 @@
 
 %hook WCOperateFloatView
 
-static char m_shareBtnKey;
-static char m_lineView2Key;
+%new
+static void *m_shareBtnKey = &m_shareBtnKey;
+static void *m_lineView2Key = &m_lineView2Key;
 
-%property (nonatomic, strong) UIButton *m_shareBtn;
-%property (nonatomic, strong) UIImageView *m_lineView2;
+%new
+- (UIButton *)m_shareBtn {
+    return objc_getAssociatedObject(self, m_shareBtnKey);
+}
+
+%new
+- (void)setM_shareBtn:(UIButton *)m_shareBtn {
+    objc_setAssociatedObject(self, m_shareBtnKey, m_shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+%new
+- (UIImageView *)m_lineView2 {
+    return objc_getAssociatedObject(self, m_lineView2Key);
+}
+
+%new
+- (void)setM_lineView2:(UIImageView *)m_lineView2 {
+    objc_setAssociatedObject(self, m_lineView2Key, m_lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 %new
 - (void)dd_setupShareButton {
@@ -67,7 +85,7 @@ static char m_lineView2Key;
     [shareBtn setTitleColor:self.m_likeBtn.currentTitleColor forState:0];
     shareBtn.titleLabel.font = self.m_likeBtn.titleLabel.font;
     
-    NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Oncek5z+c5z/n+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaABWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
+    NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Oncek5z+c5z/n+n0f8c+ivPDMrAAVJG1l7mgWVga0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaABWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
     NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
     UIImage *image = [UIImage imageWithData:imageData];
     [shareBtn setImage:image forState:0];
