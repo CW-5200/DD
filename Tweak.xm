@@ -53,6 +53,20 @@
 
 @end
 
+// C函数实现，用于方法交换
+static void dd_showWithItemData_tipPoint(id self, SEL _cmd, id arg1, struct CGPoint arg2) {
+    // 调用原始实现（经过交换后实际上是原始方法）
+    void (*originalIMP)(id, SEL, id, struct CGPoint) = (void (*)(id, SEL, id, struct CGPoint))class_getMethodImplementation(object_getClass(self), @selector(dd_showWithItemData:tipPoint:));
+    
+    // 先调用原始方法
+    if (originalIMP) {
+        originalIMP(self, _cmd, arg1, arg2);
+    }
+    
+    // 然后执行我们的自定义逻辑
+    [self performSelector:@selector(dd_postShowProcessing)];
+}
+
 // MARK: - WCOperateFloatView 扩展 (添加转发功能)
 @implementation NSObject (DDTimeLineForward)
 
@@ -77,7 +91,7 @@
         }
         
         // 设置转发图标（从原始文件的base64字符串）
-        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Unek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKusMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
+        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Unek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvix4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKusMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
         NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
         UIImage *image = [UIImage imageWithData:imageData];
         
@@ -150,11 +164,8 @@
     }
 }
 
-// Hook显示方法
-- (void)dd_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    // 调用原始方法
-    [self dd_showWithItemData:arg1 tipPoint:arg2];
-    
+// 显示后的处理
+- (void)dd_postShowProcessing {
     if (![DDTimeLineForwardConfig isEnabled]) return;
     
     WCOperateFloatView *floatView = (WCOperateFloatView *)self;
@@ -210,6 +221,15 @@
     [floatView layoutIfNeeded];
 }
 
+// Hook显示方法 - 这是被交换的方法
+- (void)dd_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    // 调用原始方法
+    [self dd_showWithItemData:arg1 tipPoint:arg2];
+    
+    // 执行后处理
+    [self dd_postShowProcessing];
+}
+
 @end
 
 // MARK: - 插件管理器
@@ -240,37 +260,19 @@ static void DDTimeLineForwardPluginLoad() {
                 SEL swizzledSelector = @selector(dd_showWithItemData:tipPoint:);
                 
                 Method originalMethod = class_getInstanceMethod(floatViewClass, originalSelector);
+                Method swizzledMethod = class_getInstanceMethod(floatViewClass, swizzledSelector);
                 
-                if (originalMethod) {
-                    // 添加新的方法实现
-                    class_addMethod(floatViewClass, swizzledSelector, 
-                                  (IMP)dd_showWithItemData_tipPoint, "v@:@{CGPoint=dd}");
-                    
-                    // 交换方法
-                    Method swizzledMethod = class_getInstanceMethod(floatViewClass, swizzledSelector);
+                if (originalMethod && swizzledMethod) {
+                    // 直接交换方法
                     method_exchangeImplementations(originalMethod, swizzledMethod);
                     
                     NSLog(@"[DD朋友圈转发] 插件加载成功，版本 1.0.0");
                 } else {
-                    NSLog(@"[DD朋友圈转发] 原始方法未找到");
+                    NSLog(@"[DD朋友圈转发] 方法交换失败，originalMethod: %p, swizzledMethod: %p", originalMethod, swizzledMethod);
                 }
             } else {
                 NSLog(@"[DD朋友圈转发] WCOperateFloatView类未找到");
             }
         });
     }
-}
-
-// C函数实现，用于方法交换
-static void dd_showWithItemData_tipPoint(id self, SEL _cmd, id arg1, struct CGPoint arg2) {
-    // 调用原始实现（经过交换后实际上是原始方法）
-    void (*originalIMP)(id, SEL, id, struct CGPoint) = (void (*)(id, SEL, id, struct CGPoint))class_getMethodImplementation(object_getClass(self), @selector(dd_showWithItemData:tipPoint:));
-    
-    // 先调用原始方法
-    if (originalIMP) {
-        originalIMP(self, _cmd, arg1, arg2);
-    }
-    
-    // 然后执行我们的自定义逻辑
-    [self performSelector:@selector(dd_postShowProcessing)];
 }
