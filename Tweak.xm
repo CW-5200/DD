@@ -14,23 +14,16 @@
 - (id)initWithDataItem:(id)arg1;
 @end
 
-static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector) {
-    Method originalMethod = class_getInstanceMethod(cls, originalSelector);
-    Method swizzledMethod = class_getInstanceMethod(cls, swizzledSelector);
-    
-    BOOL didAddMethod = class_addMethod(cls, originalSelector,
-                                        method_getImplementation(swizzledMethod),
-                                        method_getTypeEncoding(swizzledMethod));
-    if (didAddMethod) {
-        class_replaceMethod(cls, swizzledSelector,
-                            method_getImplementation(originalMethod),
-                            method_getTypeEncoding(originalMethod));
-    } else {
-        method_exchangeImplementations(originalMethod, swizzledMethod);
-    }
-}
-
 @implementation UIView (ForwardExtension)
+
+#pragma mark - 提前创建图标和按钮，避免延迟
++ (void)load {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 提前创建图标，避免首次使用时延迟
+        [self forwardIconImage];
+    });
+}
 
 + (UIImage *)forwardIconImage {
     static UIImage *forwardIcon = nil;
@@ -40,7 +33,6 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         UIGraphicsBeginImageContextWithOptions(size, NO, 0.0);
         
         CGContextRef context = UIGraphicsGetCurrentContext();
-        
         CGContextSetStrokeColorWithColor(context, [UIColor whiteColor].CGColor);
         CGContextSetLineWidth(context, 1.2);
         CGContextSetLineCap(context, kCGLineCapRound);
@@ -62,6 +54,15 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         forwardIcon = [forwardIcon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
     });
     return forwardIcon;
+}
+
+- (void)prepareForwardButtonIfNeeded {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 提前准备按钮相关资源
+        [self m_shareBtn];
+        [self m_lineView2];
+    });
 }
 
 - (UIButton *)m_shareBtn {
@@ -87,6 +88,7 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
         [btn setImage:forwardIcon forState:UIControlStateNormal];
         
         btn.tintColor = titleColor;
+        btn.hidden = YES; // 初始隐藏，show时再显示
         
         [likeBtn.superview addSubview:btn];
         objc_setAssociatedObject(self, &m_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -140,59 +142,70 @@ static void swizzleMethod(Class cls, SEL originalSelector, SEL swizzledSelector)
     }
 }
 
+@end
+
+#pragma mark - 优化后的Hook方法
+__attribute__((constructor)) static void entry() {
+    @autoreleasepool {
+        Class cls = objc_getClass("WCOperateFloatView");
+        if (!cls) return;
+        
+        // 使用更高效的方法交换方式
+        Method originalMethod = class_getInstanceMethod(cls, @selector(showWithItemData:tipPoint:));
+        Method newMethod = class_getInstanceMethod(cls, @selector(adjusted_showWithItemData:tipPoint:));
+        
+        if (originalMethod && newMethod) {
+            method_exchangeImplementations(originalMethod, newMethod);
+            
+            // 预加载资源，减少首次显示延迟
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // 在下一个run loop中预加载图标
+                [UIView forwardIconImage];
+            });
+        }
+    }
+}
+
+@implementation WCOperateFloatView (ForwardTweak)
+
 - (void)adjusted_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    // 先调用原始方法显示基础布局
     [self adjusted_showWithItemData:arg1 tipPoint:arg2];
     
-    Class targetClass = objc_getClass("WCOperateFloatView");
-    if (!targetClass || ![self isKindOfClass:targetClass]) {
-        return;
-    }
-    
-    UIView *view = (UIView *)self;
-    CGRect frame = view.frame;
-    frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
-    view.frame = frame;
-    
+    // 快速设置转发按钮和分割线
     UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
+    if (!likeBtn) return;
+    
+    // 提前创建按钮（如果还没创建）
     UIButton *shareBtn = [self m_shareBtn];
-    if (likeBtn && shareBtn) {
+    UIImageView *lineView2 = [self m_lineView2];
+    
+    if (shareBtn && lineView2) {
+        // 调整布局以适应转发按钮
+        CGRect frame = self.frame;
+        frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
+        self.frame = frame;
+        
+        // 设置转发按钮位置
         shareBtn.frame = CGRectOffset(likeBtn.frame, likeBtn.frame.size.width * 2, 0);
         shareBtn.hidden = NO;
         shareBtn.alpha = 1.0;
-    }
-    
-    Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-    UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
-    UIImageView *lineView2 = [self m_lineView2];
-    
-    if (originalLineView && lineView2) {
-        SEL buttonWidthSel = @selector(buttonWidth:);
-        if ([self respondsToSelector:buttonWidthSel]) {
-            NSMethodSignature *sig = [self methodSignatureForSelector:buttonWidthSel];
-            NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:sig];
-            [invocation setTarget:self];
-            [invocation setSelector:buttonWidthSel];
-            if (likeBtn) {
-                [invocation setArgument:&likeBtn atIndex:2];
+        
+        // 设置第二条分割线位置
+        Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
+        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
+        
+        if (originalLineView) {
+            SEL buttonWidthSel = @selector(buttonWidth:);
+            if ([self respondsToSelector:buttonWidthSel]) {
+                // 直接调用方法，避免使用NSInvocation的开销
+                IMP imp = [self methodForSelector:buttonWidthSel];
+                CGFloat (*func)(id, SEL, id) = (CGFloat (*)(id, SEL, id))imp;
+                CGFloat width = func(self, buttonWidthSel, likeBtn);
+                lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
             }
-            [invocation invoke];
-            CGFloat width = 0;
-            [invocation getReturnValue:&width];
-            
-            lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
         }
     }
 }
 
 @end
-
-__attribute__((constructor)) static void entry() {
-    @autoreleasepool {
-        Class cls = objc_getClass("WCOperateFloatView");
-        if (cls) {
-            swizzleMethod(cls, 
-                         @selector(showWithItemData:tipPoint:), 
-                         @selector(adjusted_showWithItemData:tipPoint:));
-        }
-    }
-}
