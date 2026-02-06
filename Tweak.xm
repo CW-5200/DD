@@ -53,20 +53,6 @@
 
 @end
 
-// C函数实现，用于方法交换
-static void dd_showWithItemData_tipPoint(id self, SEL _cmd, id arg1, struct CGPoint arg2) {
-    // 调用原始实现（经过交换后实际上是原始方法）
-    void (*originalIMP)(id, SEL, id, struct CGPoint) = (void (*)(id, SEL, id, struct CGPoint))class_getMethodImplementation(object_getClass(self), @selector(dd_showWithItemData:tipPoint:));
-    
-    // 先调用原始方法
-    if (originalIMP) {
-        originalIMP(self, _cmd, arg1, arg2);
-    }
-    
-    // 然后执行我们的自定义逻辑
-    [self performSelector:@selector(dd_postShowProcessing)];
-}
-
 // MARK: - WCOperateFloatView 扩展 (添加转发功能)
 @implementation NSObject (DDTimeLineForward)
 
@@ -164,8 +150,20 @@ static void dd_showWithItemData_tipPoint(id self, SEL _cmd, id arg1, struct CGPo
     }
 }
 
-// 显示后的处理
-- (void)dd_postShowProcessing {
+// Hook显示方法 - 这是被交换的方法
+- (void)dd_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    // 保存原始实现
+    static void (*originalIMP)(id, SEL, id, struct CGPoint) = NULL;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        originalIMP = (void (*)(id, SEL, id, struct CGPoint))method_getImplementation(class_getInstanceMethod([self class], @selector(dd_showWithItemData:tipPoint:)));
+    });
+    
+    // 调用原始方法
+    if (originalIMP) {
+        originalIMP(self, _cmd, arg1, arg2);
+    }
+    
     if (![DDTimeLineForwardConfig isEnabled]) return;
     
     WCOperateFloatView *floatView = (WCOperateFloatView *)self;
@@ -221,15 +219,6 @@ static void dd_showWithItemData_tipPoint(id self, SEL _cmd, id arg1, struct CGPo
     [floatView layoutIfNeeded];
 }
 
-// Hook显示方法 - 这是被交换的方法
-- (void)dd_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    // 调用原始方法
-    [self dd_showWithItemData:arg1 tipPoint:arg2];
-    
-    // 执行后处理
-    [self dd_postShowProcessing];
-}
-
 @end
 
 // MARK: - 插件管理器
@@ -255,16 +244,27 @@ static void DDTimeLineForwardPluginLoad() {
             // Hook WCOperateFloatView的showWithItemData:tipPoint:方法
             Class floatViewClass = objc_getClass("WCOperateFloatView");
             if (floatViewClass) {
-                // 检查原始方法是否存在
-                SEL originalSelector = @selector(showWithItemData:tipPoint:);
-                SEL swizzledSelector = @selector(dd_showWithItemData:tipPoint:);
-                
-                Method originalMethod = class_getInstanceMethod(floatViewClass, originalSelector);
-                Method swizzledMethod = class_getInstanceMethod(floatViewClass, swizzledSelector);
+                // 使用更安全的方法交换方式
+                Method originalMethod = class_getInstanceMethod(floatViewClass, @selector(showWithItemData:tipPoint:));
+                Method swizzledMethod = class_getInstanceMethod(floatViewClass, @selector(dd_showWithItemData:tipPoint:));
                 
                 if (originalMethod && swizzledMethod) {
-                    // 直接交换方法
-                    method_exchangeImplementations(originalMethod, swizzledMethod);
+                    // 检查是否已经交换过
+                    BOOL didAddMethod = class_addMethod(floatViewClass,
+                                                       @selector(showWithItemData:tipPoint:),
+                                                       method_getImplementation(swizzledMethod),
+                                                       method_getTypeEncoding(swizzledMethod));
+                    
+                    if (didAddMethod) {
+                        // 添加成功，替换原始方法
+                        class_replaceMethod(floatViewClass,
+                                          @selector(dd_showWithItemData:tipPoint:),
+                                          method_getImplementation(originalMethod),
+                                          method_getTypeEncoding(originalMethod));
+                    } else {
+                        // 添加失败，直接交换
+                        method_exchangeImplementations(originalMethod, swizzledMethod);
+                    }
                     
                     NSLog(@"[DD朋友圈转发] 插件加载成功，版本 1.0.0");
                 } else {
