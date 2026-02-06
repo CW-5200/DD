@@ -1,43 +1,33 @@
-// DD朋友圈转发.xm
-// 插件名称: DD朋友圈转发
-// 版本: 1.0.0
-// 功能: 在朋友圈长按菜单中添加转发按钮
+// Tweak.xm
+// DD朋友圈转发 v1.0.0
+// 严格按照原始文件实现
 
 #import <UIKit/UIKit.h>
-#import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <substrate.h>
 
-// 朋友圈数据项
+// 原始文件中的类定义
 @interface WCDataItem : NSObject
 @end
 
-// 朋友圈转发视图控制器
 @interface WCForwardViewController : UIViewController
 - (id)initWithDataItem:(id)arg1;
 @end
 
-// 朋友圈操作浮层视图
-@interface WCOperateFloatView : UIView
-@property(readonly, nonatomic) UIButton *m_likeBtn;
+@interface WCOperateFloatView : UIView {
+    UIImageView *m_lineView;
+}
 @property(readonly, nonatomic) UIButton *m_commentBtn;
-@property(nonatomic, weak) UINavigationController *navigationController;
-@property(readonly, nonatomic) id m_item; // WCDataItem
-@property(nonatomic, strong) UIImageView *m_lineView;
-@property(nonatomic, strong) UIButton *m_shareBtn;
-@property(nonatomic, strong) UIImageView *m_lineView2;
-
+@property(readonly, nonatomic) UIButton *m_likeBtn;
+@property(nonatomic) __weak UINavigationController *navigationController;
+@property(readonly, nonatomic) WCDataItem *m_item;
 - (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2;
 - (double)buttonWidth:(id)arg1;
 @end
 
-// Hook实现
+// Hook实现 - 完全按照原始文件
 %hook WCOperateFloatView
 
-// 添加转发按钮属性
-%property (nonatomic, strong) UIButton *m_shareBtn;
-%property (nonatomic, strong) UIImageView *m_lineView2;
-
-// 动态添加转发按钮
 %new
 - (UIButton *)m_shareBtn {
     static char m_shareBtnKey;
@@ -50,49 +40,73 @@
         btn.titleLabel.font = self.m_likeBtn.titleLabel.font;
         [self.m_likeBtn.superview addSubview:btn];
         
-        // 设置转发图标
-        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
+        // 原始文件中的base64图标数据
+        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0lvaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvi4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKssMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
         NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
         UIImage *image = [UIImage imageWithData:imageData];
-        [btn setImage:image forState:0];
-        [btn setTintColor:self.m_likeBtn.tintColor];
+        
+        // 注意：原始文件中使用setImage:forState:0，而不是setImage:forState:UIControlStateNormal
+        if (image) {
+            [btn setImage:image forState:0]; // 注意这里用的是0，不是UIControlStateNormal
+            [btn setTintColor:self.m_likeBtn.tintColor];
+        }
+        
         objc_setAssociatedObject(self, &m_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return btn;
 }
 
-// 添加分割线2
 %new
 - (UIImageView *)m_lineView2 {
     static char m_lineView2Key;
     UIImageView *imageView = objc_getAssociatedObject(self, &m_lineView2Key);
     if (!imageView) {
-        imageView = [[UIImageView alloc] initWithImage:self.m_lineView.image];
-        [self.m_likeBtn.superview addSubview:imageView];
-        objc_setAssociatedObject(self, &m_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        // 原始文件中使用MSHookIvar获取m_lineView
+        UIImageView *originalLineView = MSHookIvar<UIImageView *>(self, "m_lineView");
+        if (originalLineView && originalLineView.image) {
+            imageView = [[UIImageView alloc] initWithImage:originalLineView.image];
+            [self.m_likeBtn.superview addSubview:imageView];
+            objc_setAssociatedObject(self, &m_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
     }
     return imageView;
 }
 
-// 修改显示方法，为转发按钮腾出空间
 - (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
     %orig(arg1, arg2);
     
-    // 调整frame以容纳转发按钮
-    self.frame = CGRectOffset(CGRectInset(self.frame, self.frame.size.width / -4, 0), self.frame.size.width / -4, 0);
+    // 注意：原始文件中有判断if (DKHelperConfig.timeLineForwardEnable)
+    // 我们这里是独立插件，默认启用转发功能
+    
+    // 调整frame：扩展宽度并左移
+    // 原始代码：self.frame = CGRectOffset(CGRectInset(self.frame, self.frame.size.width / -4, 0), self.frame.size.width / -4,0);
+    CGRect newFrame = self.frame;
+    newFrame = CGRectInset(newFrame, newFrame.size.width / -4, 0);
+    newFrame = CGRectOffset(newFrame, newFrame.size.width / -4, 0);
+    self.frame = newFrame;
     
     // 设置转发按钮位置
+    // 原始代码：self.m_shareBtn.frame = CGRectOffset(self.m_likeBtn.frame, self.m_likeBtn.frame.size.width * 2, 0);
     self.m_shareBtn.frame = CGRectOffset(self.m_likeBtn.frame, self.m_likeBtn.frame.size.width * 2, 0);
     
-    // 设置分割线2位置
-    self.m_lineView2.frame = CGRectOffset(self.m_lineView.frame, [self buttonWidth:self.m_likeBtn], 0);
+    // 设置分割线位置
+    // 原始代码：self.m_lineView2.frame = CGRectOffset(MSHookIvar<UIImageView *>(self, "m_lineView").frame, [self buttonWidth:self.m_likeBtn], 0);
+    UIImageView *originalLineView = MSHookIvar<UIImageView *>(self, "m_lineView");
+    if (originalLineView && self.m_lineView2) {
+        self.m_lineView2.frame = CGRectOffset(originalLineView.frame, [self buttonWidth:self.m_likeBtn], 0);
+    }
 }
 
-// 转发朋友圈方法
 %new
 - (void)forwordTimeLine:(id)arg1 {
-    WCForwardViewController *forwardVC = [[objc_getClass("WCForwardViewController") alloc] initWithDataItem:self.m_item];
-    [self.navigationController pushViewController:forwardVC animated:true];
+    // 原始代码中的方法名是forwordTimeLine:，注意拼写是"forword"不是"forward"
+    Class WCForwardViewControllerClass = objc_getClass("WCForwardViewController");
+    if (WCForwardViewControllerClass && self.m_item) {
+        WCForwardViewController *forwardVC = [[WCForwardViewControllerClass alloc] initWithDataItem:self.m_item];
+        if (forwardVC && self.navigationController) {
+            [self.navigationController pushViewController:forwardVC animated:true];
+        }
+    }
 }
 
 %end
