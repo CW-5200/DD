@@ -24,26 +24,13 @@
 - (id)initWithDataItem:(id)arg1;
 @end
 
-@interface WCOperateFloatView : UIView {
-    UIImageView *m_lineView;
-}
-@property(readonly, nonatomic) UIButton *m_likeBtn;
+@interface WCOperateFloatView : UIView
+@property(readonly, nonatomic) id m_likeBtn;
 @property(readonly, nonatomic) id m_item;
 @property(nonatomic, weak) UINavigationController *navigationController;
-@property(nonatomic, strong) UIButton *m_shareBtn;
-@property(nonatomic, strong) UIImageView *m_lineView2;
 - (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2;
 - (double)buttonWidth:(id)arg1;
 - (void)hide;
-- (void)forwordTimeLine:(id)arg1;
-@end
-
-@interface WCTableViewNormalCellManager : NSObject
-+ (WCTableViewNormalCellManager *)normalCellForSel:(SEL)arg1 target:(id)arg2 title:(id)arg3;
-+ (WCTableViewNormalCellManager *)switchCellForSel:(SEL)arg1 target:(id)arg2 title:(id)arg3 on:(BOOL)arg4;
-@end
-
-@interface MMUIViewController : UIViewController
 @end
 
 // MARK: - 插件配置管理
@@ -65,66 +52,31 @@
 
 @end
 
-// MARK: - 插件设置控制器
-@interface DDTimeLineForwardSettingController : MMUIViewController
-@property (nonatomic, strong) id tableViewManager;
+// MARK: - 图片处理工具
+@interface UIImage (DDResize)
+- (UIImage *)dd_resizedImageWithSize:(CGSize)size;
 @end
 
-@implementation DDTimeLineForwardSettingController
+@implementation UIImage (DDResize)
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.title = @"DD朋友圈转发设置";
-    
-    // 设置背景色
-    self.view.backgroundColor = [UIColor colorWithRed:0.95 green:0.95 blue:0.95 alpha:1.0];
-    
-    // 创建表格
-    CGRect frame = CGRectMake(0, 88, self.view.bounds.size.width, self.view.bounds.size.height - 88);
-    self.tableViewManager = [[objc_getClass("MMTableViewInfo") alloc] initWithFrame:frame style:UITableViewStyleGrouped];
-    
-    // 获取section管理器
-    id sectionManager = [objc_getClass("WCTableViewSectionManager") defaultSection];
-    
-    // 添加开关
-    id switchCell = [objc_getClass("WCTableViewNormalCellManager") switchCellForSel:@selector(switchChanged:) 
-                                                                              target:self 
-                                                                              title:@"开启朋友圈转发" 
-                                                                                 on:[DDTimeLineForwardConfig isEnabled]];
-    [sectionManager addCell:switchCell];
-    
-    // 添加说明
-    id descCell = [objc_getClass("WCTableViewNormalCellManager") normalCellForSel:nil 
-                                                                           target:nil 
-                                                                           title:@"说明：开启后在朋友圈长按可显示转发按钮"];
-    [sectionManager addCell:descCell];
-    
-    // 将section添加到manager
-    [self.tableViewManager addSection:sectionManager];
-    
-    // 将表格添加到视图
-    id tableView = [self.tableViewManager getTableView];
-    [self.view addSubview:tableView];
-    
-    // 添加导航按钮
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"返回" 
-                                                                             style:UIBarButtonItemStylePlain 
-                                                                            target:self 
-                                                                            action:@selector(backAction)];
-}
-
-- (void)switchChanged:(UISwitch *)sender {
-    [DDTimeLineForwardConfig setEnabled:sender.isOn];
-}
-
-- (void)backAction {
-    [self.navigationController popViewControllerAnimated:YES];
+- (UIImage *)dd_resizedImageWithSize:(CGSize)size {
+    UIGraphicsBeginImageContextWithOptions(size, NO, 0.0);
+    [self drawInRect:CGRectMake(0, 0, size.width, size.height)];
+    UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return resizedImage;
 }
 
 @end
 
 // MARK: - WCOperateFloatView 扩展 (添加转发功能)
 @implementation NSObject (DDTimeLineForward)
+
+// 图片缩放辅助方法
+- (UIImage *)dd_resizedImage:(UIImage *)image size:(CGSize)size {
+    if (!image) return nil;
+    return [image dd_resizedImageWithSize:size];
+}
 
 // 动态添加分享按钮属性
 - (UIButton *)dd_shareBtn {
@@ -134,20 +86,23 @@
         btn = [UIButton buttonWithType:UIButtonTypeCustom];
         [btn setTitle:@" 转发" forState:UIControlStateNormal];
         [btn addTarget:self action:@selector(dd_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+        [btn setTitleColor:[UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0] forState:UIControlStateNormal];
+        btn.titleLabel.font = [UIFont systemFontOfSize:14];
         
-        // 使用动态颜色获取，与点赞按钮保持一致
-        WCOperateFloatView *floatView = (WCOperateFloatView *)self;
-        [btn setTitleColor:[floatView.m_likeBtn currentTitleColor] forState:UIControlStateNormal];
-        btn.titleLabel.font = floatView.m_likeBtn.titleLabel.font;
+        // DeepSeek风格的分享图标
+        NSString *deepSeekShareIcon = @"iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAGKSURBVHgBpZYLbBRBFIbv7oKGSw1pTAiRagwqV4QoFTRyEwnBPmL0gX3QYBRRo4INaRDlEag2hMQHhDZIAg12pTEkoAnK8hLwAW2XUkmM2li8gFhKo7bU0tbe6V7cnu7MdXfd0U7ys5v577z2zMz5AFowk3Y7pJfCqwE0C7PZ5fJNvAT5TwCh6M9eG3FbFQw7pwY3rO3z3Tka0+L86nL+q41pJj2WQl5+XQJ40FOq31y/LtwkERiJQXgE0Jj4n7zMf40c5zuhQk7Mysigw2uXCerGYF/ss14FpQ65DTYQ9P2oc4Y8L8KQDHc0z2y6N8fXfl36P3MMh/YDCj97nt9cVxhq4EokTMMe7gnwLYCf57xHc/9jNChyLkTx4j6rI2vn4/n+9v5T1ggF39lyL+Vv9nf+J7SFO1Pz/AZ/11cAExAwPqjKJXr9vnXJopN4NYADM/h+q7fFfRFmE/21FkfnxBrE5+RZ7MdxKXAGYR9i8NpP5nI2i6PxKHyi5Y10lHc2r/0IYA5ubVrX46e7dHkA3z0AAAAASUVORK5CYII=";
         
-        // 设置转发图标（使用原始base64字符串）
-        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Onek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+rBvxtzjw8zsdX0+P9+F9O4zBeGg2HfQPudfVqA8HzKzQzLrz7qvZ0z8zUzUzOzNTfTbne0u7r2tWdvb1k+Fk2ZvZmpjptdmwPwTEOzWz/2f35N3A9f38X6b7WvtXxL7/8P/AJLmZ2aGbbhx65AAAAAElFTkSuQmCC";
-        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:deepSeekShareIcon options:NSDataBase64DecodingIgnoreUnknownCharacters];
         UIImage *image = [UIImage imageWithData:imageData];
-        [btn setImage:image forState:UIControlStateNormal];
-        [btn setTintColor:floatView.m_likeBtn.tintColor];
         
-        [floatView.m_likeBtn.superview addSubview:btn];
+        // 调整图标大小（16x16像素）
+        UIImage *resizedImage = [self dd_resizedImage:image size:CGSizeMake(16, 16)];
+        [btn setImage:resizedImage forState:UIControlStateNormal];
+        
+        // 调整图片和文字间距
+        btn.imageEdgeInsets = UIEdgeInsetsMake(0, -2, 0, 2);
+        btn.titleEdgeInsets = UIEdgeInsetsMake(0, 2, 0, -2);
+        
         objc_setAssociatedObject(self, &dd_shareBtnKey, btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return btn;
@@ -158,23 +113,10 @@
     static char dd_lineView2Key;
     UIImageView *imageView = objc_getAssociatedObject(self, &dd_lineView2Key);
     if (!imageView) {
-        // 使用原始分割线的图片
-        WCOperateFloatView *floatView = (WCOperateFloatView *)self;
-        
-        // 获取原始分割线的实例变量
-        Ivar lineViewIvar = class_getInstanceVariable([floatView class], "m_lineView");
-        UIImageView *originalLineView = object_getIvar(floatView, lineViewIvar);
-        
-        if (originalLineView && originalLineView.image) {
-            imageView = [[UIImageView alloc] initWithImage:originalLineView.image];
-        } else {
-            // 备用：创建默认分割线
-            imageView = [[UIImageView alloc] init];
-            imageView.backgroundColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0];
-            imageView.frame = CGRectMake(0, 0, 1, 20);
-        }
-        
-        [floatView.m_likeBtn.superview addSubview:imageView];
+        // 创建分割线
+        imageView = [[UIImageView alloc] init];
+        imageView.backgroundColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0];
+        imageView.frame = CGRectMake(0, 0, 1, 20);
         objc_setAssociatedObject(self, &dd_lineView2Key, imageView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return imageView;
@@ -192,6 +134,31 @@
     [floatView hide];
 }
 
+// 获取浮窗中的其他按钮，用于布局参考
+- (NSArray *)dd_getAllButtons {
+    WCOperateFloatView *floatView = (WCOperateFloatView *)self;
+    NSMutableArray *buttons = [NSMutableArray array];
+    
+    // 通过运行时查找所有按钮
+    unsigned int outCount = 0;
+    Ivar *ivars = class_copyIvarList([floatView class], &outCount);
+    for (unsigned int i = 0; i < outCount; i++) {
+        Ivar ivar = ivars[i];
+        const char *name = ivar_getName(ivar);
+        if (name && (strstr(name, "Btn") || strstr(name, "btn"))) {
+            id button = object_getIvar(floatView, ivar);
+            if ([button isKindOfClass:[UIButton class]]) {
+                [buttons addObject:button];
+            }
+        }
+    }
+    free(ivars);
+    
+    return [buttons sortedArrayUsingComparator:^NSComparisonResult(UIButton *btn1, UIButton *btn2) {
+        return btn1.frame.origin.x > btn2.frame.origin.x ? NSOrderedDescending : NSOrderedAscending;
+    }];
+}
+
 // Hook显示方法
 - (void)dd_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
     // 调用原始方法
@@ -201,26 +168,60 @@
     
     WCOperateFloatView *floatView = (WCOperateFloatView *)self;
     
-    // 调整浮窗大小和位置以容纳转发按钮
-    CGRect frame = floatView.frame;
-    frame.size.width = frame.size.width * 1.5;
-    frame.origin.x = frame.origin.x - frame.size.width / 3;
-    floatView.frame = frame;
+    // 先移除可能存在的旧转发按钮和分割线
+    [[floatView dd_shareBtn] removeFromSuperview];
+    [[floatView dd_lineView2] removeFromSuperview];
     
-    // 添加转发按钮
-    UIButton *shareBtn = [floatView dd_shareBtn];
-    CGRect likeBtnFrame = [floatView.m_likeBtn frame];
-    shareBtn.frame = CGRectOffset(likeBtnFrame, likeBtnFrame.size.width * 2, 0);
+    // 获取所有按钮进行智能布局
+    NSArray *allButtons = [self dd_getAllButtons];
     
-    // 添加分割线
-    UIImageView *lineView2 = [floatView dd_lineView2];
-    
-    // 获取原始分割线位置
-    Ivar lineViewIvar = class_getInstanceVariable([floatView class], "m_lineView");
-    UIImageView *originalLineView = object_getIvar(floatView, lineViewIvar);
-    
-    if (originalLineView) {
-        lineView2.frame = CGRectOffset(originalLineView.frame, [floatView buttonWidth:floatView.m_likeBtn], 0);
+    if (allButtons.count > 0) {
+        // 取最后一个按钮作为参考
+        UIButton *lastButton = [allButtons lastObject];
+        CGFloat buttonWidth = CGRectGetWidth(lastButton.frame);
+        CGFloat buttonHeight = CGRectGetHeight(lastButton.frame);
+        CGFloat spacing = 0;
+        
+        // 计算按钮间距
+        if (allButtons.count > 1) {
+            UIButton *prevButton = allButtons[allButtons.count - 2];
+            spacing = CGRectGetMinX(lastButton.frame) - CGRectGetMaxX(prevButton.frame);
+        }
+        
+        // 调整浮窗大小
+        CGRect frame = floatView.frame;
+        frame.size.width += buttonWidth + spacing;
+        floatView.frame = frame;
+        
+        // 添加转发按钮
+        UIButton *shareBtn = [floatView dd_shareBtn];
+        shareBtn.frame = CGRectMake(CGRectGetMaxX(lastButton.frame) + spacing, 
+                                   CGRectGetMinY(lastButton.frame), 
+                                   buttonWidth, 
+                                   buttonHeight);
+        [floatView addSubview:shareBtn];
+        
+        // 添加分割线
+        UIImageView *originalLineView = nil;
+        unsigned int outCount = 0;
+        Ivar *ivars = class_copyIvarList([floatView class], &outCount);
+        for (unsigned int i = 0; i < outCount; i++) {
+            Ivar ivar = ivars[i];
+            const char *name = ivar_getName(ivar);
+            if (name && strstr(name, "lineView")) {
+                originalLineView = object_getIvar(floatView, ivar);
+                if (originalLineView) {
+                    UIImageView *lineView2 = [floatView dd_lineView2];
+                    lineView2.frame = CGRectMake(CGRectGetMaxX(originalLineView.frame) + buttonWidth,
+                                                CGRectGetMinY(originalLineView.frame),
+                                                CGRectGetWidth(originalLineView.frame),
+                                                CGRectGetHeight(originalLineView.frame));
+                    [floatView addSubview:lineView2];
+                    break;
+                }
+            }
+        }
+        free(ivars);
     }
 }
 
@@ -242,9 +243,8 @@ static void DDTimeLineForwardPluginLoad() {
             
             // 注册到插件管理器
             if (NSClassFromString(@"WCPluginsMgr")) {
-                [[objc_getClass("WCPluginsMgr") sharedInstance] registerControllerWithTitle:@"DD朋友圈转发" 
-                                                                                   version:@"1.0.0" 
-                                                                               controller:@"DDTimeLineForwardSettingController"];
+                [[objc_getClass("WCPluginsMgr") sharedInstance] registerSwitchWithTitle:@"DD朋友圈转发" 
+                                                                                   key:DDTimeLineForwardEnableKey];
             }
             
             // Hook WCOperateFloatView的showWithItemData:tipPoint:方法
