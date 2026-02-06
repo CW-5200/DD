@@ -56,6 +56,23 @@
 // MARK: - WCOperateFloatView 扩展 (添加转发功能)
 @implementation NSObject (DDTimeLineForward)
 
+// 获取微信原生分享图标
+- (UIImage *)dd_wechatShareIcon {
+    static UIImage *cachedIcon = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 直接使用确认的图标名称
+        cachedIcon = [UIImage imageNamed:@"icons_outlined_share_1.5pt"];
+        
+        // 确保图标使用模板渲染模式，以便正确着色
+        if (cachedIcon) {
+            cachedIcon = [cachedIcon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        }
+    });
+    
+    return cachedIcon;
+}
+
 // 动态添加分享按钮属性
 - (UIButton *)dd_shareBtn {
     static char dd_shareBtnKey;
@@ -76,19 +93,11 @@
             btn.titleLabel.font = [UIFont systemFontOfSize:14];
         }
         
-        // 设置转发图标（从原始文件的base64字符串）
-        NSString *base64Str = @"iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAABf0lEQVQ4T62UvyuFYRTHP9/JJimjMpgYTBIDd5XEIIlB9x+Q5U5+xEIZLDabUoQsNtS9G5MyXImk3EHK/3B09Ly31/X+cG9Unek5z+c5z/l+n0f8c+ivPDMrAAVJG1l7mgWWgc0saCvAKnCWBm0F2A+cpEGbBkqSmfWlQXOBZjbgYgCDwIIDXZQ0aCrQzOaAZWAIuAEugaqk00jlJOgvYChaA6aAFeBY0nuaVRqhP4CxxQ9gVZJ3lhs/oAnt1ySN51JiBWa2FMYzW+/QzNwK3cCkpM+/As1sAjgAZiRVIsWKwHZ4Wo9NwFz5W2Ba0oXvix4Cu4L2kUrBEOzAMjIXsAjw7YrbpBZ6BeUlHURNu0h7gFXC/vQRlveM34AF4AipAG1AOxu4Me0qS9uM3cqB7bRS4A3y4556SvOt6hN8mAnrtoaTdxvE40H+QEcBP2pFUS5phBASu3eiS1pPqIuCWpKusMWLAPUl+k8T4fuiSfFaZEYBFSYtZhbmfQ95Bjetfmweww0YOfToAAAAASUVORK5CYII=";
-        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Str options:NSDataBase64DecodingIgnoreUnknownCharacters];
-        UIImage *image = [UIImage imageWithData:imageData];
-        
-        // 调整图片大小以匹配原始文件（大概20x20像素）
-        CGSize newSize = CGSizeMake(20, 20);
-        UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
-        [image drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
-        UIImage *scaledImage = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        
-        [btn setImage:scaledImage forState:UIControlStateNormal];
+        // 使用微信原生分享图标
+        UIImage *shareIcon = [self dd_wechatShareIcon];
+        if (shareIcon) {
+            [btn setImage:shareIcon forState:UIControlStateNormal];
+        }
         
         // 设置图片渲染模式，保持原始颜色
         btn.tintColor = [btn titleColorForState:UIControlStateNormal];
