@@ -56,9 +56,8 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
         config = [DDTimeLineForwardConfig new];
         config.enabled = [[NSUserDefaults standardUserDefaults] boolForKey:DDTimeLineForwardEnableKey];
         
-        // 如果没有设置过，使用默认值
         if ([[NSUserDefaults standardUserDefaults] objectForKey:DDTimeLineForwardEnableKey] == nil) {
-            config.enabled = NO; // 默认不开启
+            config.enabled = NO;
             [[NSUserDefaults standardUserDefaults] setBool:config.enabled forKey:DDTimeLineForwardEnableKey];
             [[NSUserDefaults standardUserDefaults] synchronize];
         }
@@ -131,15 +130,9 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
 
 @end
 
-#pragma mark - WCOperateFloatView扩展
-@interface WCOperateFloatView (DDTimeLineForward)
-- (UIButton *)dd_shareBtn;
-- (UIImageView *)dd_lineView2;
-- (void)dd_forwardTimeLine:(id)arg1;
-- (void)dd_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2;
-@end
+#pragma mark - Hook实现
 
-@implementation WCOperateFloatView (DDTimeLineForward)
+%hook WCOperateFloatView
 
 // 动态添加分享按钮属性
 - (UIButton *)dd_shareBtn {
@@ -149,7 +142,6 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
     if (!btn) {
         btn = [UIButton buttonWithType:UIButtonTypeCustom];
         [btn setTitle:@" 转发" forState:UIControlStateNormal];
-        [btn addTarget:self action:@selector(dd_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
         // 使用原始按钮的样式设置
         if (self.m_likeBtn) {
@@ -169,14 +161,12 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
     return btn;
 }
 
-// 动态添加分割线属性
-- (UIImageView *)dd_lineView2 {
-    static char dd_lineView2Key;
-    UIImageView *imageView = objc_getAssociatedObject(self, &dd_lineView2Key);
+// 获取原始分割线
+- (UIImageView *)dd_originalLineView {
+    static char dd_originalLineViewKey;
+    UIImageView *originalLineView = objc_getAssociatedObject(self, &dd_originalLineViewKey);
     
-    if (!imageView) {
-        // 获取原始分割线
-        UIImageView *originalLineView = nil;
+    if (!originalLineView) {
         unsigned int outCount = 0;
         Ivar *ivars = class_copyIvarList([self class], &outCount);
         
@@ -189,6 +179,21 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
             }
         }
         free(ivars);
+        
+        if (originalLineView) {
+            objc_setAssociatedObject(self, &dd_originalLineViewKey, originalLineView, OBJC_ASSOCIATION_ASSIGN);
+        }
+    }
+    return originalLineView;
+}
+
+// 动态添加分割线属性
+- (UIImageView *)dd_lineView2 {
+    static char dd_lineView2Key;
+    UIImageView *imageView = objc_getAssociatedObject(self, &dd_lineView2Key);
+    
+    if (!imageView) {
+        UIImageView *originalLineView = [self dd_originalLineView];
         
         // 创建分割线
         if (originalLineView && originalLineView.image) {
@@ -200,82 +205,8 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
 }
 
 // 转发按钮点击事件
-- (void)dd_forwardTimeLine:(id)arg1 {
-    if (![DDTimeLineForwardConfig sharedConfig].enabled) return;
-    
-    Class forwardViewControllerClass = objc_getClass("WCForwardViewController");
-    if (forwardViewControllerClass) {
-        id forwardVC = [[forwardViewControllerClass alloc] initWithDataItem:self.m_item];
-        if (forwardVC && self.navigationController) {
-            [self.navigationController pushViewController:forwardVC animated:YES];
-        }
-        [self hide];
-    }
-}
-
-// Hook显示方法
-- (void)dd_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    // 调用原始方法
-    [self dd_showWithItemData:arg1 tipPoint:arg2];
-    
-    if (![DDTimeLineForwardConfig sharedConfig].enabled) return;
-    
-    // 调整浮窗大小
-    CGRect frame = self.frame;
-    frame = CGRectInset(frame, frame.size.width / -4, 0);
-    frame = CGRectOffset(frame, frame.size.width / -4, 0);
-    self.frame = frame;
-    
-    // 添加转发按钮
-    UIButton *shareBtn = [self dd_shareBtn];
-    if (self.m_likeBtn) {
-        CGRect likeBtnFrame = self.m_likeBtn.frame;
-        shareBtn.frame = CGRectOffset(likeBtnFrame, likeBtnFrame.size.width * 2, 0);
-        
-        if (shareBtn.superview != self) {
-            [self addSubview:shareBtn];
-        }
-    }
-    
-    // 添加分割线
-    UIImageView *lineView2 = [self dd_lineView2];
-    if (lineView2) {
-        // 获取原始分割线
-        UIImageView *originalLineView = nil;
-        unsigned int outCount = 0;
-        Ivar *ivars = class_copyIvarList([self class], &outCount);
-        
-        for (unsigned int i = 0; i < outCount; i++) {
-            Ivar ivar = ivars[i];
-            const char *name = ivar_getName(ivar);
-            if (name && strstr(name, "lineView")) {
-                originalLineView = object_getIvar(self, ivar);
-                break;
-            }
-        }
-        free(ivars);
-        
-        if (originalLineView && self.m_likeBtn) {
-            CGRect originalLineFrame = originalLineView.frame;
-            lineView2.frame = CGRectOffset(originalLineFrame, [self buttonWidth:self.m_likeBtn], 0);
-            
-            if (lineView2.superview != self) {
-                [self addSubview:lineView2];
-            }
-        }
-    }
-    
-    [self layoutIfNeeded];
-}
-
-@end
-
-#pragma mark - Hook实现
-%hook WCOperateFloatView
-
-// 转发按钮点击事件
 %new
-- (void)dd_hook_forwardTimeLine:(id)arg1 {
+- (void)dd_forwardTimeLine:(id)arg1 {
     if (![DDTimeLineForwardConfig sharedConfig].enabled) return;
     
     Class forwardViewControllerClass = objc_getClass("WCForwardViewController");
@@ -302,46 +233,28 @@ static NSString * const DDTimeLineForwardEnableKey = @"DDTimeLineForwardEnable";
     
     // 添加转发按钮
     UIButton *shareBtn = [self dd_shareBtn];
-    if (shareBtn) {
-        // 确保按钮有正确的事件处理
-        [shareBtn removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
-        [shareBtn addTarget:self action:@selector(dd_hook_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+    if (self.m_likeBtn && shareBtn) {
+        CGRect likeBtnFrame = self.m_likeBtn.frame;
+        shareBtn.frame = CGRectOffset(likeBtnFrame, likeBtnFrame.size.width * 2, 0);
         
-        if (self.m_likeBtn) {
-            CGRect likeBtnFrame = self.m_likeBtn.frame;
-            shareBtn.frame = CGRectOffset(likeBtnFrame, likeBtnFrame.size.width * 2, 0);
-            
-            if (shareBtn.superview != self) {
-                [self addSubview:shareBtn];
-            }
+        // 设置按钮事件
+        [shareBtn addTarget:self action:@selector(dd_forwardTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+        
+        if (shareBtn.superview != self) {
+            [self addSubview:shareBtn];
         }
     }
     
     // 添加分割线
+    UIImageView *originalLineView = [self dd_originalLineView];
     UIImageView *lineView2 = [self dd_lineView2];
-    if (lineView2) {
-        // 获取原始分割线
-        UIImageView *originalLineView = nil;
-        unsigned int outCount = 0;
-        Ivar *ivars = class_copyIvarList([self class], &outCount);
+    
+    if (originalLineView && self.m_likeBtn && lineView2) {
+        CGRect originalLineFrame = originalLineView.frame;
+        lineView2.frame = CGRectOffset(originalLineFrame, [self buttonWidth:self.m_likeBtn], 0);
         
-        for (unsigned int i = 0; i < outCount; i++) {
-            Ivar ivar = ivars[i];
-            const char *name = ivar_getName(ivar);
-            if (name && strstr(name, "lineView")) {
-                originalLineView = object_getIvar(self, ivar);
-                break;
-            }
-        }
-        free(ivars);
-        
-        if (originalLineView && self.m_likeBtn) {
-            CGRect originalLineFrame = originalLineView.frame;
-            lineView2.frame = CGRectOffset(originalLineFrame, [self buttonWidth:self.m_likeBtn], 0);
-            
-            if (lineView2.superview != self) {
-                [self addSubview:lineView2];
-            }
+        if (lineView2.superview != self) {
+            [self addSubview:lineView2];
         }
     }
     
