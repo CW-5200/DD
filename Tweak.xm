@@ -52,7 +52,6 @@
 @interface WCOperateFloatView (DDForward)
 @property(nonatomic, strong) UIButton *m_shareBtn;
 @property(nonatomic, strong) UIImageView *m_lineView2;
-- (void)forwordTimeLine:(id)arg1;
 @end
 
 @implementation WCOperateFloatView (DDForward)
@@ -74,13 +73,6 @@ static char m_lineView2Key;
 
 - (void)setM_lineView2:(UIImageView *)m_lineView2 {
     objc_setAssociatedObject(self, &m_lineView2Key, m_lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-- (void)forwordTimeLine:(id)arg1 {
-    if (!DDForwardConfig.isEnabled) return;
-    
-    WCForwardViewController *forwardVC = [[objc_getClass("WCForwardViewController") alloc] initWithDataItem:self.m_item];
-    [self.navigationController pushViewController:forwardVC animated:YES];
 }
 
 @end
@@ -129,6 +121,14 @@ static char m_lineView2Key;
         self.m_lineView2 = lineView2;
         [self.m_likeBtn.superview addSubview:lineView2];
     }
+}
+
+%new
+- (void)forwordTimeLine:(id)arg1 {
+    if (!DDForwardConfig.isEnabled) return;
+    
+    WCForwardViewController *forwardVC = [[objc_getClass("WCForwardViewController") alloc] initWithDataItem:self.m_item];
+    [self.navigationController pushViewController:forwardVC animated:YES];
 }
 
 - (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
