@@ -126,7 +126,7 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightRegular];
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightRegular];
         icon = [UIImage systemImageNamed:@"arrowshape.turn.up.forward" withConfiguration:config];
         icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     });
@@ -135,24 +135,10 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
 
 @end
 
-@implementation NSObject (ForwardTweak)
+%hook WCOperateFloatView
 
-- (void)xxx_forwordTimeLine:(id)sender {
-    id dataItem = [self valueForKey:@"m_item"];
-    if (dataItem) {
-        Class forwardVCClass = objc_getClass("WCForwardViewController");
-        if (forwardVCClass) {
-            WCForwardViewController *forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
-            UINavigationController *navController = [self valueForKey:@"navigationController"];
-            if (navController) {
-                [navController pushViewController:forwardVC animated:YES];
-            }
-        }
-    }
-}
-
-- (void)xxx_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    [self xxx_showWithItemData:arg1 tipPoint:arg2];
+- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    %orig(arg1, arg2);
     
     if (![DDForwardConfig sharedConfig].forwardEnabled) {
         return;
@@ -214,23 +200,21 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
     }
 }
 
-@end
-
-#pragma mark - 方法交换入口
-
-__attribute__((constructor)) static void entry() {
-    @autoreleasepool {
-        Class cls = objc_getClass("WCOperateFloatView");
-        if (!cls) return;
-        
-        Method original = class_getInstanceMethod(cls, @selector(showWithItemData:tipPoint:));
-        Method swizzled = class_getInstanceMethod(cls, @selector(xxx_showWithItemData:tipPoint:));
-        
-        if (original && swizzled) {
-            method_exchangeImplementations(original, swizzled);
+- (void)xxx_forwordTimeLine:(id)sender {
+    id dataItem = [self valueForKey:@"m_item"];
+    if (dataItem) {
+        Class forwardVCClass = objc_getClass("WCForwardViewController");
+        if (forwardVCClass) {
+            WCForwardViewController *forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
+            UINavigationController *navController = [self valueForKey:@"navigationController"];
+            if (navController) {
+                [navController pushViewController:forwardVC animated:YES];
+            }
         }
     }
 }
+
+%end
 
 #pragma mark - 插件注册
 
