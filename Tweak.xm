@@ -126,11 +126,29 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightRegular];
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightRegular];
         icon = [UIImage systemImageNamed:@"arrowshape.turn.up.forward" withConfiguration:config];
         icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     });
     return icon;
+}
+
+@end
+
+@implementation NSObject (ForwardHandler)
+
+- (void)xxx_forwordTimeLine:(id)sender {
+    id dataItem = [self valueForKey:@"m_item"];
+    if (dataItem) {
+        Class forwardVCClass = objc_getClass("WCForwardViewController");
+        if (forwardVCClass) {
+            WCForwardViewController *forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
+            UINavigationController *navController = [self valueForKey:@"navigationController"];
+            if (navController) {
+                [navController pushViewController:forwardVC animated:YES];
+            }
+        }
+    }
 }
 
 @end
@@ -195,20 +213,6 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
                 CGFloat (*func)(id, SEL, id) = (CGFloat (*)(id, SEL, id))imp;
                 CGFloat width = func(self, buttonWidthSel, likeBtn);
                 lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
-            }
-        }
-    }
-}
-
-- (void)xxx_forwordTimeLine:(id)sender {
-    id dataItem = [self valueForKey:@"m_item"];
-    if (dataItem) {
-        Class forwardVCClass = objc_getClass("WCForwardViewController");
-        if (forwardVCClass) {
-            WCForwardViewController *forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
-            UINavigationController *navController = [self valueForKey:@"navigationController"];
-            if (navController) {
-                [navController pushViewController:forwardVC animated:YES];
             }
         }
     }
