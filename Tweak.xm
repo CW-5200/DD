@@ -126,14 +126,9 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 使用系统的 forward 图标
-        if (@available(iOS 13.0, *)) {
-            // 使用更小的图标配置
-            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightRegular];
-            icon = [UIImage systemImageNamed:@"arrowshape.turn.up.forward" withConfiguration:config];
-            // 设置为模板模式，以便应用 tintColor
-            icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        }
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightRegular];
+        icon = [UIImage systemImageNamed:@"arrowshape.turn.up.forward" withConfiguration:config];
+        icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     });
     return icon;
 }
@@ -163,7 +158,6 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
         [shareBtn setTitleColor:titleColor forState:UIControlStateNormal];
         shareBtn.titleLabel.font = likeBtn.titleLabel.font;
         [shareBtn setImage:[UIImage forwardIcon] forState:UIControlStateNormal];
-        // 设置图标颜色为白色
         shareBtn.tintColor = [UIColor whiteColor];
         [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         [likeBtn.superview addSubview:shareBtn];
