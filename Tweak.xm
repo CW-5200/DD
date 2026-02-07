@@ -126,7 +126,7 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightRegular];
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightRegular];
         icon = [UIImage systemImageNamed:@"arrowshape.turn.up.forward" withConfiguration:config];
         icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     });
