@@ -126,8 +126,26 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightRegular];
-        icon = [UIImage systemImageNamed:@"arrowshape.turn.up.forward" withConfiguration:config];
+        UIGraphicsBeginImageContextWithOptions(CGSizeMake(18, 18), NO, 0.0);
+        
+        CGContextRef ctx = UIGraphicsGetCurrentContext();
+        CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
+        CGContextSetLineWidth(ctx, 1.2);
+        CGContextSetLineCap(ctx, kCGLineCapRound);
+        
+        CGFloat p = 4.0;
+        CGContextMoveToPoint(ctx, p, p);
+        CGContextAddLineToPoint(ctx, 18 - p, 9);
+        CGContextAddLineToPoint(ctx, p, 18 - p);
+        
+        CGContextMoveToPoint(ctx, 18 - p - 1.5, 5);
+        CGContextAddLineToPoint(ctx, 18 - p - 1.5, 13);
+        
+        CGContextStrokePath(ctx);
+        
+        icon = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        
         icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     });
     return icon;
@@ -135,6 +153,7 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
 
 @end
 
+#pragma mark - NSObject类别，添加转发处理方法
 @implementation NSObject (ForwardHandler)
 
 - (void)xxx_forwordTimeLine:(id)sender {
