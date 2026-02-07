@@ -165,9 +165,6 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
         [shareBtn setImage:[UIImage forwardIcon] forState:UIControlStateNormal];
         // 设置图标颜色为白色
         shareBtn.tintColor = [UIColor whiteColor];
-        // 调整图片和文字的间距
-        shareBtn.imageEdgeInsets = UIEdgeInsetsMake(0, -4, 0, 0);
-        shareBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 2, 0, 0);
         [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         [likeBtn.superview addSubview:shareBtn];
         objc_setAssociatedObject(self, &shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
