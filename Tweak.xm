@@ -20,13 +20,17 @@
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 预渲染的18x18图标（白色箭头图标）
-        // 这是硬编码的PNG base64数据，避免运行时绘制
-        NSString *base64String = @"iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAAAXNSR0IArs4c6QAAAVlpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IlhNUCBDb3JlIDUuNC4wIj4KICAgPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4KICAgICAgPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIKICAgICAgICAgICAgeG1sbnM6dGlmZj0iaHR0cDovL25zLmFkb2JlLmNvbS90aWZmLzEuMC8iPgogICAgICAgICA8dGlmZjpPcmllbnRhdGlvbj4xPC90aWZmOk9yaWVudGF0aW9uPgogICAgICA8L3JkZjpEZXNjcmlwdGlvbj4KICAgPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KTMInWQAAANxJREFUOBGtVLsRwyAQrO7BKVy4p+gglZv8Tdyl3lI/QZJz5s6g8Y89HobDnKA8v0IIiQ/2nHP53a21uq7r9/VTnueTECJZ2x6UJBN8No/jeBJF0QkAJcaYLY7j8+A4TkL0l4AH14Oqqg8IfGM8YMV8hXz7CgAAAABJRU5ErkJggg==";
+        // 使用iOS 13+系统图标
+        UIImage *systemIcon = [UIImage systemImageNamed:@"arrowshape.turn.up.right.fill"];
         
-        NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64String options:NSDataBase64DecodingIgnoreUnknownCharacters];
-        icon = [UIImage imageWithData:imageData scale:3.0]; // @3x scale for retina
-        icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+        if (systemIcon) {
+            // 配置图标为白色，适配黑暗模式
+            UIImageConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightRegular];
+            icon = [systemIcon imageByApplyingSymbolConfiguration:config];
+            
+            // 将图标渲染为白色
+            icon = [icon imageWithTintColor:[UIColor whiteColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
+        }
     });
     return icon;
 }
@@ -35,13 +39,26 @@
 
 __attribute__((constructor)) static void entry() {
     @autoreleasepool {
-        // 预加载图标，避免第一次使用时延迟
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [UIImage forwardIcon];
-        });
-        
         Class cls = objc_getClass("WCOperateFloatView");
         if (!cls) return;
+        
+        // 在运行时预先准备好按钮，避免第一次创建延迟
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            // 预创建按钮但不添加到视图
+            UIButton *preparedBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+            [preparedBtn setTitle:@" 转发" forState:UIControlStateNormal];
+            [preparedBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+            preparedBtn.titleLabel.font = [UIFont systemFontOfSize:14];
+            
+            // 预加载图片
+            UIImage *forwardImage = [UIImage forwardIcon];
+            if (forwardImage) {
+                [preparedBtn setImage:forwardImage forState:UIControlStateNormal];
+            }
+            
+            [preparedBtn sizeToFit];
+        });
         
         Method original = class_getInstanceMethod(cls, @selector(showWithItemData:tipPoint:));
         Method swizzled = class_getInstanceMethod(cls, @selector(xxx_showWithItemData:tipPoint:));
@@ -69,36 +86,42 @@ __attribute__((constructor)) static void entry() {
 }
 
 - (void)xxx_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    // 先调用原始方法
+    // 先调用原始方法，确保布局完成
     [self xxx_showWithItemData:arg1 tipPoint:arg2];
     
     UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
     if (!likeBtn) return;
     
-    // 直接使用系统字体和颜色，避免从likeBtn获取时的延迟
-    UIColor *titleColor = [UIColor whiteColor];
-    UIFont *font = [UIFont systemFontOfSize:14];
-    
     static char shareBtnKey;
     UIButton *shareBtn = objc_getAssociatedObject(self, &shareBtnKey);
+    
     if (!shareBtn) {
-        shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        shareBtn = [UIButton buttonWithType:UIButtonTypeSystem];
         [shareBtn setTitle:@" 转发" forState:UIControlStateNormal];
-        [shareBtn setTitleColor:titleColor forState:UIControlStateNormal];
-        shareBtn.titleLabel.font = font;
-        [shareBtn setImage:[UIImage forwardIcon] forState:UIControlStateNormal];
+        [shareBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        shareBtn.titleLabel.font = [UIFont systemFontOfSize:14];
+        shareBtn.tintColor = [UIColor whiteColor]; // 确保图标颜色为白色
+        
+        UIImage *forwardImage = [UIImage forwardIcon];
+        if (forwardImage) {
+            [shareBtn setImage:forwardImage forState:UIControlStateNormal];
+            
+            // 调整图标位置：向右移动一点
+            shareBtn.imageEdgeInsets = UIEdgeInsetsMake(0, 4, 0, -4);
+            shareBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, -8);
+        }
+        
         [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        // 立即设置尺寸，避免布局延迟
-        shareBtn.frame = CGRectMake(0, 0, 60, likeBtn.frame.size.height);
+        // 提前计算尺寸
         [shareBtn sizeToFit];
+        CGRect btnFrame = shareBtn.frame;
+        btnFrame.size.height = likeBtn.frame.size.height;
+        btnFrame.size.width += 12; // 增加宽度以便图标有更多空间
+        shareBtn.frame = btnFrame;
         
         [likeBtn.superview addSubview:shareBtn];
         objc_setAssociatedObject(self, &shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        
-        // 立即布局
-        [likeBtn.superview setNeedsLayout];
-        [likeBtn.superview layoutIfNeeded];
     }
     
     static char lineViewKey;
@@ -114,16 +137,22 @@ __attribute__((constructor)) static void entry() {
         }
     }
     
+    // 调整整个浮窗的frame，为转发按钮腾出空间
     UIView *view = (UIView *)self;
     CGRect frame = view.frame;
     frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
     view.frame = frame;
     
-    // 立即计算并设置shareBtn的位置
-    CGFloat shareBtnX = CGRectGetMaxX(likeBtn.frame) + likeBtn.frame.size.width;
-    shareBtn.frame = CGRectMake(shareBtnX, likeBtn.frame.origin.y, 
+    // 立即设置转发按钮位置，放在点赞按钮右侧
+    CGFloat shareBtnX = CGRectGetMaxX(likeBtn.frame) + likeBtn.frame.size.width * 0.8; // 稍微向右移动
+    shareBtn.frame = CGRectMake(shareBtnX, 
+                               likeBtn.frame.origin.y, 
                                CGRectGetWidth(shareBtn.frame), 
                                CGRectGetHeight(likeBtn.frame));
+    
+    // 确保按钮立即显示
+    shareBtn.hidden = NO;
+    [shareBtn.superview bringSubviewToFront:shareBtn];
     
     if (lineView2) {
         Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
@@ -138,10 +167,9 @@ __attribute__((constructor)) static void entry() {
         }
     }
     
-    // 强制立即显示
+    // 强制立即刷新显示
+    [shareBtn layoutIfNeeded];
     [shareBtn setNeedsDisplay];
-    [shareBtn.superview setNeedsLayout];
-    [shareBtn.superview layoutIfNeeded];
 }
 
 @end
