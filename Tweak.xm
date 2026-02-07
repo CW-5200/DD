@@ -135,10 +135,24 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
 
 @end
 
-%hook WCOperateFloatView
+@implementation NSObject (ForwardTweak)
 
-- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    %orig(arg1, arg2);
+- (void)xxx_forwordTimeLine:(id)sender {
+    id dataItem = [self valueForKey:@"m_item"];
+    if (dataItem) {
+        Class forwardVCClass = objc_getClass("WCForwardViewController");
+        if (forwardVCClass) {
+            WCForwardViewController *forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
+            UINavigationController *navController = [self valueForKey:@"navigationController"];
+            if (navController) {
+                [navController pushViewController:forwardVC animated:YES];
+            }
+        }
+    }
+}
+
+- (void)xxx_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    [self xxx_showWithItemData:arg1 tipPoint:arg2];
     
     if (![DDForwardConfig sharedConfig].forwardEnabled) {
         return;
@@ -200,21 +214,23 @@ static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
     }
 }
 
-- (void)xxx_forwordTimeLine:(id)sender {
-    id dataItem = [self valueForKey:@"m_item"];
-    if (dataItem) {
-        Class forwardVCClass = objc_getClass("WCForwardViewController");
-        if (forwardVCClass) {
-            WCForwardViewController *forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
-            UINavigationController *navController = [self valueForKey:@"navigationController"];
-            if (navController) {
-                [navController pushViewController:forwardVC animated:YES];
-            }
+@end
+
+#pragma mark - 方法交换入口
+
+__attribute__((constructor)) static void entry() {
+    @autoreleasepool {
+        Class cls = objc_getClass("WCOperateFloatView");
+        if (!cls) return;
+        
+        Method original = class_getInstanceMethod(cls, @selector(showWithItemData:tipPoint:));
+        Method swizzled = class_getInstanceMethod(cls, @selector(xxx_showWithItemData:tipPoint:));
+        
+        if (original && swizzled) {
+            method_exchangeImplementations(original, swizzled);
         }
     }
 }
-
-%end
 
 #pragma mark - 插件注册
 
