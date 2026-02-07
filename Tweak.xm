@@ -2,6 +2,112 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
+#pragma mark - 插件管理接口
+
+@interface WCPluginsMgr : NSObject
++ (instancetype)sharedInstance;
+- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
+@end
+
+#pragma mark - 配置管理
+
+@interface DDForwardConfig : NSObject
+
++ (instancetype)sharedConfig;
+@property (assign, nonatomic) BOOL forwardEnabled;
+
+@end
+
+static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
+
+@implementation DDForwardConfig
+
++ (instancetype)sharedConfig {
+    static DDForwardConfig *config = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        config = [DDForwardConfig new];
+    });
+    return config;
+}
+
+- (instancetype)init {
+    if (self = [super init]) {
+        _forwardEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:kDDForwardEnabledKey];
+    }
+    return self;
+}
+
+- (void)setForwardEnabled:(BOOL)forwardEnabled {
+    _forwardEnabled = forwardEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:forwardEnabled forKey:kDDForwardEnabledKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+@end
+
+#pragma mark - 设置界面
+
+@interface DDForwardSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
+
+@property (nonatomic, strong) UITableView *tableView;
+
+@end
+
+@implementation DDForwardSettingsViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"DD朋友圈转发";
+    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:self.tableView];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return 1;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *cellIdentifier = @"DDForwardSwitchCell";
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+    }
+    
+    cell.textLabel.text = @"启用朋友圈转发";
+    
+    UISwitch *switchView = [[UISwitch alloc] init];
+    switchView.onTintColor = [UIColor systemBlueColor];
+    switchView.on = [DDForwardConfig sharedConfig].forwardEnabled;
+    [switchView addTarget:self action:@selector(forwardSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    cell.accessoryView = switchView;
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 50.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 20.0;
+}
+
+- (void)forwardSwitchChanged:(UISwitch *)sender {
+    [DDForwardConfig sharedConfig].forwardEnabled = sender.isOn;
+}
+
+@end
+
+#pragma mark - 转发功能实现
+
 @interface WCOperateFloatView : UIView
 @property(readonly, nonatomic) UIButton *m_likeBtn;
 @property(readonly, nonatomic) id m_item;
@@ -20,44 +126,88 @@
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 直接使用iOS 13+系统图标
-        UIImage *systemIcon = [UIImage systemImageNamed:@"arrowshape.turn.up.right.fill"];
-        
-        if (systemIcon) {
-            // 调整图标大小适配按钮
-            CGSize newSize = CGSizeMake(16, 16);
-            UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
-            [UIColor.whiteColor set]; // 确保图标是白色
-            [systemIcon drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
-            icon = UIGraphicsGetImageFromCurrentImageContext();
-            UIGraphicsEndImageContext();
+        // 使用系统的 forward 图标
+        if (@available(iOS 13.0, *)) {
+            // 使用更小的图标配置
+            UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightRegular];
+            icon = [UIImage systemImageNamed:@"arrowshape.turn.up.forward" withConfiguration:config];
+            // 设置为模板模式，以便应用 tintColor
+            icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         }
-        
-        icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
     });
     return icon;
 }
 
 @end
 
-__attribute__((constructor)) static void entry() {
-    @autoreleasepool {
-        // 预加载系统图标
-        [UIImage forwardIcon];
+%hook WCOperateFloatView
+
+- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
+    %orig(arg1, arg2);
+    
+    if (![DDForwardConfig sharedConfig].forwardEnabled) {
+        return;
+    }
+    
+    UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
+    if (!likeBtn) return;
+    
+    UIColor *titleColor = [likeBtn titleColorForState:UIControlStateNormal];
+    if (!titleColor) titleColor = [UIColor whiteColor];
+    
+    static char shareBtnKey;
+    UIButton *shareBtn = objc_getAssociatedObject(self, &shareBtnKey);
+    if (!shareBtn) {
+        shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        [shareBtn setTitle:@" 转发" forState:UIControlStateNormal];
+        [shareBtn setTitleColor:titleColor forState:UIControlStateNormal];
+        shareBtn.titleLabel.font = likeBtn.titleLabel.font;
+        [shareBtn setImage:[UIImage forwardIcon] forState:UIControlStateNormal];
+        // 设置图标颜色为白色
+        shareBtn.tintColor = [UIColor whiteColor];
+        // 调整图片和文字的间距
+        shareBtn.imageEdgeInsets = UIEdgeInsetsMake(0, -4, 0, 0);
+        shareBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 2, 0, 0);
+        [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
+        [likeBtn.superview addSubview:shareBtn];
+        objc_setAssociatedObject(self, &shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    
+    static char lineViewKey;
+    UIImageView *lineView2 = objc_getAssociatedObject(self, &lineViewKey);
+    if (!lineView2) {
+        Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
+        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
         
-        Class cls = objc_getClass("WCOperateFloatView");
-        if (!cls) return;
+        if (originalLineView && [originalLineView isKindOfClass:[UIImageView class]]) {
+            lineView2 = [[UIImageView alloc] initWithImage:originalLineView.image];
+            [likeBtn.superview addSubview:lineView2];
+            objc_setAssociatedObject(self, &lineViewKey, lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+    
+    UIView *view = (UIView *)self;
+    CGRect frame = view.frame;
+    frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
+    view.frame = frame;
+    
+    shareBtn.frame = CGRectOffset(likeBtn.frame, likeBtn.frame.size.width * 2, 0);
+    
+    if (lineView2) {
+        Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
+        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
         
-        Method original = class_getInstanceMethod(cls, @selector(showWithItemData:tipPoint:));
-        Method swizzled = class_getInstanceMethod(cls, @selector(xxx_showWithItemData:tipPoint:));
-        
-        if (original && swizzled) {
-            method_exchangeImplementations(original, swizzled);
+        if (originalLineView) {
+            SEL buttonWidthSel = @selector(buttonWidth:);
+            if ([self respondsToSelector:buttonWidthSel]) {
+                IMP imp = [self methodForSelector:buttonWidthSel];
+                CGFloat (*func)(id, SEL, id) = (CGFloat (*)(id, SEL, id))imp;
+                CGFloat width = func(self, buttonWidthSel, likeBtn);
+                lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
+            }
         }
     }
 }
-
-@implementation NSObject (ForwardTweak)
 
 - (void)xxx_forwordTimeLine:(id)sender {
     id dataItem = [self valueForKey:@"m_item"];
@@ -73,99 +223,17 @@ __attribute__((constructor)) static void entry() {
     }
 }
 
-- (void)xxx_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    // 先调用原始方法
-    [self xxx_showWithItemData:arg1 tipPoint:arg2];
-    
-    UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
-    if (!likeBtn) return;
-    
-    // 立即创建转发按钮，避免延迟
-    static char shareBtnKey;
-    UIButton *shareBtn = objc_getAssociatedObject(self, &shareBtnKey);
-    if (!shareBtn) {
-        shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-        
-        // 使用 UIButtonConfiguration 替代已废弃的 API
-        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-        config.image = [UIImage forwardIcon];
-        config.title = @"转发";
-        config.imagePadding = 4; // 图标和文字间距
-        config.contentInsets = NSDirectionalEdgeInsetsMake(0, 4, 0, 4); // 内容内边距，向右移动图标
-        
-        // 设置文字样式
-        NSMutableAttributedString *attributedTitle = [[NSMutableAttributedString alloc] initWithString:@"转发"];
-        [attributedTitle addAttribute:NSForegroundColorAttributeName value:[UIColor whiteColor] range:NSMakeRange(0, attributedTitle.length)];
-        [attributedTitle addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:14] range:NSMakeRange(0, attributedTitle.length)];
-        config.attributedTitle = [[NSAttributedString alloc] initWithAttributedString:attributedTitle];
-        
-        // 配置按钮
-        shareBtn.configuration = config;
-        
-        // 设置图像颜色为白色
-        shareBtn.tintColor = [UIColor whiteColor];
-        shareBtn.configurationUpdateHandler = ^(UIButton * _Nonnull button) {
-            // 确保图标颜色始终为白色
-            UIButtonConfiguration *updatedConfig = button.configuration;
-            updatedConfig.imageColorTransformer = ^UIColor * _Nonnull(UIColor * _Nonnull color) {
-                return [UIColor whiteColor];
-            };
-            button.configuration = updatedConfig;
-        };
-        
-        [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
-        
-        // 立即设置尺寸
-        [shareBtn sizeToFit];
-        CGRect btnFrame = shareBtn.frame;
-        btnFrame.size.height = likeBtn.frame.size.height;
-        btnFrame.size.width += 6; // 增加宽度确保图标位置合适
-        shareBtn.frame = btnFrame;
-        
-        [likeBtn.superview addSubview:shareBtn];
-        objc_setAssociatedObject(self, &shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    
-    // 立即计算并设置转发按钮位置
-    CGFloat shareBtnX = CGRectGetMaxX(likeBtn.frame) + likeBtn.frame.size.width;
-    CGRect shareBtnFrame = shareBtn.frame;
-    shareBtnFrame.origin.x = shareBtnX;
-    shareBtnFrame.origin.y = likeBtn.frame.origin.y;
-    shareBtnFrame.size.height = likeBtn.frame.size.height;
-    shareBtn.frame = shareBtnFrame;
-    
-    static char lineViewKey;
-    UIImageView *lineView2 = objc_getAssociatedObject(self, &lineViewKey);
-    if (!lineView2) {
-        Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
-        
-        if (originalLineView && [originalLineView isKindOfClass:[UIImageView class]]) {
-            lineView2 = [[UIImageView alloc] initWithImage:originalLineView.image];
-            [likeBtn.superview addSubview:lineView2];
-            objc_setAssociatedObject(self, &lineViewKey, lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
-    
-    // 调整父视图的frame
-    UIView *view = (UIView *)self;
-    CGRect frame = view.frame;
-    frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
-    view.frame = frame;
-    
-    // 设置分隔线位置
-    if (lineView2) {
-        Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
-        
-        if (originalLineView) {
-            CGFloat width = likeBtn.frame.size.width;
-            if ([self respondsToSelector:@selector(buttonWidth:)]) {
-                width = [(id)self buttonWidth:likeBtn];
-            }
-            lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
+%end
+
+#pragma mark - 插件注册
+
+%ctor {
+    @autoreleasepool {
+        if (NSClassFromString(@"WCPluginsMgr")) {
+            [[objc_getClass("WCPluginsMgr") sharedInstance] 
+                registerControllerWithTitle:@"DD朋友圈转发" 
+                version:@"1.0.0" 
+                controller:@"DDForwardSettingsViewController"];
         }
     }
 }
-
-@end
