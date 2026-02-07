@@ -20,17 +20,20 @@
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 使用iOS 13+系统图标
+        // 直接使用iOS 13+系统图标，立即加载无延迟
         UIImage *systemIcon = [UIImage systemImageNamed:@"arrowshape.turn.up.right.fill"];
         
         if (systemIcon) {
-            // 配置图标为白色，适配黑暗模式
-            UIImageConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightRegular];
-            icon = [systemIcon imageByApplyingSymbolConfiguration:config];
-            
-            // 将图标渲染为白色
-            icon = [icon imageWithTintColor:[UIColor whiteColor] renderingMode:UIImageRenderingModeAlwaysOriginal];
+            // 调整图标大小适配按钮
+            CGSize newSize = CGSizeMake(16, 16);
+            UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
+            [UIColor.whiteColor set]; // 确保图标是白色
+            [systemIcon drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
+            icon = UIGraphicsGetImageFromCurrentImageContext();
+            UIGraphicsEndImageContext();
         }
+        
+        icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
     });
     return icon;
 }
@@ -39,26 +42,11 @@
 
 __attribute__((constructor)) static void entry() {
     @autoreleasepool {
+        // 预加载系统图标
+        [UIImage forwardIcon];
+        
         Class cls = objc_getClass("WCOperateFloatView");
         if (!cls) return;
-        
-        // 在运行时预先准备好按钮，避免第一次创建延迟
-        static dispatch_once_t onceToken;
-        dispatch_once(&onceToken, ^{
-            // 预创建按钮但不添加到视图
-            UIButton *preparedBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-            [preparedBtn setTitle:@" 转发" forState:UIControlStateNormal];
-            [preparedBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-            preparedBtn.titleLabel.font = [UIFont systemFontOfSize:14];
-            
-            // 预加载图片
-            UIImage *forwardImage = [UIImage forwardIcon];
-            if (forwardImage) {
-                [preparedBtn setImage:forwardImage forState:UIControlStateNormal];
-            }
-            
-            [preparedBtn sizeToFit];
-        });
         
         Method original = class_getInstanceMethod(cls, @selector(showWithItemData:tipPoint:));
         Method swizzled = class_getInstanceMethod(cls, @selector(xxx_showWithItemData:tipPoint:));
@@ -86,43 +74,52 @@ __attribute__((constructor)) static void entry() {
 }
 
 - (void)xxx_showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    // 先调用原始方法，确保布局完成
+    // 先调用原始方法
     [self xxx_showWithItemData:arg1 tipPoint:arg2];
     
     UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
     if (!likeBtn) return;
     
+    // 立即创建转发按钮，避免延迟
     static char shareBtnKey;
     UIButton *shareBtn = objc_getAssociatedObject(self, &shareBtnKey);
-    
     if (!shareBtn) {
-        shareBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        
+        // 设置文字 - 向右移动图标
         [shareBtn setTitle:@" 转发" forState:UIControlStateNormal];
         [shareBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         shareBtn.titleLabel.font = [UIFont systemFontOfSize:14];
-        shareBtn.tintColor = [UIColor whiteColor]; // 确保图标颜色为白色
         
+        // 设置白色图标
         UIImage *forwardImage = [UIImage forwardIcon];
         if (forwardImage) {
+            // 调整图标位置，向右移动2像素
             [shareBtn setImage:forwardImage forState:UIControlStateNormal];
-            
-            // 调整图标位置：向右移动一点
-            shareBtn.imageEdgeInsets = UIEdgeInsetsMake(0, 4, 0, -4);
-            shareBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, -8);
+            shareBtn.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 0);
+            shareBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 2, 0, 0); // 文字向右移动2像素
         }
         
         [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
-        // 提前计算尺寸
+        // 立即设置尺寸
         [shareBtn sizeToFit];
         CGRect btnFrame = shareBtn.frame;
         btnFrame.size.height = likeBtn.frame.size.height;
-        btnFrame.size.width += 12; // 增加宽度以便图标有更多空间
+        btnFrame.size.width += 8; // 增加宽度确保图标不靠左
         shareBtn.frame = btnFrame;
         
         [likeBtn.superview addSubview:shareBtn];
         objc_setAssociatedObject(self, &shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    
+    // 立即计算并设置转发按钮位置
+    CGFloat shareBtnX = CGRectGetMaxX(likeBtn.frame) + likeBtn.frame.size.width;
+    CGRect shareBtnFrame = shareBtn.frame;
+    shareBtnFrame.origin.x = shareBtnX;
+    shareBtnFrame.origin.y = likeBtn.frame.origin.y;
+    shareBtnFrame.size.height = likeBtn.frame.size.height;
+    shareBtn.frame = shareBtnFrame;
     
     static char lineViewKey;
     UIImageView *lineView2 = objc_getAssociatedObject(self, &lineViewKey);
@@ -137,23 +134,13 @@ __attribute__((constructor)) static void entry() {
         }
     }
     
-    // 调整整个浮窗的frame，为转发按钮腾出空间
+    // 调整父视图的frame
     UIView *view = (UIView *)self;
     CGRect frame = view.frame;
     frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
     view.frame = frame;
     
-    // 立即设置转发按钮位置，放在点赞按钮右侧
-    CGFloat shareBtnX = CGRectGetMaxX(likeBtn.frame) + likeBtn.frame.size.width * 0.8; // 稍微向右移动
-    shareBtn.frame = CGRectMake(shareBtnX, 
-                               likeBtn.frame.origin.y, 
-                               CGRectGetWidth(shareBtn.frame), 
-                               CGRectGetHeight(likeBtn.frame));
-    
-    // 确保按钮立即显示
-    shareBtn.hidden = NO;
-    [shareBtn.superview bringSubviewToFront:shareBtn];
-    
+    // 设置分隔线位置
     if (lineView2) {
         Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
         UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
@@ -167,9 +154,9 @@ __attribute__((constructor)) static void entry() {
         }
     }
     
-    // 强制立即刷新显示
-    [shareBtn layoutIfNeeded];
+    // 确保立即显示
     [shareBtn setNeedsDisplay];
+    [shareBtn layoutIfNeeded];
 }
 
 @end
