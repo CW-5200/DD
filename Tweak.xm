@@ -20,7 +20,7 @@
     static UIImage *icon = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 直接使用iOS 13+系统图标，立即加载无延迟
+        // 直接使用iOS 13+系统图标
         UIImage *systemIcon = [UIImage systemImageNamed:@"arrowshape.turn.up.right.fill"];
         
         if (systemIcon) {
@@ -86,19 +86,32 @@ __attribute__((constructor)) static void entry() {
     if (!shareBtn) {
         shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         
-        // 设置文字 - 向右移动图标
-        [shareBtn setTitle:@" 转发" forState:UIControlStateNormal];
-        [shareBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        shareBtn.titleLabel.font = [UIFont systemFontOfSize:14];
+        // 使用 UIButtonConfiguration 替代已废弃的 API
+        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+        config.image = [UIImage forwardIcon];
+        config.title = @"转发";
+        config.imagePadding = 4; // 图标和文字间距
+        config.contentInsets = NSDirectionalEdgeInsetsMake(0, 4, 0, 4); // 内容内边距，向右移动图标
         
-        // 设置白色图标
-        UIImage *forwardImage = [UIImage forwardIcon];
-        if (forwardImage) {
-            // 调整图标位置，向右移动2像素
-            [shareBtn setImage:forwardImage forState:UIControlStateNormal];
-            shareBtn.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 0);
-            shareBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 2, 0, 0); // 文字向右移动2像素
-        }
+        // 设置文字样式
+        NSMutableAttributedString *attributedTitle = [[NSMutableAttributedString alloc] initWithString:@"转发"];
+        [attributedTitle addAttribute:NSForegroundColorAttributeName value:[UIColor whiteColor] range:NSMakeRange(0, attributedTitle.length)];
+        [attributedTitle addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:14] range:NSMakeRange(0, attributedTitle.length)];
+        config.attributedTitle = [[NSAttributedString alloc] initWithAttributedString:attributedTitle];
+        
+        // 配置按钮
+        shareBtn.configuration = config;
+        
+        // 设置图像颜色为白色
+        shareBtn.tintColor = [UIColor whiteColor];
+        shareBtn.configurationUpdateHandler = ^(UIButton * _Nonnull button) {
+            // 确保图标颜色始终为白色
+            UIButtonConfiguration *updatedConfig = button.configuration;
+            updatedConfig.imageColorTransformer = ^UIColor * _Nonnull(UIColor * _Nonnull color) {
+                return [UIColor whiteColor];
+            };
+            button.configuration = updatedConfig;
+        };
         
         [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
         
@@ -106,7 +119,7 @@ __attribute__((constructor)) static void entry() {
         [shareBtn sizeToFit];
         CGRect btnFrame = shareBtn.frame;
         btnFrame.size.height = likeBtn.frame.size.height;
-        btnFrame.size.width += 8; // 增加宽度确保图标不靠左
+        btnFrame.size.width += 6; // 增加宽度确保图标位置合适
         shareBtn.frame = btnFrame;
         
         [likeBtn.superview addSubview:shareBtn];
@@ -153,10 +166,6 @@ __attribute__((constructor)) static void entry() {
             lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
         }
     }
-    
-    // 确保立即显示
-    [shareBtn setNeedsDisplay];
-    [shareBtn layoutIfNeeded];
 }
 
 @end
