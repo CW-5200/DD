@@ -1,253 +1,144 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
-#import <objc/runtime.h>
 
-#pragma mark - 插件管理接口
-
-@interface WCPluginsMgr : NSObject
-+ (instancetype)sharedInstance;
-- (void)registerControllerWithTitle:(NSString *)title version:(NSString *)version controller:(NSString *)controller;
+// 微信内部类声明
+@interface CMessageWrap : NSObject
+@property(nonatomic) unsigned int m_uiMessageType;
+@property(retain, nonatomic) NSString *m_nsFromUsr;
+@property(retain, nonatomic) NSString *m_nsToUsr;
+@property(nonatomic) unsigned int m_uiMesLocalID;
+@property(nonatomic) unsigned int m_uiCreateTime;
+@property(nonatomic) unsigned int m_uiStatus;
+@property(nonatomic) unsigned int m_uiDownloadStatus;
+@property(retain, nonatomic) id m_nsMsgSource;
+@property(retain, nonatomic) id m_dtVoice;
+@property(nonatomic) unsigned int m_uiVoiceFormat;
+@property(nonatomic) unsigned int m_uiVoiceTime;
+- (id)initWithMsgType:(long long)arg1;
+- (void)UpdateContent:(id)arg1;
++ (BOOL)isSenderFromMsgWrap:(CMessageWrap *)msgWrap;
 @end
 
-#pragma mark - 配置管理
-
-@interface DDForwardConfig : NSObject
-
-+ (instancetype)sharedConfig;
-@property (assign, nonatomic) BOOL forwardEnabled;
-
+@interface CContact : NSObject
+@property(retain, nonatomic) NSString *m_nsUsrName;
 @end
 
-static NSString * const kDDForwardEnabledKey = @"DDForwardEnabledKey";
-
-@implementation DDForwardConfig
-
-+ (instancetype)sharedConfig {
-    static DDForwardConfig *config = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        config = [DDForwardConfig new];
-    });
-    return config;
-}
-
-- (instancetype)init {
-    if (self = [super init]) {
-        _forwardEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:kDDForwardEnabledKey];
-    }
-    return self;
-}
-
-- (void)setForwardEnabled:(BOOL)forwardEnabled {
-    _forwardEnabled = forwardEnabled;
-    [[NSUserDefaults standardUserDefaults] setBool:forwardEnabled forKey:kDDForwardEnabledKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
+@interface CUtility : NSObject
++ (NSString *)GetPathOfMesAudio:(NSString *)arg1 LocalID:(unsigned long)arg2 DocPath:(NSString *)arg3;
++ (NSString *)GetDocPath;
 @end
 
-#pragma mark - 设置界面
-
-@interface DDForwardSettingsViewController : UIViewController <UITableViewDelegate, UITableViewDataSource>
-
-@property (nonatomic, strong) UITableView *tableView;
-
+@interface CBaseFile : NSObject
++ (BOOL)FileExist:(NSString *)arg1;
 @end
 
-@implementation DDForwardSettingsViewController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.title = @"DD朋友圈转发";
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    [self.view addSubview:self.tableView];
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 1;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSString *cellIdentifier = @"DDForwardSwitchCell";
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:cellIdentifier];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
-    }
-    
-    cell.textLabel.text = @"启用朋友圈转发";
-    
-    UISwitch *switchView = [[UISwitch alloc] init];
-    switchView.onTintColor = [UIColor systemBlueColor];
-    switchView.on = [DDForwardConfig sharedConfig].forwardEnabled;
-    [switchView addTarget:self action:@selector(forwardSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-    
-    cell.accessoryView = switchView;
-    return cell;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return 50.0;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return 20.0;
-}
-
-- (void)forwardSwitchChanged:(UISwitch *)sender {
-    [DDForwardConfig sharedConfig].forwardEnabled = sender.isOn;
-}
-
+@interface MMServiceCenter : NSObject
++ (id)defaultCenter;
+- (id)getService:(Class)aClass;
 @end
 
-#pragma mark - 转发功能实现
-
-@interface WCOperateFloatView : UIView
-@property(readonly, nonatomic) UIButton *m_likeBtn;
-@property(readonly, nonatomic) id m_item;
-@property(nonatomic) __weak UINavigationController *navigationController;
-- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2;
-- (double)buttonWidth:(id)arg1;
+@interface CMessageMgr : NSObject
+- (void)AddLocalMsg:(id)arg1 MsgWrap:(id)arg2;
 @end
 
-@interface WCForwardViewController : UIViewController
-- (id)initWithDataItem:(id)arg1;
+@interface AudioSender : NSObject
+@property(retain, nonatomic) id m_upload;
 @end
 
-@implementation UIImage (ForwardIcon)
+@interface MMNewUploadVoiceMgr : NSObject
+- (void)ResendVoiceMsg:(NSString *)toUser MsgWrap:(CMessageWrap *)msgWrap;
+@end
 
-+ (UIImage *)forwardIcon {
-    static UIImage *icon = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        UIGraphicsBeginImageContextWithOptions(CGSizeMake(18, 18), NO, 0.0);
-        
-        CGContextRef ctx = UIGraphicsGetCurrentContext();
-        CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
-        CGContextSetLineWidth(ctx, 1.2);
-        CGContextSetLineCap(ctx, kCGLineCapRound);
-        
-        CGFloat p = 4.0;
-        CGContextMoveToPoint(ctx, p, p);
-        CGContextAddLineToPoint(ctx, 18 - p, 9);
-        CGContextAddLineToPoint(ctx, p, 18 - p);
-        
-        CGContextMoveToPoint(ctx, 18 - p - 1.5, 5);
-        CGContextAddLineToPoint(ctx, 18 - p - 1.5, 13);
-        
-        CGContextStrokePath(ctx);
-        
-        icon = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        
-        icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    });
-    return icon;
+@interface MMNewSessionMgr : NSObject
+- (unsigned long)GenSendMsgTime;
+@end
+
+@interface ForwardMsgUtil : NSObject
++ (void)ForwardMsg:(CMessageWrap *)msgWrap ToContact:(CContact *)forwardContact Scene:(unsigned int)scene forwardType:(unsigned int)type editImageAttr:(id)editImageAttr;
+@end
+
+// 主插件代码
+%hook VoiceMessageCellView
+
+- (NSArray *)operationMenuItems{
+    NSMutableArray *menuItems = [%orig mutableCopy];
+    
+    // 创建转发菜单项
+    UIMenuItem *voiceTransmitItem = [[UIMenuItem alloc] initWithTitle:@"转发" action:@selector(onForward:)];
+    [menuItems insertObject:voiceTransmitItem atIndex:1];
+    
+    return menuItems;
 }
 
-@end
-
-#pragma mark - NSObject类别，添加转发处理方法
-@implementation NSObject (ForwardHandler)
-
-- (void)xxx_forwordTimeLine:(id)sender {
-    id dataItem = [self valueForKey:@"m_item"];
-    if (dataItem) {
-        Class forwardVCClass = objc_getClass("WCForwardViewController");
-        if (forwardVCClass) {
-            WCForwardViewController *forwardVC = [[forwardVCClass alloc] initWithDataItem:dataItem];
-            UINavigationController *navController = [self valueForKey:@"navigationController"];
-            if (navController) {
-                [navController pushViewController:forwardVC animated:YES];
-            }
-        }
-    }
-}
-
-@end
-
-%hook WCOperateFloatView
-
-- (void)showWithItemData:(id)arg1 tipPoint:(struct CGPoint)arg2 {
-    %orig(arg1, arg2);
-    
-    if (![DDForwardConfig sharedConfig].forwardEnabled) {
-        return;
-    }
-    
-    UIButton *likeBtn = [self valueForKey:@"m_likeBtn"];
-    if (!likeBtn) return;
-    
-    UIColor *titleColor = [likeBtn titleColorForState:UIControlStateNormal];
-    if (!titleColor) titleColor = [UIColor whiteColor];
-    
-    static char shareBtnKey;
-    UIButton *shareBtn = objc_getAssociatedObject(self, &shareBtnKey);
-    if (!shareBtn) {
-        shareBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-        [shareBtn setTitle:@" 转发" forState:UIControlStateNormal];
-        [shareBtn setTitleColor:titleColor forState:UIControlStateNormal];
-        shareBtn.titleLabel.font = likeBtn.titleLabel.font;
-        [shareBtn setImage:[UIImage forwardIcon] forState:UIControlStateNormal];
-        shareBtn.tintColor = [UIColor whiteColor];
-        [shareBtn addTarget:self action:@selector(xxx_forwordTimeLine:) forControlEvents:UIControlEventTouchUpInside];
-        [likeBtn.superview addSubview:shareBtn];
-        objc_setAssociatedObject(self, &shareBtnKey, shareBtn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    
-    static char lineViewKey;
-    UIImageView *lineView2 = objc_getAssociatedObject(self, &lineViewKey);
-    if (!lineView2) {
-        Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
-        
-        if (originalLineView && [originalLineView isKindOfClass:[UIImageView class]]) {
-            lineView2 = [[UIImageView alloc] initWithImage:originalLineView.image];
-            [likeBtn.superview addSubview:lineView2];
-            objc_setAssociatedObject(self, &lineViewKey, lineView2, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
-    
-    UIView *view = (UIView *)self;
-    CGRect frame = view.frame;
-    frame = CGRectOffset(CGRectInset(frame, frame.size.width / -4, 0), frame.size.width / -4, 0);
-    view.frame = frame;
-    
-    shareBtn.frame = CGRectOffset(likeBtn.frame, likeBtn.frame.size.width * 2, 0);
-    
-    if (lineView2) {
-        Ivar lineViewIvar = class_getInstanceVariable([self class], "m_lineView");
-        UIImageView *originalLineView = lineViewIvar ? object_getIvar(self, lineViewIvar) : nil;
-        
-        if (originalLineView) {
-            SEL buttonWidthSel = @selector(buttonWidth:);
-            if ([self respondsToSelector:buttonWidthSel]) {
-                IMP imp = [self methodForSelector:buttonWidthSel];
-                CGFloat (*func)(id, SEL, id) = (CGFloat (*)(id, SEL, id))imp;
-                CGFloat width = func(self, buttonWidthSel, likeBtn);
-                lineView2.frame = CGRectOffset(originalLineView.frame, width, 0);
-            }
-        }
-    }
+- (void)onForward:(id)arg1{
+    // 调用转发方法
+    [self doForward];
 }
 
 %end
 
-#pragma mark - 插件注册
+%hook ForwardMsgUtil
 
-%ctor {
-    @autoreleasepool {
-        if (NSClassFromString(@"WCPluginsMgr")) {
-            [[objc_getClass("WCPluginsMgr") sharedInstance] 
-                registerControllerWithTitle:@"DD朋友圈转发" 
-                version:@"1.0.0" 
-                controller:@"DDForwardSettingsViewController"];
++ (void)ForwardMsg:(CMessageWrap *)msgWrap ToContact:(CContact *)forwardContact Scene:(unsigned int)scene forwardType:(unsigned int)type editImageAttr:(id)editImageAttr{
+    // 检查是否为语音消息（0x22 是语音消息类型）
+    if(msgWrap.m_uiMessageType == 0x22){
+        // 判断是发送者还是接收者
+        BOOL isSender = [%c(CMessageWrap) isSenderFromMsgWrap:msgWrap];
+        
+        // 获取语音文件路径
+        NSString *voicePath = [%c(CUtility) GetPathOfMesAudio:isSender ? msgWrap.m_nsToUsr : msgWrap.m_nsFromUsr 
+                                                     LocalID:msgWrap.m_uiMesLocalID 
+                                                     DocPath:[%c(CUtility) GetDocPath]];
+        
+        // 检查语音文件是否存在
+        if([%c(CBaseFile) FileExist:voicePath]){
+            // 创建新的语音消息
+            CMessageWrap *newMsgWrap = [[%c(CMessageWrap) alloc] initWithMsgType:0x22];
+            
+            // 设置发送者和接收者
+            if(isSender){
+                newMsgWrap.m_nsFromUsr = msgWrap.m_nsFromUsr;
+                newMsgWrap.m_nsToUsr = msgWrap.m_nsToUsr;
+            } else {
+                newMsgWrap.m_nsFromUsr = msgWrap.m_nsToUsr;
+                newMsgWrap.m_nsToUsr = msgWrap.m_nsFromUsr;
+            }
+            
+            // 设置消息源
+            newMsgWrap.m_nsMsgSource = msgWrap.m_nsMsgSource;
+            newMsgWrap.m_uiStatus = 0x1;
+            newMsgWrap.m_uiDownloadStatus = 0x9;
+            
+            // 获取会话管理器并生成发送时间
+            MMNewSessionMgr *sessionMgr = [[%c(MMServiceCenter) defaultCenter] getService:%c(MMNewSessionMgr)];
+            NSInteger genSendTime = [sessionMgr GenSendMsgTime];
+            newMsgWrap.m_uiCreateTime = genSendTime;
+            
+            // 读取语音数据
+            NSData *voiceData = [NSData dataWithContentsOfFile:voicePath];
+            newMsgWrap.m_dtVoice = voiceData;
+            newMsgWrap.m_uiVoiceFormat = msgWrap.m_uiVoiceFormat;
+            newMsgWrap.m_uiVoiceTime = msgWrap.m_uiVoiceTime;
+            
+            // 更新消息内容
+            [newMsgWrap UpdateContent:nil];
+            
+            // 添加到消息管理器
+            CMessageMgr *msgMgr = [[%c(MMServiceCenter) defaultCenter] getService:%c(CMessageMgr)];
+            [msgMgr AddLocalMsg:forwardContact.m_nsUsrName MsgWrap:newMsgWrap];
+            
+            // 重新设置下载状态
+            newMsgWrap.m_uiDownloadStatus = 0x9;
+            
+            // 获取音频发送器并重新发送语音消息
+            AudioSender *audioSender = [[%c(MMServiceCenter) defaultCenter] getService:%c(AudioSender)];
+            MMNewUploadVoiceMgr *uploadVoiceMgr = MSHookIvar<MMNewUploadVoiceMgr *>(audioSender,"m_upload");
+            [uploadVoiceMgr ResendVoiceMsg:forwardContact.m_nsUsrName MsgWrap:newMsgWrap];
         }
+    } else {
+        // 非语音消息使用原始转发逻辑
+        %orig;
     }
 }
+
+%end
