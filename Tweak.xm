@@ -1,7 +1,9 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 
-// 微信内部类声明
+#pragma mark - WeChat内部类声明
+
 @interface CMessageWrap : NSObject
 @property(nonatomic) unsigned int m_uiMessageType;
 @property(retain, nonatomic) NSString *m_nsFromUsr;
@@ -32,9 +34,9 @@
 + (BOOL)FileExist:(NSString *)arg1;
 @end
 
-@interface MMServiceCenter : NSObject
-+ (id)defaultCenter;
-- (id)getService:(Class)aClass;
+@interface MMContext : NSObject
++ (id)activeUserContext;
+- (id)getService:(Class)cls;
 @end
 
 @interface CMessageMgr : NSObject
@@ -57,13 +59,12 @@
 + (void)ForwardMsg:(CMessageWrap *)msgWrap ToContact:(CContact *)forwardContact Scene:(unsigned int)scene forwardType:(unsigned int)type editImageAttr:(id)editImageAttr;
 @end
 
-// VoiceMessageCellView 声明（需要声明 doForward 方法）
 @interface VoiceMessageCellView : UIView
 - (void)doForward;
 - (NSArray *)operationMenuItems;
 @end
 
-// 主插件代码
+#pragma mark - 主插件代码
 %hook VoiceMessageCellView
 
 - (NSArray *)operationMenuItems{
@@ -116,7 +117,8 @@
             newMsgWrap.m_uiDownloadStatus = 0x9;
             
             // 获取会话管理器并生成发送时间
-            MMNewSessionMgr *sessionMgr = [[%c(MMServiceCenter) defaultCenter] getService:%c(MMNewSessionMgr)];
+            MMContext *context = [%c(MMContext) activeUserContext];
+            MMNewSessionMgr *sessionMgr = [context getService:%c(MMNewSessionMgr)];
             NSInteger genSendTime = [sessionMgr GenSendMsgTime];
             newMsgWrap.m_uiCreateTime = genSendTime;
             
@@ -130,14 +132,14 @@
             [newMsgWrap UpdateContent:nil];
             
             // 添加到消息管理器
-            CMessageMgr *msgMgr = [[%c(MMServiceCenter) defaultCenter] getService:%c(CMessageMgr)];
+            CMessageMgr *msgMgr = [context getService:%c(CMessageMgr)];
             [msgMgr AddLocalMsg:forwardContact.m_nsUsrName MsgWrap:newMsgWrap];
             
             // 重新设置下载状态
             newMsgWrap.m_uiDownloadStatus = 0x9;
             
             // 获取音频发送器并重新发送语音消息
-            AudioSender *audioSender = [[%c(MMServiceCenter) defaultCenter] getService:%c(AudioSender)];
+            AudioSender *audioSender = [context getService:%c(AudioSender)];
             MMNewUploadVoiceMgr *uploadVoiceMgr = MSHookIvar<MMNewUploadVoiceMgr *>(audioSender,"m_upload");
             [uploadVoiceMgr ResendVoiceMsg:forwardContact.m_nsUsrName MsgWrap:newMsgWrap];
         }
