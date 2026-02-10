@@ -65,125 +65,52 @@
 - (NSArray *)operationMenuItems;
 @end
 
+// 微信的菜单项类
+@interface MMMenuItem : NSObject
+- (instancetype)initWithTitle:(NSString *)title target:(id)target action:(SEL)action;
+@end
+
 #pragma mark - 主插件代码
+
 %hook VoiceMessageCellView
 
 - (NSArray *)operationMenuItems{
-    NSMutableArray *menuItems = [%orig mutableCopy];
+    // 获取原始菜单项
+    NSArray *originalItems = %orig;
+    if (!originalItems) {
+        originalItems = @[];
+    }
     
-    // 创建转发菜单项
-    UIMenuItem *voiceTransmitItem = [[UIMenuItem alloc] initWithTitle:@"转发" action:@selector(onForward:)];
-    [menuItems insertObject:voiceTransmitItem atIndex:1];
+    // 转换为可变数组
+    NSMutableArray *menuItems = [originalItems mutableCopy];
+    
+    // 创建转发语音菜单项
+    MMMenuItem *voiceTransmitItem = [[%c(MMMenuItem) alloc] initWithTitle:@"转发语音" target:self action:@selector(handleForwardAction:)];
+    
+    if (voiceTransmitItem) {
+        // 插入到索引1的位置（通常在复制之后，其他选项之前）
+        NSUInteger insertIndex = MIN(1, menuItems.count);
+        [menuItems insertObject:voiceTransmitItem atIndex:insertIndex];
+    }
     
     return menuItems;
 }
 
-- (void)onForward:(id)arg1{
-    // 调用 doForward 方法
-    [self doForward];
-}
-
-%end
-
-%hook ForwardMsgUtil
-
-+ (void)ForwardMsg:(CMessageWrap *)msgWrap ToContact:(CContact *)forwardContact Scene:(unsigned int)scene forwardType:(unsigned int)type editImageAttr:(id)editImageAttr{
-    
-    // 检查是否为语音消息（34 是语音消息类型，0x22 的十进制是34）
-    if(msgWrap.m_uiMessageType == 34){
-        
-        // 获取当前上下文
-        MMContext *context = [%c(MMContext) activeUserContext];
-        if (!context) {
-            %orig;
-            return;
-        }
-        
-        // 判断是发送者还是接收者
-        BOOL isSender = [%c(CMessageWrap) isSenderFromMsgWrap:msgWrap];
-        
-        // 获取语音文件路径 - 修正参数顺序
-        NSString *userName = isSender ? msgWrap.m_nsFromUsr : msgWrap.m_nsToUsr;
-        NSString *voicePath = [%c(CUtility) GetPathOfMesAudio:userName 
-                                                     LocalID:msgWrap.m_uiMesLocalID 
-                                                     DocPath:[%c(CUtility) GetDocPath]];
-        
-        // 检查语音文件是否存在
-        if([%c(CBaseFile) FileExist:voicePath]){
-            NSLog(@"[语音转发] 找到语音文件: %@", voicePath);
-            
-            // 创建新的语音消息
-            CMessageWrap *newMsgWrap = [[%c(CMessageWrap) alloc] initWithMsgType:34];
-            
-            // 设置发送者和接收者 - 修正逻辑
-            // 原始消息的发送者是当前用户，则新消息的发送者也是当前用户
-            newMsgWrap.m_nsFromUsr = msgWrap.m_nsFromUsr;  // 保持原发送者
-            newMsgWrap.m_nsToUsr = forwardContact.m_nsUsrName;  // 目标联系人
-            
-            // 设置消息源 - 如果存在
-            if (msgWrap.m_nsMsgSource) {
-                newMsgWrap.m_nsMsgSource = msgWrap.m_nsMsgSource;
-            }
-            
-            newMsgWrap.m_uiStatus = 0x1;  // 消息状态
-            newMsgWrap.m_uiDownloadStatus = 0x9;  // 下载状态
-            
-            // 获取会话管理器并生成发送时间
-            MMNewSessionMgr *sessionMgr = [context getService:%c(MMNewSessionMgr)];
-            if (sessionMgr) {
-                NSInteger genSendTime = [sessionMgr GenSendMsgTime];
-                newMsgWrap.m_uiCreateTime = genSendTime;
-            } else {
-                newMsgWrap.m_uiCreateTime = msgWrap.m_uiCreateTime;
-            }
-            
-            // 读取语音数据
-            NSData *voiceData = [NSData dataWithContentsOfFile:voicePath];
-            if (voiceData && voiceData.length > 0) {
-                newMsgWrap.m_dtVoice = voiceData;
-                newMsgWrap.m_uiVoiceFormat = msgWrap.m_uiVoiceFormat;
-                newMsgWrap.m_uiVoiceTime = msgWrap.m_uiVoiceTime;
-                
-                // 更新消息内容
-                [newMsgWrap UpdateContent:nil];
-                
-                // 添加到消息管理器
-                CMessageMgr *msgMgr = [context getService:%c(CMessageMgr)];
-                if (msgMgr) {
-                    [msgMgr AddLocalMsg:forwardContact.m_nsUsrName MsgWrap:newMsgWrap];
-                    NSLog(@"[语音转发] 已添加本地消息");
-                    
-                    // 重新设置下载状态
-                    newMsgWrap.m_uiDownloadStatus = 0x9;
-                    
-                    // 获取音频发送器并重新发送语音消息
-                    AudioSender *audioSender = [context getService:%c(AudioSender)];
-                    if (audioSender) {
-                        MMNewUploadVoiceMgr *uploadVoiceMgr = MSHookIvar<MMNewUploadVoiceMgr *>(audioSender,"m_upload");
-                        if (uploadVoiceMgr) {
-                            [uploadVoiceMgr ResendVoiceMsg:forwardContact.m_nsUsrName MsgWrap:newMsgWrap];
-                            NSLog(@"[语音转发] 已重新发送语音消息");
-                        } else {
-                            NSLog(@"[语音转发] 无法获取上传管理器");
-                        }
-                    } else {
-                        NSLog(@"[语音转发] 无法获取音频发送器");
-                    }
-                } else {
-                    NSLog(@"[语音转发] 无法获取消息管理器");
-                }
-            } else {
-                NSLog(@"[语音转发] 语音数据为空或读取失败");
-                %orig;  // 回退到原始转发
-            }
-        } else {
-            NSLog(@"[语音转发] 语音文件不存在: %@", voicePath);
-            %orig;  // 回退到原始转发
-        }
-    } else {
-        // 非语音消息使用原始转发逻辑
-        %orig;
+- (void)handleForwardAction:(id)arg1{
+    // 调用微信原生的doForward方法
+    // 使用performSelector避免编译时检查
+    if ([self respondsToSelector:@selector(doForward)]) {
+        [self performSelector:@selector(doForward) withObject:nil afterDelay:0];
     }
 }
 
 %end
+
+#pragma mark - 构造函数
+
+%ctor {
+    @autoreleasepool {
+        // 初始化代码
+        NSLog(@"[语音转发插件] 已加载");
+    }
+}
