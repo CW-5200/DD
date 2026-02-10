@@ -57,6 +57,12 @@
 + (void)ForwardMsg:(CMessageWrap *)msgWrap ToContact:(CContact *)forwardContact Scene:(unsigned int)scene forwardType:(unsigned int)type editImageAttr:(id)editImageAttr;
 @end
 
+// VoiceMessageCellView 声明（需要声明 doForward 方法）
+@interface VoiceMessageCellView : UIView
+- (void)doForward;
+- (NSArray *)operationMenuItems;
+@end
+
 // 主插件代码
 %hook VoiceMessageCellView
 
@@ -71,7 +77,7 @@
 }
 
 - (void)onForward:(id)arg1{
-    // 调用转发方法
+    // 调用 doForward 方法
     [self doForward];
 }
 
