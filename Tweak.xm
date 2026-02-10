@@ -34,6 +34,7 @@
 - (CContact *)getContactByName:(NSString *)name;
 @end
 
+// CUtility 和 CBaseFile 应该是类方法
 @interface CUtility : NSObject
 + (NSString *)GetPathOfMesAudio:(NSString *)arg1 LocalID:(unsigned long)arg2 DocPath:(NSString *)arg3;
 + (NSString *)GetDocPath;
@@ -56,6 +57,7 @@
 
 @interface AudioSender : NSObject
 @property(retain, nonatomic) id m_upload;
+- (void)ResendVoiceMsg:(NSString *)toUser MsgWrap:(CMessageWrap *)msgWrap;  // 添加这个方法声明
 @end
 
 @interface MMNewUploadVoiceMgr : NSObject
@@ -136,10 +138,6 @@
     }
     
     if (msgWrap && msgWrap.m_uiMessageType == 34) {
-        // 保存消息到临时变量，用于转发
-        static CMessageWrap *tempMsgWrap = nil;
-        tempMsgWrap = msgWrap;
-        
         // 获取当前聊天会话名称
         NSString *chatName = nil;
         @try {
@@ -188,11 +186,9 @@
         
         // 获取服务
         CContactMgr *contactMgr = [context getService:objc_getClass("CContactMgr")];
-        CUtility *utility = [%c(CUtility) class];
-        CBaseFile *fileUtil = [%c(CBaseFile) class];
         
-        if (!contactMgr || !utility || !fileUtil) {
-            NSLog(@"[语音转发] 获取服务失败，使用原始转发");
+        if (!contactMgr) {
+            NSLog(@"[语音转发] 获取联系服务失败，使用原始转发");
             %orig;
             return;
         }
@@ -209,17 +205,17 @@
         BOOL isSender = [%c(CMessageWrap) isSenderFromMsgWrap:msgWrap];
         NSLog(@"[语音转发] 是否是发送者: %@", isSender ? @"是" : @"否");
         
-        // 获取语音文件路径
+        // 使用类方法获取语音文件路径
         NSString *userName = isSender ? selfContact.m_nsUsrName : msgWrap.m_nsFromUsr;
-        NSString *docPath = [utility GetDocPath];
-        NSString *voicePath = [utility GetPathOfMesAudio:userName 
-                                                 LocalID:msgWrap.m_uiMesLocalID 
-                                                 DocPath:docPath];
+        NSString *docPath = [%c(CUtility) GetDocPath];
+        NSString *voicePath = [%c(CUtility) GetPathOfMesAudio:userName 
+                                                      LocalID:msgWrap.m_uiMesLocalID 
+                                                      DocPath:docPath];
         
         NSLog(@"[语音转发] 语音文件路径: %@", voicePath);
         
-        // 检查语音文件是否存在
-        if (!voicePath || ![fileUtil FileExist:voicePath]) {
+        // 使用类方法检查语音文件是否存在
+        if (!voicePath || ![%c(CBaseFile) FileExist:voicePath]) {
             NSLog(@"[语音转发] 语音文件不存在，使用原始转发");
             %orig;
             return;
@@ -324,6 +320,6 @@
 %ctor {
     @autoreleasepool {
         // 初始化代码
-        NSLog(@"[语音转发插件] 已加载 - 完整版本");
+        NSLog(@"[语音转发插件] 已加载 - 修复版本");
     }
 }
